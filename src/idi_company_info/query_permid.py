@@ -13,7 +13,6 @@ import logging
 import pathlib
 import time
 from datetime import datetime
-from typing import Dict, List, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -87,7 +86,7 @@ def create_session() -> requests.Session:
 
     return session
 
-def query_permid_by_cik(session: requests.Session, cik: str, api_key: str) -> Optional[str]:
+def query_permid_by_cik(session: requests.Session, cik: str, api_key: str) -> str | None:
     """
     Query PermID API by CIK and return the PermID.
 
@@ -136,50 +135,50 @@ def query_permid_by_cik(session: requests.Session, cik: str, api_key: str) -> Op
         logging.error(f"Error querying CIK {cik}: {e}")
         return None
 
-def load_cik_data(input_file: pathlib.Path) -> Dict[str, List[str]]:
+def load_cik_data(input_file: pathlib.Path) -> dict[str, list[str]]:
     """Load CIK data from JSON file."""
     logging.info(f"Loading CIK data from: {input_file}")
-    with open(input_file, 'r') as f:
+    with open(input_file) as f:
         data = json.load(f)
     logging.info(f"Loaded {len(data)} investors with CIK data")
     return data
 
-def load_batch_tracking(batch_file: pathlib.Path) -> Dict:
+def load_batch_tracking(batch_file: pathlib.Path) -> dict:
     """Load batch tracking data or create new tracking dict."""
     if batch_file.exists():
         logging.info(f"Loading existing batch tracking from: {batch_file}")
-        with open(batch_file, 'r') as f:
+        with open(batch_file) as f:
             return json.load(f)
     else:
         logging.info("Creating new batch tracking file")
         return {}
 
-def save_batch_tracking(batch_file: pathlib.Path, tracking_data: Dict):
+def save_batch_tracking(batch_file: pathlib.Path, tracking_data: dict):
     """Save batch tracking data to file."""
     with open(batch_file, 'w') as f:
         json.dump(tracking_data, f, indent=2)
     logging.info(f"Saved batch tracking to: {batch_file}")
 
-def load_existing_results(output_file: pathlib.Path) -> Dict[str, List[str]]:
+def load_existing_results(output_file: pathlib.Path) -> dict[str, list[str]]:
     """Load existing results or return empty dict."""
     if output_file.exists():
         logging.info(f"Loading existing results from: {output_file}")
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             return json.load(f)
     else:
         logging.info("No existing results found, starting fresh")
         return {}
 
-def save_results(output_file: pathlib.Path, results: Dict[str, List[str]]):
+def save_results(output_file: pathlib.Path, results: dict[str, list[str]]):
     """Save results to JSON file."""
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
     logging.info(f"Saved results to: {output_file}")
 
 def get_unprocessed_investors(
-    cik_data: Dict[str, List[str]],
-    batch_tracking: Dict
-) -> List[str]:
+    cik_data: dict[str, list[str]],
+    batch_tracking: dict
+) -> list[str]:
     """Get list of investors that haven't been processed yet."""
     processed_investors = set()
 
@@ -199,11 +198,11 @@ def get_unprocessed_investors(
 
 def process_batch(
     session: requests.Session,
-    cik_data: Dict[str, List[str]],
-    investors_to_process: List[str],
+    cik_data: dict[str, list[str]],
+    investors_to_process: list[str],
     batch_size: int,
     api_key: str
-) -> tuple[Dict[str, List[str]], List[str], Dict]:
+) -> tuple[dict[str, list[str]], list[str], dict]:
     """
     Process a batch of investors.
 
@@ -274,7 +273,7 @@ def process_batch(
 
     return results, processed_investors, stats
 
-def print_stats(stats: Dict, batch_stats: Dict):
+def print_stats(stats: dict, batch_stats: dict):
     """Print statistics about the processing."""
     logging.info("=" * 60)
     logging.info("BATCH STATISTICS")
@@ -305,7 +304,8 @@ def main():
 
     # Log arguments
     for key, value in args.__dict__.items():
-        if key == "api_key": continue
+        if key == "api_key":
+            continue
         logging.info(f"{key}: {value}")
 
     # Load CIK data

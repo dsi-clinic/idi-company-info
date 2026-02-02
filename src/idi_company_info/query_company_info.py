@@ -13,7 +13,7 @@ import logging
 import pathlib
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -146,7 +146,7 @@ def query_geonames_location(
     session: requests.Session,
     url: str,
     geonames_user: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Query Geonames API to resolve location information.
 
@@ -173,11 +173,11 @@ def query_geonames_location(
     return data.get("name") or data.get("asciiName") or data.get("countryName")
 
 def extract_permid_fields(
-    data: Dict[str, Any],
+    data: dict[str, Any],
     session: requests.Session,
     geonames_user: str,
     resolve_urls: bool
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Extract and map fields from PermID API response.
 
@@ -217,7 +217,7 @@ def query_permid_entity(
     api_key: str,
     geonames_user: str,
     resolve_urls: bool = True
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Query PermID API and return company information.
 
@@ -255,50 +255,50 @@ def query_permid_entity(
         logging.error(f"Error querying PermID {permid_url}: {e}")
         return None
 
-def load_permid_data(input_file: pathlib.Path) -> Dict[str, List[str]]:
+def load_permid_data(input_file: pathlib.Path) -> dict[str, list[str]]:
     """Load PermID data from JSON file."""
     logging.info(f"Loading PermID data from: {input_file}")
-    with open(input_file, 'r') as f:
+    with open(input_file) as f:
         data = json.load(f)
     logging.info(f"Loaded {len(data)} investors with PermID data")
     return data
 
-def load_batch_tracking(batch_file: pathlib.Path) -> Dict:
+def load_batch_tracking(batch_file: pathlib.Path) -> dict:
     """Load batch tracking data or create new tracking dict."""
     if batch_file.exists():
         logging.info(f"Loading existing batch tracking from: {batch_file}")
-        with open(batch_file, 'r') as f:
+        with open(batch_file) as f:
             return json.load(f)
     else:
         logging.info("Creating new batch tracking file")
         return {}
 
-def save_batch_tracking(batch_file: pathlib.Path, tracking_data: Dict):
+def save_batch_tracking(batch_file: pathlib.Path, tracking_data: dict):
     """Save batch tracking data to file."""
     with open(batch_file, 'w') as f:
         json.dump(tracking_data, f, indent=2)
     logging.info(f"Saved batch tracking to: {batch_file}")
 
-def load_existing_results(output_file: pathlib.Path) -> List[Dict[str, Any]]:
+def load_existing_results(output_file: pathlib.Path) -> list[dict[str, Any]]:
     """Load existing results or return empty list."""
     if output_file.exists():
         logging.info(f"Loading existing results from: {output_file}")
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             return json.load(f)
     else:
         logging.info("No existing results found, starting fresh")
         return []
 
-def save_results(output_file: pathlib.Path, results: List[Dict[str, Any]]):
+def save_results(output_file: pathlib.Path, results: list[dict[str, Any]]):
     """Save results to JSON file."""
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
     logging.info(f"Saved {len(results)} company records to: {output_file}")
 
 def get_unprocessed_investors(
-    permid_data: Dict[str, List[str]],
-    batch_tracking: Dict
-) -> List[str]:
+    permid_data: dict[str, list[str]],
+    batch_tracking: dict
+) -> list[str]:
     """Get list of investors that haven't been processed yet."""
     processed_investors = set()
 
@@ -319,11 +319,11 @@ def get_unprocessed_investors(
 def process_investor(
     session: requests.Session,
     investor_name: str,
-    permids: List[str],
+    permids: list[str],
     api_key: str,
     geonames_user: str,
-    stats: Dict
-) -> List[Dict[str, Any]]:
+    stats: dict
+) -> list[dict[str, Any]]:
     """
     Process a single investor by querying all their PermIDs.
 
@@ -370,12 +370,12 @@ def process_investor(
 
 def process_batch(
     session: requests.Session,
-    permid_data: Dict[str, List[str]],
-    investors_to_process: List[str],
+    permid_data: dict[str, list[str]],
+    investors_to_process: list[str],
     batch_size: int,
     api_key: str,
     geonames_user: str
-) -> tuple[List[Dict[str, Any]], List[str], Dict]:
+) -> tuple[list[dict[str, Any]], list[str], dict]:
     """
     Process a batch of investors.
 
@@ -426,11 +426,11 @@ def process_batch(
 def finalize_batch(
     output_file: pathlib.Path,
     batch_file: pathlib.Path,
-    existing_results: List[Dict[str, Any]],
-    batch_results: List[Dict[str, Any]],
-    processed_investors: List[str],
-    batch_stats: Dict
-) -> List[Dict[str, Any]]:
+    existing_results: list[dict[str, Any]],
+    batch_results: list[dict[str, Any]],
+    processed_investors: list[str],
+    batch_stats: dict
+) -> list[dict[str, Any]]:
     """
     Finalize batch by saving results and updating tracking.
 
@@ -466,7 +466,7 @@ def finalize_batch(
 
     return all_results
 
-def print_stats(all_results: List[Dict[str, Any]], batch_stats: Dict):
+def print_stats(all_results: list[dict[str, Any]], batch_stats: dict):
     """Print statistics about the processing."""
     logging.info("=" * 60)
     logging.info("BATCH STATISTICS")
