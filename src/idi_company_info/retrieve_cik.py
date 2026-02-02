@@ -65,6 +65,9 @@ def extract_filter_parquet(df):
     # Convert investor_cik to string to ensure JSON serialization
     subset["investor_cik"] = subset["investor_cik"].astype(str)
 
+    # Remove "CIK" prefix from CIK values (e.g., "CIK0001546531" -> "0001546531")
+    subset["investor_cik"] = subset["investor_cik"].str.replace("^CIK", "", regex=True)
+
     # Group by investor_name and aggregate CIKs into a list
     result = subset.groupby("investor_name")["investor_cik"].apply(list).to_dict()
 
