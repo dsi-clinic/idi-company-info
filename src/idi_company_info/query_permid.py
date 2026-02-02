@@ -258,6 +258,12 @@ def process_batch(
             unique_permids = list(set(permids))
             stats["duplicates_removed"] += len(permids) - len(unique_permids)
 
+            # Log when investor has multiple PermIDs
+            if len(unique_permids) > 1:
+                logging.warning(
+                    f"  MULTIPLE PermIDs for {investor_name}: {unique_permids}"
+                )
+
             results[investor_name] = unique_permids
             stats["investors_with_permid"] += 1
             stats["total_permids"] += len(unique_permids)
