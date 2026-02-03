@@ -295,7 +295,7 @@ def _load_data(
     """
     cik_data = load_cik_data(input_file)
     batch_tracking = load_batch_tracking(batch_file)
-    existing_results = load_existing_results(output_file)
+    existing_results = load_existing_results(output_file, default_type="dict")
     unprocessed_investors = get_unprocessed_investors(cik_data, batch_tracking)
 
     return cik_data, batch_tracking, existing_results, unprocessed_investors

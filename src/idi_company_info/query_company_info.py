@@ -113,8 +113,8 @@ def load_data(input_file, batch_file, output_file, batch_size):
     # Load batch tracking
     batch_tracking = load_batch_tracking(batch_file)
 
-    # Load existing results
-    existing_results = load_existing_results(output_file)
+    # Load existing results (company_info results are a list, not a dict)
+    existing_results = load_existing_results(output_file, default_type="list")
 
     # Get unprocessed investors
     unprocessed_investors = get_unprocessed_investors(permid_data, batch_tracking)

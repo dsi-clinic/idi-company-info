@@ -65,12 +65,13 @@ def get_unprocessed_investors(
 
     return unprocessed
 
-def load_existing_results(output_file: pathlib.Path) -> dict | list:
+def load_existing_results(output_file: pathlib.Path, default_type: str = "dict") -> dict | list:
     """
     Load existing results or return appropriate empty structure.
 
     Args:
         output_file: Path to results JSON file
+        default_type: Type of empty structure to return if file doesn't exist ("dict" or "list")
 
     Returns:
         Dictionary or list with existing results, or empty structure if file doesn't exist
@@ -81,8 +82,10 @@ def load_existing_results(output_file: pathlib.Path) -> dict | list:
             return json.load(f)
     else:
         logging.info("No existing results found, starting fresh")
-        # Try to infer the structure from the file extension or default to dict
-        return {}
+        if default_type == "list":
+            return []
+        else:
+            return {}
 
 def save_results(output_file: pathlib.Path, results: dict | list):
     """
