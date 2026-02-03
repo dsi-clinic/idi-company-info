@@ -16,8 +16,17 @@ from datetime import datetime
 from typing import Any
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+
+from .utils import (
+    create_session,
+    REQUEST_TIMEOUT,
+    RATE_LIMIT_DELAY,
+    load_batch_tracking,
+    save_batch_tracking,
+    get_unprocessed_investors,
+    load_existing_results,
+    save_results,
+)
 
 logging.getLogger().setLevel(logging.INFO)
 logging.basicConfig(
@@ -29,8 +38,6 @@ logging.basicConfig(
 # API configuration
 PERMID_BASE_URL = "https://permid.org"
 GEONAMES_API_URL = "http://api.geonames.org/getJSON"
-REQUEST_TIMEOUT = (10, 30)  # (connect timeout, read timeout)
-RATE_LIMIT_DELAY = 1.0  # 1 request per second
 
 # Field mapping from API response to our output format
 FIELD_MAPPING = {
@@ -123,24 +130,6 @@ def load_data(input_file, batch_file, output_file, batch_size):
         )
 
     return permid_data, existing_results, unprocessed_investors
-
-def create_session() -> requests.Session:
-    """Create a requests Session with retry strategy."""
-    session = requests.Session()
-
-    # Configure retry strategy
-    retry_strategy = Retry(
-        total=3,
-        backoff_factor=2,  # Wait 1, 2, 4 seconds between retries
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET"]
-    )
-
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-
-    return session
 
 def query_geonames_location(
     session: requests.Session,
@@ -262,59 +251,6 @@ def load_permid_data(input_file: pathlib.Path) -> dict[str, list[str]]:
         data = json.load(f)
     logging.info(f"Loaded {len(data)} investors with PermID data")
     return data
-
-def load_batch_tracking(batch_file: pathlib.Path) -> dict:
-    """Load batch tracking data or create new tracking dict."""
-    if batch_file.exists():
-        logging.info(f"Loading existing batch tracking from: {batch_file}")
-        with open(batch_file) as f:
-            return json.load(f)
-    else:
-        logging.info("Creating new batch tracking file")
-        return {}
-
-def save_batch_tracking(batch_file: pathlib.Path, tracking_data: dict):
-    """Save batch tracking data to file."""
-    with open(batch_file, 'w') as f:
-        json.dump(tracking_data, f, indent=2)
-    logging.info(f"Saved batch tracking to: {batch_file}")
-
-def load_existing_results(output_file: pathlib.Path) -> list[dict[str, Any]]:
-    """Load existing results or return empty list."""
-    if output_file.exists():
-        logging.info(f"Loading existing results from: {output_file}")
-        with open(output_file) as f:
-            return json.load(f)
-    else:
-        logging.info("No existing results found, starting fresh")
-        return []
-
-def save_results(output_file: pathlib.Path, results: list[dict[str, Any]]):
-    """Save results to JSON file."""
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    logging.info(f"Saved {len(results)} company records to: {output_file}")
-
-def get_unprocessed_investors(
-    permid_data: dict[str, list[str]],
-    batch_tracking: dict
-) -> list[str]:
-    """Get list of investors that haven't been processed yet."""
-    processed_investors = set()
-
-    # Collect all processed investors from all batches
-    for batch_info in batch_tracking.values():
-        processed_investors.update(batch_info.get("processed_investors", []))
-
-    # Find unprocessed investors
-    all_investors = set(permid_data.keys())
-    unprocessed = list(all_investors - processed_investors)
-
-    logging.info(f"Total investors: {len(all_investors)}")
-    logging.info(f"Already processed: {len(processed_investors)}")
-    logging.info(f"Remaining to process: {len(unprocessed)}")
-
-    return unprocessed
 
 def process_investor(
     session: requests.Session,

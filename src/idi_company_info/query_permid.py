@@ -15,8 +15,17 @@ import time
 from datetime import datetime
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+
+from .utils import (
+    create_session,
+    REQUEST_TIMEOUT,
+    RATE_LIMIT_DELAY,
+    load_batch_tracking,
+    save_batch_tracking,
+    get_unprocessed_investors,
+    load_existing_results,
+    save_results,
+)
 
 logging.getLogger().setLevel(logging.INFO)
 logging.basicConfig(
@@ -27,8 +36,6 @@ logging.basicConfig(
 
 # API configuration
 API_URL = "https://api-eit.refinitiv.com/permid/search"
-REQUEST_TIMEOUT = (10, 30)  # (connect timeout, read timeout)
-RATE_LIMIT_DELAY = 1.0  # 1 request per second
 
 
 def get_args():
@@ -67,24 +74,6 @@ def get_args():
     )
     args = parser.parse_args()
     return args
-
-def create_session() -> requests.Session:
-    """Create a requests Session with retry strategy."""
-    session = requests.Session()
-
-    # Configure retry strategy
-    retry_strategy = Retry(
-        total=3,
-        backoff_factor=2,  # Wait 1, 2, 4 seconds between retries
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET"]
-    )
-
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-
-    return session
 
 def query_permid_by_cik(session: requests.Session, cik: str, api_key: str) -> str | None:
     """
@@ -142,59 +131,6 @@ def load_cik_data(input_file: pathlib.Path) -> dict[str, list[str]]:
         data = json.load(f)
     logging.info(f"Loaded {len(data)} investors with CIK data")
     return data
-
-def load_batch_tracking(batch_file: pathlib.Path) -> dict:
-    """Load batch tracking data or create new tracking dict."""
-    if batch_file.exists():
-        logging.info(f"Loading existing batch tracking from: {batch_file}")
-        with open(batch_file) as f:
-            return json.load(f)
-    else:
-        logging.info("Creating new batch tracking file")
-        return {}
-
-def save_batch_tracking(batch_file: pathlib.Path, tracking_data: dict):
-    """Save batch tracking data to file."""
-    with open(batch_file, 'w') as f:
-        json.dump(tracking_data, f, indent=2)
-    logging.info(f"Saved batch tracking to: {batch_file}")
-
-def load_existing_results(output_file: pathlib.Path) -> dict[str, list[str]]:
-    """Load existing results or return empty dict."""
-    if output_file.exists():
-        logging.info(f"Loading existing results from: {output_file}")
-        with open(output_file) as f:
-            return json.load(f)
-    else:
-        logging.info("No existing results found, starting fresh")
-        return {}
-
-def save_results(output_file: pathlib.Path, results: dict[str, list[str]]):
-    """Save results to JSON file."""
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    logging.info(f"Saved results to: {output_file}")
-
-def get_unprocessed_investors(
-    cik_data: dict[str, list[str]],
-    batch_tracking: dict
-) -> list[str]:
-    """Get list of investors that haven't been processed yet."""
-    processed_investors = set()
-
-    # Collect all processed investors from all batches
-    for batch_info in batch_tracking.values():
-        processed_investors.update(batch_info.get("processed_investors", []))
-
-    # Find unprocessed investors
-    all_investors = set(cik_data.keys())
-    unprocessed = list(all_investors - processed_investors)
-
-    logging.info(f"Total investors: {len(all_investors)}")
-    logging.info(f"Already processed: {len(processed_investors)}")
-    logging.info(f"Remaining to process: {len(unprocessed)}")
-
-    return unprocessed
 
 def _initialize_batch_stats() -> dict:
     """Initialize statistics dictionary for batch processing."""
