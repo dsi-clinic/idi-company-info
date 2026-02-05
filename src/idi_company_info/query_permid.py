@@ -142,7 +142,8 @@ def _initialize_batch_stats() -> dict:
         "investors_with_permid": 0,
         "investors_without_permid": 0,
         "total_permids": 0,
-        "duplicates_removed": 0
+        "duplicates_removed": 0,
+        "duplicates_removed_cik": 0
     }
 
 def _process_investor_ciks(
@@ -200,7 +201,6 @@ def _store_investor_results(
         results: Results dictionary to update
         stats: Statistics dictionary to update
     """
-    print("cik_permid_pairs", cik_permid_pairs)
     # Filter out entries where PermID is None
     valid_pairs = [pair for pair in cik_permid_pairs if pair["permid"] is not None]
 
@@ -210,7 +210,6 @@ def _store_investor_results(
         for pair in valid_pairs:
             permid = pair["permid"]
             cik = pair["cik"]
-            print("cik", cik)
             if permid not in permid_to_ciks:
                 permid_to_ciks[permid] = []
             permid_to_ciks[permid].append(cik)
@@ -264,12 +263,18 @@ def process_batch(
     stats = _initialize_batch_stats()
 
     batch = investors_to_process[:batch_size]
-    batch.append("THRIVE CAPITAL MANAGEMENT, LLC")
-    batch.append("THREE SEASONS WEALTH, LLC")
     logging.info(f"Processing batch of {len(batch)} investors")
 
     for idx, investor_name in enumerate(batch, 1):
         ciks = cik_data[investor_name]
+
+        # Remove duplicate CIKs before processing
+        original_count = len(ciks)
+        ciks = list(dict.fromkeys(ciks))  # Preserves order while removing duplicates
+        if len(ciks) < original_count:
+            logging.info(f"  Removed {original_count - len(ciks)} duplicate CIK(s) for {investor_name}")
+            stats["duplicates_removed_cik"] += 1
+
         stats["total_investors"] += 1
 
         logging.info(f"[{idx}/{len(batch)}] Processing: {investor_name} ({len(ciks)} CIK(s))")
@@ -297,6 +302,7 @@ def print_stats(stats: dict, batch_stats: dict):
     logging.info(f"Investors without PermID: {batch_stats['investors_without_permid']}")
     logging.info(f"Total PermIDs found: {batch_stats['total_permids']}")
     logging.info(f"Duplicates removed: {batch_stats['duplicates_removed']}")
+    logging.info(f"Duplicate CIKs removed: {batch_stats['duplicates_removed_cik']}")
 
     logging.info("=" * 60)
     logging.info("CUMULATIVE STATISTICS")

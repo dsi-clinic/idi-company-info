@@ -58,15 +58,15 @@ def extract_filter_parquet(df):
     subset = subset[subset["investor_cik"].notna() & (subset["investor_cik"] != "")]
     logging.info(f"Found {len(subset)} rows with valid CIKs")
 
-    # Remove duplicates where both investor_name and investor_cik are the same
-    subset = subset.drop_duplicates(subset=["investor_name", "investor_cik"])
-    logging.info(f"After removing duplicates: {len(subset)} unique investor_name/CIK pairs")
-
     # Convert investor_cik to string to ensure JSON serialization
     subset["investor_cik"] = subset["investor_cik"].astype(str)
 
     # Remove "CIK" prefix from CIK values (e.g., "CIK0001546531" -> "0001546531")
     subset["investor_cik"] = subset["investor_cik"].str.replace("^CIK", "", regex=True)
+
+    # Remove duplicates AFTER normalization to catch formatting differences
+    subset = subset.drop_duplicates(subset=["investor_name", "investor_cik"])
+    logging.info(f"After normalization and deduplication: {len(subset)} unique investor_name/CIK pairs")
 
     # Group by investor_name and aggregate CIKs into a list
     result = subset.groupby("investor_name")["investor_cik"].apply(list).to_dict()
