@@ -12,7 +12,7 @@ import json
 import logging
 import pathlib
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import requests
@@ -103,33 +103,239 @@ def get_args():
         required=True,
         help="Geonames API username for resolving location data"
     )
+    parser.add_argument(
+        "--threshold-days",
+        type=int,
+        default=None,
+        help="Re-query investors not updated in the last N days (default: None, no re-querying)"
+    )
     args = parser.parse_args()
     return args
 
-def load_data(input_file, batch_file, output_file, batch_size):
-    # Load PermID data
-    permid_data = load_permid_data(input_file)
+def get_stale_investors(
+    existing_results: list[dict[str, Any]],
+    threshold_days: int
+) -> set[str]:
+    """
+    Identify investors whose data hasn't been updated within threshold days.
 
-    # Load batch tracking
-    batch_tracking = load_batch_tracking(batch_file)
+    Args:
+        existing_results: List of company info records
+        threshold_days: Number of days after which data is considered stale
 
-    # Load existing results (company_info results are a list, not a dict)
-    existing_results = load_existing_results(output_file, default_type="list")
+    Returns:
+        Set of investor names that need re-processing
+    """
+    if threshold_days is None:
+        return set()
 
-    # Get unprocessed investors
+    threshold_date = datetime.now() - timedelta(days=threshold_days)
+    stale_investors = set()
+
+    # Group results by original_investor_name
+    investor_records = {}
+    for record in existing_results:
+        if not record:  # Skip None records
+            continue
+
+        investor_name = record.get("original_investor_name")
+        if not investor_name:
+            continue
+
+        if investor_name not in investor_records:
+            investor_records[investor_name] = []
+        investor_records[investor_name].append(record)
+
+    # Check each investor's most recent update
+    for investor_name, records in investor_records.items():
+        # Find the most recent last_processed timestamp for this investor
+        most_recent = None
+
+        for record in records:
+            last_processed_str = record.get("last_processed")
+            if not last_processed_str:
+                # No timestamp means old data, needs re-processing
+                most_recent = None
+                break
+
+            try:
+                last_processed = datetime.fromisoformat(last_processed_str)
+                if most_recent is None or last_processed > most_recent:
+                    most_recent = last_processed
+            except (ValueError, TypeError):
+                # Invalid timestamp, treat as stale
+                logging.warning(f"Invalid timestamp for {investor_name}: {last_processed_str}")
+                most_recent = None
+                break
+
+        # If no valid timestamp or older than threshold, mark as stale
+        if most_recent is None or most_recent < threshold_date:
+            stale_investors.add(investor_name)
+            if most_recent:
+                days_old = (datetime.now() - most_recent).days
+                logging.info(f"  Marking {investor_name} as stale ({days_old} days old)")
+            else:
+                logging.info(f"  Marking {investor_name} as stale (no timestamp)")
+
+    return stale_investors
+
+
+def remove_stale_records(
+    existing_results: list[dict[str, Any]],
+    stale_investors: set[str]
+) -> list[dict[str, Any]]:
+    """
+    Remove records for stale investors so they can be re-processed.
+
+    Args:
+        existing_results: List of company info records
+        stale_investors: Set of investor names to remove
+
+    Returns:
+        Filtered list without stale investor records
+    """
+    if not stale_investors:
+        return existing_results
+
+    filtered_results = [
+        record for record in existing_results
+        if record and record.get("original_investor_name") not in stale_investors
+    ]
+
+    removed_count = len(existing_results) - len(filtered_results)
+    logging.info(f"Removed {removed_count} stale record(s) for re-processing")
+
+    return filtered_results
+
+
+def _remove_stale_from_batch_tracking(
+    batch_tracking: dict,
+    stale_investors: set[str]
+) -> None:
+    """
+    Remove stale investors from batch tracking so they're treated as unprocessed.
+
+    Args:
+        batch_tracking: Batch tracking dictionary to modify in-place
+        stale_investors: Set of investor names to remove
+    """
+    for batch_data in batch_tracking.values():
+        processed_list = batch_data.get("processed_investors", [])
+        batch_data["processed_investors"] = [
+            inv for inv in processed_list if inv not in stale_investors
+        ]
+
+
+def _handle_stale_investors(
+    existing_results: list[dict[str, Any]],
+    batch_tracking: dict,
+    threshold_days: int | None
+) -> tuple[list[dict[str, Any]], set[str]]:
+    """
+    Identify and process stale investors based on threshold.
+
+    Args:
+        existing_results: List of company info records
+        batch_tracking: Batch tracking dictionary
+        threshold_days: Number of days after which data is considered stale
+
+    Returns:
+        Tuple of (filtered_results, stale_investors_set)
+    """
+    if threshold_days is None:
+        return existing_results, set()
+
+    logging.info(f"Checking for investors not updated in last {threshold_days} days")
+    stale_investors = get_stale_investors(existing_results, threshold_days)
+
+    if not stale_investors:
+        return existing_results, set()
+
+    logging.info(f"Found {len(stale_investors)} stale investor(s) to re-process")
+
+    # Remove stale investor records so they can be re-processed
+    filtered_results = remove_stale_records(existing_results, stale_investors)
+
+    # Remove stale investors from batch tracking
+    _remove_stale_from_batch_tracking(batch_tracking, stale_investors)
+
+    return filtered_results, stale_investors
+
+
+def _get_investors_to_process(
+    permid_data: dict,
+    batch_tracking: dict,
+    stale_investors: set[str]
+) -> list[str] | None:
+    """
+    Get combined list of unprocessed and stale investors.
+
+    Args:
+        permid_data: PermID data dictionary
+        batch_tracking: Batch tracking dictionary
+        stale_investors: Set of stale investor names
+
+    Returns:
+        List of investor names to process, or None if all are up to date
+    """
+    # Get unprocessed investors (never processed)
     unprocessed_investors = get_unprocessed_investors(permid_data, batch_tracking)
 
-    if not unprocessed_investors:
-        logging.info("All investors have been processed!")
-        return
+    # Combine stale + unprocessed investors for processing
+    investors_to_process = list(set(unprocessed_investors) | stale_investors)
 
-    if batch_size > len(unprocessed_investors):
+    if not investors_to_process:
+        logging.info("All investors are up to date!")
+        return None
+
+    logging.info(
+        f"Investors to process: {len(investors_to_process)} "
+        f"(unprocessed: {len(unprocessed_investors)}, stale: {len(stale_investors)})"
+    )
+
+    return investors_to_process
+
+
+def load_data(input_file, batch_file, output_file, batch_size, threshold_days=None):
+    """
+    Load and prepare data for batch processing.
+
+    Args:
+        input_file: Path to PermID data file
+        batch_file: Path to batch tracking file
+        output_file: Path to existing results file
+        batch_size: Number of investors to process
+        threshold_days: Optional threshold for re-querying stale data
+
+    Returns:
+        Tuple of (permid_data, existing_results, investors_to_process) or None
+    """
+    # Load all input data
+    permid_data = load_permid_data(input_file)
+    batch_tracking = load_batch_tracking(batch_file)
+    existing_results = load_existing_results(output_file, default_type="list")
+
+    # Handle stale investors if threshold provided
+    existing_results, stale_investors = _handle_stale_investors(
+        existing_results, batch_tracking, threshold_days
+    )
+
+    # Get investors to process (unprocessed + stale)
+    investors_to_process = _get_investors_to_process(
+        permid_data, batch_tracking, stale_investors
+    )
+
+    if investors_to_process is None:
+        return None
+
+    # Validate batch size
+    if batch_size > len(investors_to_process):
         logging.warning(
-            f"Batch size ({batch_size}) is larger than remaining investors "
-            f"({len(unprocessed_investors)}). Processing all remaining investors."
+            f"Batch size ({batch_size}) is larger than investors to process "
+            f"({len(investors_to_process)}). Processing all."
         )
 
-    return permid_data, existing_results, unprocessed_investors
+    return permid_data, existing_results, investors_to_process
 
 def query_geonames_location(
     session: requests.Session,
@@ -295,9 +501,10 @@ def process_investor(
 
         if company_info:
             stats["successful_queries"] += 1
-            # Add the original investor name and all CIKs for reference
+            # Add the original investor name, CIKs, and processing timestamp
             company_info["original_investor_name"] = investor_name
             company_info["ciks"] = ciks  # Store as list
+            company_info["last_processed"] = datetime.now().isoformat()
             investor_results.append(company_info)
             logging.info(f"  Successfully retrieved info for PermID {permid_url}")
         else:
@@ -445,13 +652,21 @@ def main():
     # Create output file's parent directory if it doesn't exist
     args.output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Load PermID data
-    permid_data, existing_results, unprocessed_investors = load_data(
+    # Load PermID data with threshold-based filtering
+    load_result = load_data(
         args.input_file,
         args.batch_file,
         args.output_file,
-        args.batch_size
+        args.batch_size,
+        args.threshold_days
     )
+
+    # Check if there's anything to process
+    if load_result is None:
+        logging.info("Nothing to process. Exiting.")
+        return
+
+    permid_data, existing_results, investors_to_process = load_result
 
     # Create session
     session = create_session()
@@ -460,7 +675,7 @@ def main():
     batch_results, processed_investors, batch_stats = process_batch(
         session,
         permid_data,
-        unprocessed_investors,
+        investors_to_process,
         args.batch_size,
         args.api_key,
         args.geonames_user
