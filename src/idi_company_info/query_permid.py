@@ -187,11 +187,12 @@ def _process_investor_ciks(
 def _store_investor_results(
     investor_name: str,
     cik_permid_pairs: list[dict[str, str | None]],
-    results: dict[str, list[dict[str, str | None]]],
+    results: dict[str, list[dict[str, list[str] | str]]],
     stats: dict
 ):
     """
     Store investor results with deduplication and update statistics.
+    Groups multiple CIKs that map to the same PermID together.
 
     Args:
         investor_name: Name of the investor
@@ -199,19 +200,31 @@ def _store_investor_results(
         results: Results dictionary to update
         stats: Statistics dictionary to update
     """
+    print("cik_permid_pairs", cik_permid_pairs)
     # Filter out entries where PermID is None
     valid_pairs = [pair for pair in cik_permid_pairs if pair["permid"] is not None]
 
     if valid_pairs:
-        # Remove duplicates based on PermID (keep first occurrence which preserves CIK)
-        seen_permids = set()
-        unique_pairs = []
+        # Group CIKs by PermID
+        permid_to_ciks: dict[str, list[str]] = {}
         for pair in valid_pairs:
-            if pair["permid"] not in seen_permids:
-                seen_permids.add(pair["permid"])
-                unique_pairs.append(pair)
+            permid = pair["permid"]
+            cik = pair["cik"]
+            print("cik", cik)
+            if permid not in permid_to_ciks:
+                permid_to_ciks[permid] = []
+            permid_to_ciks[permid].append(cik)
 
-        stats["duplicates_removed"] += len(valid_pairs) - len(unique_pairs)
+        # Create unique pairs with all CIKs grouped by PermID
+        unique_pairs = [
+            {"ciks": ciks, "permid": permid}
+            for permid, ciks in permid_to_ciks.items()
+        ]
+
+        # Track duplicates (CIKs that mapped to the same PermID)
+        total_ciks = len(valid_pairs)
+        unique_mappings = len(unique_pairs)
+        stats["duplicates_removed"] += total_ciks - unique_mappings
 
         # Log when investor has multiple PermIDs
         if len(unique_pairs) > 1:
@@ -219,6 +232,13 @@ def _store_investor_results(
             logging.warning(
                 f"  MULTIPLE PermIDs for {investor_name}: {permid_list}"
             )
+
+        # Log when multiple CIKs map to same PermID
+        for pair in unique_pairs:
+            if len(pair["ciks"]) > 1:
+                logging.info(
+                    f"  Multiple CIKs for same PermID {pair['permid']}: {pair['ciks']}"
+                )
 
         results[investor_name] = unique_pairs
         stats["investors_with_permid"] += 1
@@ -232,7 +252,7 @@ def process_batch(
     investors_to_process: list[str],
     batch_size: int,
     api_key: str
-) -> tuple[dict[str, list[dict[str, str | None]]], list[str], dict]:
+) -> tuple[dict[str, list[dict[str, list[str] | str]]], list[str], dict]:
     """
     Process a batch of investors.
 
@@ -244,6 +264,8 @@ def process_batch(
     stats = _initialize_batch_stats()
 
     batch = investors_to_process[:batch_size]
+    batch.append("THRIVE CAPITAL MANAGEMENT, LLC")
+    batch.append("THREE SEASONS WEALTH, LLC")
     logging.info(f"Processing batch of {len(batch)} investors")
 
     for idx, investor_name in enumerate(batch, 1):
@@ -313,8 +335,8 @@ def _load_data(
 def _finalize_batch(
     output_file: pathlib.Path,
     batch_file: pathlib.Path,
-    existing_results: dict[str, list[dict[str, str | None]]],
-    batch_results: dict[str, list[dict[str, str | None]]],
+    existing_results: dict[str, list[dict[str, list[str] | str]]],
+    batch_results: dict[str, list[dict[str, list[str] | str]]],
     batch_tracking: dict,
     processed_investors: list[str],
     batch_stats: dict

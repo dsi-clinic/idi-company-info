@@ -244,7 +244,7 @@ def query_permid_entity(
         logging.error(f"Error querying PermID {permid_url}: {e}")
         return None
 
-def load_permid_data(input_file: pathlib.Path) -> dict[str, list[dict[str, str]]]:
+def load_permid_data(input_file: pathlib.Path) -> dict[str, list[dict[str, list[str] | str]]]:
     """Load PermID data from JSON file."""
     logging.info(f"Loading PermID data from: {input_file}")
     with open(input_file) as f:
@@ -255,7 +255,7 @@ def load_permid_data(input_file: pathlib.Path) -> dict[str, list[dict[str, str]]
 def process_investor(
     session: requests.Session,
     investor_name: str,
-    cik_permid_pairs: list[dict[str, str]],
+    cik_permid_pairs: list[dict[str, list[str] | str]],
     api_key: str,
     geonames_user: str,
     stats: dict
@@ -266,7 +266,7 @@ def process_investor(
     Args:
         session: requests Session object
         investor_name: Name of the investor
-        cik_permid_pairs: List of dicts with CIK and PermID pairs
+        cik_permid_pairs: List of dicts with CIKs (list) and PermID pairs
         api_key: API access token
         geonames_user: Geonames API username
         stats: Statistics dictionary to update
@@ -284,18 +284,20 @@ def process_investor(
     # Query each PermID for this investor
     investor_results = []
     for pair in cik_permid_pairs:
-        cik = pair["cik"]
+        ciks = pair["ciks"]  # a list of CIKs
         permid_url = pair["permid"]
         stats["total_permids_queried"] += 1
 
-        logging.info(f"  Querying PermID: {permid_url} (CIK: {cik})")
+        # Log all CIKs that map to this PermID
+        ciks_str = ", ".join(ciks)
+        logging.info(f"  Querying PermID: {permid_url} (CIKs: {ciks_str})")
         company_info = query_permid_entity(session, permid_url, api_key, geonames_user)
 
         if company_info:
             stats["successful_queries"] += 1
-            # Add the original investor name and CIK for reference
+            # Add the original investor name and all CIKs for reference
             company_info["original_investor_name"] = investor_name
-            company_info["cik"] = cik
+            company_info["ciks"] = ciks  # Store as list
             investor_results.append(company_info)
             logging.info(f"  Successfully retrieved info for PermID {permid_url}")
         else:
@@ -310,7 +312,7 @@ def process_investor(
 
 def process_batch(
     session: requests.Session,
-    permid_data: dict[str, list[dict[str, str]]],
+    permid_data: dict[str, list[dict[str, list[str] | str]]],
     investors_to_process: list[str],
     batch_size: int,
     api_key: str,
