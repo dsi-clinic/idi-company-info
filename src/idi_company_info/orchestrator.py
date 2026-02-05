@@ -71,6 +71,7 @@ class PipelineConfig:
     geonames_user: str
     poll_interval: int = 30  # seconds
     max_retries: int = 3
+    threshold_days: Optional[int] = None
     postgres_connection: Optional[str] = None
     s3_bucket: Optional[str] = None
     s3_prefix: Optional[str] = "company-info"
@@ -201,7 +202,10 @@ class PipelineOrchestrator:
                 name="query_company_info",
                 module="idi_company_info.query_company_info",
                 required_args=["api-key", "geonames-user", "input-file", "output-file", "batch-file"],
-                optional_args={"batch-size": str(self.config.batch_size)},
+                optional_args={
+                    "batch-size": str(self.config.batch_size),
+                    "threshold-days": str(self.config.threshold_days) if self.config.threshold_days else None
+                },
                 output_file="company_info.json"
             ),
             StageConfig(
@@ -311,16 +315,20 @@ class PipelineOrchestrator:
             return False
 
         # Stage 3: Query Company Info
-        status, error = self.stages[2].execute(
-            **{
-                "api-key": self.config.permid_api_key,
-                "geonames-user": self.config.geonames_user,
-                "input-file": str(permid_file),
-                "output-file": str(company_file),
-                "batch-file": str(company_batch_file),
-                "batch-size": str(self.config.batch_size)
-            }
-        )
+        stage3_args = {
+            "api-key": self.config.permid_api_key,
+            "geonames-user": self.config.geonames_user,
+            "input-file": str(permid_file),
+            "output-file": str(company_file),
+            "batch-file": str(company_batch_file),
+            "batch-size": str(self.config.batch_size)
+        }
+
+        # Add threshold-days if configured
+        if self.config.threshold_days is not None:
+            stage3_args["threshold-days"] = str(self.config.threshold_days)
+
+        status, error = self.stages[2].execute(**stage3_args)
 
         if status != StageStatus.SUCCESS:
             self.logger.error(f"Stage 3 failed: {error}")
@@ -464,6 +472,13 @@ def get_args():
         help="S3 key prefix (default: company-info)"
     )
 
+    parser.add_argument(
+        "--threshold-days",
+        type=int,
+        default=None,
+        help="Re-query company info not updated in last N days (default: None, no re-querying)"
+    )
+
     return parser.parse_args()
 
 
@@ -481,6 +496,7 @@ def main():
         permid_api_key=args.permid_api_key,
         geonames_user=args.geonames_user,
         poll_interval=args.poll_interval,
+        threshold_days=args.threshold_days,
         postgres_connection=args.postgres_connection,
         s3_bucket=args.s3_bucket,
         s3_prefix=args.s3_prefix
