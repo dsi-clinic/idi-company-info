@@ -150,7 +150,7 @@ def _process_investor_ciks(
     ciks: list[str],
     api_key: str,
     stats: dict
-) -> list[str | None]:
+) -> list[dict[str, str | None]]:
     """
     Process all CIKs for a single investor with rate limiting.
 
@@ -161,9 +161,9 @@ def _process_investor_ciks(
         stats: Statistics dictionary to update
 
     Returns:
-        List of PermIDs (or None for failed queries)
+        List of dicts with CIK and PermID pairs (PermID may be None for failed queries)
     """
-    permids = []
+    results = []
     for cik in ciks:
         stats["total_ciks_queried"] += 1
 
@@ -172,22 +172,22 @@ def _process_investor_ciks(
 
         if permid:
             stats["successful_queries"] += 1
-            permids.append(permid)
+            results.append({"cik": cik, "permid": permid})
             logging.info(f"  CIK {cik} -> PermID {permid}")
         else:
             stats["failed_queries"] += 1
-            permids.append(None)
+            results.append({"cik": cik, "permid": None})
             logging.warning(f"  CIK {cik} -> No PermID found")
 
         # Rate limiting: wait 1 second between requests
         time.sleep(RATE_LIMIT_DELAY)
 
-    return permids
+    return results
 
 def _store_investor_results(
     investor_name: str,
-    permids: list[str | None],
-    results: dict[str, list[str]],
+    cik_permid_pairs: list[dict[str, str | None]],
+    results: dict[str, list[dict[str, str | None]]],
     stats: dict
 ):
     """
@@ -195,24 +195,34 @@ def _store_investor_results(
 
     Args:
         investor_name: Name of the investor
-        permids: List of PermIDs (may contain None and duplicates)
+        cik_permid_pairs: List of dicts with CIK and PermID (PermID may be None)
         results: Results dictionary to update
         stats: Statistics dictionary to update
     """
-    if permids:
-        # Remove duplicates
-        unique_permids = list(set(permids))
-        stats["duplicates_removed"] += len(permids) - len(unique_permids)
+    # Filter out entries where PermID is None
+    valid_pairs = [pair for pair in cik_permid_pairs if pair["permid"] is not None]
+
+    if valid_pairs:
+        # Remove duplicates based on PermID (keep first occurrence which preserves CIK)
+        seen_permids = set()
+        unique_pairs = []
+        for pair in valid_pairs:
+            if pair["permid"] not in seen_permids:
+                seen_permids.add(pair["permid"])
+                unique_pairs.append(pair)
+
+        stats["duplicates_removed"] += len(valid_pairs) - len(unique_pairs)
 
         # Log when investor has multiple PermIDs
-        if len(unique_permids) > 1:
+        if len(unique_pairs) > 1:
+            permid_list = [pair["permid"] for pair in unique_pairs]
             logging.warning(
-                f"  MULTIPLE PermIDs for {investor_name}: {unique_permids}"
+                f"  MULTIPLE PermIDs for {investor_name}: {permid_list}"
             )
 
-        results[investor_name] = unique_permids
+        results[investor_name] = unique_pairs
         stats["investors_with_permid"] += 1
-        stats["total_permids"] += len(unique_permids)
+        stats["total_permids"] += len(unique_pairs)
     else:
         stats["investors_without_permid"] += 1
 
@@ -222,7 +232,7 @@ def process_batch(
     investors_to_process: list[str],
     batch_size: int,
     api_key: str
-) -> tuple[dict[str, list[str]], list[str], dict]:
+) -> tuple[dict[str, list[dict[str, str | None]]], list[str], dict]:
     """
     Process a batch of investors.
 
@@ -243,10 +253,10 @@ def process_batch(
         logging.info(f"[{idx}/{len(batch)}] Processing: {investor_name} ({len(ciks)} CIK(s))")
 
         # Process all CIKs for this investor
-        permids = _process_investor_ciks(session, ciks, api_key, stats)
+        cik_permid_pairs = _process_investor_ciks(session, ciks, api_key, stats)
 
         # Store results and update stats
-        _store_investor_results(investor_name, permids, results, stats)
+        _store_investor_results(investor_name, cik_permid_pairs, results, stats)
 
         processed_investors.append(investor_name)
 
@@ -270,7 +280,7 @@ def print_stats(stats: dict, batch_stats: dict):
     logging.info("CUMULATIVE STATISTICS")
     logging.info("=" * 60)
     logging.info(f"Total investors with PermID: {len(stats)}")
-    total_permids = sum(len(permids) for permids in stats.values())
+    total_permids = sum(len(pairs) for pairs in stats.values())
     logging.info(f"Total PermIDs: {total_permids}")
     if stats:
         avg_permids = total_permids / len(stats)
@@ -303,8 +313,8 @@ def _load_data(
 def _finalize_batch(
     output_file: pathlib.Path,
     batch_file: pathlib.Path,
-    existing_results: dict[str, list[str]],
-    batch_results: dict[str, list[str]],
+    existing_results: dict[str, list[dict[str, str | None]]],
+    batch_results: dict[str, list[dict[str, str | None]]],
     batch_tracking: dict,
     processed_investors: list[str],
     batch_stats: dict
