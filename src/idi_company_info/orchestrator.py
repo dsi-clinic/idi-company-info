@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Pipeline Orchestrator - Watches for input files and runs the complete data pipeline.
+Pipeline Orchestrator - Runs the complete data pipeline for a specified input file.
 
-This orchestrator continuously monitors a directory for new shareholder tracker files.
-When a file is detected, it executes all three stages of the pipeline in sequence:
+This orchestrator executes all four stages of the pipeline in sequence:
 1. Extract CIKs from parquet file
 2. Query PermID API for each CIK
 3. Retrieve detailed company information
+4. Save results and archive source file
 
-Supports configurable retry logic, error handling, and notification hooks.
+Supports configurable retry logic, error handling, and batch processing.
 """
 
 import argparse
@@ -62,14 +62,12 @@ class PipelineConfig:
     COMPANY_BATCH_TRACKING_FILE: ClassVar[str] = "company_batch_tracking.json"
 
     # Instance configuration
-    watch_directory: pathlib.Path
-    file_pattern: str
+    input_file: pathlib.Path
     output_directory: pathlib.Path
     archive_directory: pathlib.Path
     batch_size: int
     permid_api_key: str
     geonames_user: str
-    poll_interval: int = 30  # seconds
     max_retries: int = 3
     threshold_days: Optional[int] = None
     postgres_connection: Optional[str] = None
@@ -223,54 +221,20 @@ class PipelineOrchestrator:
 
         return [StageExecutor(cfg, self.config) for cfg in stage_configs]
 
-    def watch_for_file(self) -> Optional[pathlib.Path]:
+    def run_pipeline(self) -> bool:
         """
-        Watch directory for new files matching the pattern.
-
-        Returns:
-            Path to detected file or None
-        """
-        self.logger.info(f"Watching directory: {self.config.watch_directory}")
-        self.logger.info(f"Looking for pattern: {self.config.file_pattern}")
-
-        while True:
-            try:
-                # Check if directory exists
-                if not self.config.watch_directory.exists():
-                    self.logger.warning(f"Directory does not exist: {self.config.watch_directory}")
-                    time.sleep(self.config.poll_interval)
-                    continue
-
-                # Look for matching files
-                matching_files = list(self.config.watch_directory.glob(self.config.file_pattern))
-
-                if matching_files:
-                    # Return the first matching file
-                    file_path = matching_files[0]
-                    self.logger.info(f"Detected file: {file_path}")
-                    return file_path
-
-                # Wait before next check
-                self.logger.debug(f"No files found, waiting {self.config.poll_interval}s...")
-                time.sleep(self.config.poll_interval)
-
-            except KeyboardInterrupt:
-                self.logger.info("Received interrupt signal, stopping watch...")
-                return None
-            except Exception as e:
-                self.logger.error(f"Error while watching directory: {e}")
-                time.sleep(self.config.poll_interval)
-
-    def run_pipeline(self, input_file: pathlib.Path) -> bool:
-        """
-        Execute all pipeline stages in sequence.
-
-        Args:
-            input_file: Path to input parquet file
+        Execute all pipeline stages in sequence for the configured input file.
 
         Returns:
             True if all stages succeeded, False otherwise
         """
+        input_file = self.config.input_file
+
+        # Validate input file exists
+        if not input_file.exists():
+            self.logger.error(f"Input file does not exist: {input_file}")
+            return False
+
         self.logger.info("=" * 80)
         self.logger.info(f"Starting pipeline for: {input_file}")
         self.logger.info("=" * 80)
@@ -360,55 +324,43 @@ class PipelineOrchestrator:
         return True
 
     def run(self):
-        """Run the orchestrator in continuous watch mode."""
+        """Run the orchestrator once for the specified input file."""
         self.logger.info("Starting Pipeline Orchestrator")
+        self.logger.info(f"Input file: {self.config.input_file}")
         self.logger.info(f"Output directory: {self.config.output_directory}")
         self.logger.info(f"Batch size: {self.config.batch_size}")
 
         try:
-            while True:
-                # Wait for new file
-                input_file = self.watch_for_file()
+            # Run pipeline
+            success = self.run_pipeline()
 
-                if input_file is None:
-                    self.logger.info("Orchestrator stopping...")
-                    break
-
-                # Run pipeline
-                success = self.run_pipeline(input_file)
-
-                if success:
-                    self.logger.info("Pipeline execution successful")
-                    self.logger.info("Source file has been archived")
-                else:
-                    self.logger.error("Pipeline execution failed")
-                    self.logger.warning("Source file remains in watch directory for manual intervention")
+            if success:
+                self.logger.info("Pipeline execution successful")
+                self.logger.info("Source file has been archived")
+                sys.exit(0)
+            else:
+                self.logger.error("Pipeline execution failed")
+                sys.exit(1)
 
         except KeyboardInterrupt:
             self.logger.info("Orchestrator interrupted by user")
+            sys.exit(130)
         except Exception as e:
             self.logger.error(f"Orchestrator error: {e}", exc_info=True)
-            raise
+            sys.exit(1)
 
 
 def get_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Pipeline orchestrator - watches for files and runs the complete pipeline"
+        description="Pipeline orchestrator - runs the complete pipeline for a specified input file"
     )
 
     parser.add_argument(
-        "--watch-directory",
+        "--input-file",
         type=pathlib.Path,
         required=True,
-        help="Directory to watch for input files"
-    )
-
-    parser.add_argument(
-        "--file-pattern",
-        type=str,
-        default="shareholder_tracker_*.parquet",
-        help="File pattern to match (default: shareholder_tracker_*.parquet)"
+        help="Path to input parquet file to process"
     )
 
     parser.add_argument(
@@ -447,13 +399,6 @@ def get_args():
     )
 
     parser.add_argument(
-        "--poll-interval",
-        type=int,
-        default=30,
-        help="Seconds between directory checks (default: 30)"
-    )
-
-    parser.add_argument(
         "--postgres-connection",
         type=str,
         help="PostgreSQL connection string (optional)"
@@ -488,14 +433,12 @@ def main():
 
     # Create pipeline configuration
     config = PipelineConfig(
-        watch_directory=args.watch_directory,
-        file_pattern=args.file_pattern,
+        input_file=args.input_file,
         output_directory=args.output_directory,
         archive_directory=args.archive_directory,
         batch_size=args.batch_size,
         permid_api_key=args.permid_api_key,
         geonames_user=args.geonames_user,
-        poll_interval=args.poll_interval,
         threshold_days=args.threshold_days,
         postgres_connection=args.postgres_connection,
         s3_bucket=args.s3_bucket,

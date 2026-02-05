@@ -1,0 +1,99 @@
+services:
+  # Cron scheduler for running orchestrator on schedule
+  scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: idi-company-info-scheduler
+    depends_on:
+      - orchestrator
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      ofelia.enabled: "true"
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: idi-company-info-orchestrator
+
+    # Environment variables for API credentials
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY}
+      - GEONAMES_USER=${GEONAMES_USER}
+
+    # Volume mappings for data persistence
+    volumes:
+      - ${WATCH_DIR:-./data/watch}:/data/watch          # Input parquet files
+      - ${OUTPUT_DIR:-./data/output}:/data/output        # Output JSON files
+      - ${ARCHIVE_DIR:-./data/archive}:/data/archive      # Archived processed files
+
+    # Run as one-shot (scheduled by ofelia)
+    command: >
+      --input-file /data/watch/shareholder_tracker_release.parquet
+      --output-directory /data/output
+      --archive-directory /data/archive
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size 5000
+      --threshold-days 30
+
+    # Labels for ofelia scheduler
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.orchestrator-daily.schedule: "0 0 2 * * *"  # Run daily at 2 AM
+      ofelia.job-exec.orchestrator-daily.container: "idi-company-info-orchestrator"
+
+    # Don't auto-restart (ofelia will trigger it)
+    restart: "no"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: One-time processing mode (disabled by default)
+  orchestrator-oneshot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: idi-company-info-oneshot
+    profiles:
+      - oneshot
+
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY}
+      - GEONAMES_USER=${GEONAMES_USER}
+
+    volumes:
+      - ${WATCH_DIR:-./data/watch}:/data/watch
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${ARCHIVE_DIR:-./data/archive}:/data/archive
+
+    command: >
+      --input-file /data/watch/shareholder_tracker_release.parquet
+      --output-directory /data/output
+      --archive-directory /data/archive
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size 5000
+      --threshold-days 30
+
+    restart: "no"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

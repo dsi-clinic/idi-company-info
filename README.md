@@ -11,12 +11,14 @@ This tool processes institutional investor data through four sequential stages:
 3. **Retrieve Company Info** - Fetches detailed company information (LEI, addresses, URLs, etc.) for each PermID
 4. **Save Results** - Saves data to PostgreSQL/S3 and archives the source file
 
+The orchestrator processes a single specified parquet file per run, making it ideal for scheduled daily execution with API rate limits. Batch tracking allows resumable processing if interrupted.
+
 ## Architecture
 
 The pipeline can be run in two modes:
 
-- **Orchestrated Mode** (Recommended): Continuously watches for new files and automatically processes them through all stages
-- **Manual Mode**: Run individual stages via Makefile or direct commands for debugging or custom workflows
+- **Scheduled Mode** (Recommended): Uses Ofelia scheduler to run the orchestrator on a schedule (e.g., daily). Processes a specific parquet file through all stages, then exits. Perfect for production with API rate limits.
+- **Manual Mode**: Run the orchestrator once or individual stages via direct commands for debugging or custom workflows
 
 ## Setup
 
@@ -32,29 +34,31 @@ uv pip install -e ".[dev]"
 
 ### Orchestrated Mode (Recommended for Production)
 
-Run the orchestrator to automatically watch for and process new files:
+Run the orchestrator to process a specific parquet file:
 
 ```bash
 # Set API credentials
 export PERMID_API_KEY='your-permid-api-key'
 export GEONAMES_USER='your-geonames-username'
 
-# Run orchestrator (watches for files continuously)
+# Run orchestrator once for specified file
 python -m idi_company_info.orchestrator \
-  --watch-directory /path/to/data/shareholder_tracker \
+  --input-file /path/to/shareholder_tracker_release.parquet \
   --output-directory output \
   --archive-directory archive \
   --permid-api-key $PERMID_API_KEY \
   --geonames-user $GEONAMES_USER \
   --batch-size 5000 \
-  --poll-interval 30
+  --threshold-days 30
 ```
 
-When a new `shareholder_tracker_*.parquet` file appears in the watch directory, the orchestrator will:
-1. Process all four stages automatically
+The orchestrator will:
+1. Process the specified file through all four stages automatically
 2. Save results to database/S3 (if configured)
 3. Archive the source file with a timestamp
-4. Wait for the next file
+4. Exit with status code (0=success, 1=failure)
+
+**For scheduled execution**, use Docker Compose with Ofelia (see [Docker Deployment](#docker-deployment-recommended) section).
 
 **Optional database/storage arguments:**
 ```bash
@@ -160,11 +164,13 @@ This displays all current variable values including paths and API credentials (c
 ### Orchestrator
 
 The orchestrator ([orchestrator.py](src/idi_company_info/orchestrator.py)) provides:
-- **File watching**: Polls directory for new parquet files
-- **Automatic execution**: Runs all stages sequentially
+- **Single-file processing**: Processes one specified parquet file per run
+- **Automatic execution**: Runs all four stages sequentially
 - **Retry logic**: Configurable retries per stage with exponential backoff
 - **Error handling**: Centralized logging and error reporting
 - **Resumable processing**: Uses batch tracking to resume interrupted runs
+- **Exit codes**: Returns 0 on success, 1 on failure for easy monitoring
+- **Scheduled execution**: Integrates with Ofelia scheduler for cron-style jobs
 
 ### Result Saver
 
@@ -340,9 +346,127 @@ pytest --cov=idi_company_info --cov-report=html
 
 ## Production Deployment
 
-### Running as a Service
+### Docker Deployment (Recommended)
 
-Use a process manager like systemd or supervisor to run the orchestrator as a background service:
+The easiest way to deploy the orchestrator is using Docker and Docker Compose with Ofelia scheduler for cron-style job execution.
+
+For detailed scheduling configuration, see [SCHEDULING.md](SCHEDULING.md).
+
+#### Setup
+
+1. **Copy environment template:**
+```bash
+cp .env.example .env
+```
+
+2. **Edit `.env` with your credentials:**
+```bash
+PERMID_API_KEY=your_permid_api_key_here
+GEONAMES_USER=your_geonames_username_here
+```
+
+3. **Create data directories:**
+```bash
+mkdir -p data/watch data/output data/archive
+```
+
+4. **Place input parquet file:**
+```bash
+cp /path/to/shareholder_tracker_release.parquet data/watch/
+```
+
+#### Running with Docker Compose
+
+**Scheduled mode (recommended for production):**
+```bash
+docker-compose up -d
+```
+
+This starts the Ofelia scheduler, which will:
+- Run the orchestrator daily at 2 AM (configurable)
+- Process the specified input file through all stages
+- Save results to `data/output/`
+- Archive processed files to `data/archive/`
+- Re-query company info not updated in the last 30 days
+
+**Manual one-time run:**
+```bash
+# Run manually (outside the schedule)
+docker-compose run --rm orchestrator
+
+# Or trigger the scheduled job immediately
+docker exec idi-company-info-scheduler ofelia run orchestrator-daily
+```
+
+#### Managing the Service
+
+```bash
+# View scheduler logs
+docker-compose logs -f scheduler
+
+# View orchestrator execution logs
+docker-compose logs orchestrator
+
+# Manually trigger a job (outside schedule)
+docker exec idi-company-info-scheduler ofelia run orchestrator-daily
+
+# Stop all services
+docker-compose down
+
+# Restart scheduler (to pick up schedule changes)
+docker-compose restart scheduler
+
+# Rebuild after code changes
+docker-compose up -d --build
+```
+
+#### Configuration Options
+
+Edit [docker-compose.yml](docker-compose.yml) to customize:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--input-file` | `/data/watch/shareholder_tracker_release.parquet` | Path to input parquet file |
+| `--batch-size` | `5000` | Number of investors per batch |
+| `--threshold-days` | `30` | Re-query company info older than N days |
+| Schedule | `0 0 2 * * *` | Cron schedule (daily at 2 AM) |
+| Volume paths | `./data/*` | Local directories for watch/output/archive |
+
+**Change the schedule:**
+```yaml
+labels:
+  ofelia.job-exec.orchestrator-daily.schedule: "0 0 3 * * *"  # Daily at 3 AM
+```
+
+**Change the input file:**
+```yaml
+command: >
+  --input-file /data/watch/custom_file.parquet
+  --output-directory /data/output
+  --archive-directory /data/archive
+  --permid-api-key ${PERMID_API_KEY}
+  --geonames-user ${GEONAMES_USER}
+  --batch-size 1000
+  --threshold-days 60
+```
+
+**Common schedules:**
+- Daily at 3 AM: `"0 0 3 * * *"`
+- Every 12 hours: `"0 0 */12 * * *"`
+- Every Monday at 1 AM: `"0 0 1 * * 1"`
+
+See [SCHEDULING.md](SCHEDULING.md) for more scheduling options.
+
+#### Health Checks
+
+The container includes health checks to monitor service status:
+```bash
+docker inspect --format='{{json .State.Health}}' idi-company-info-orchestrator | jq
+```
+
+### Running as a Service (systemd)
+
+For non-Docker deployments, use systemd to run the orchestrator as a background service:
 
 **systemd example** (`/etc/systemd/system/idi-pipeline.service`):
 ```ini
