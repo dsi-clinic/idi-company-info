@@ -379,6 +379,7 @@ def _finalize_batch(
 
 def main():
     """Main function to query PermID API and process results."""
+    start = datetime.now()
     args = get_args()
 
     # Log arguments
@@ -424,6 +425,9 @@ def main():
         processed_investors,
         batch_stats
     )
+
+    end = datetime.now()
+    logging.info(f"Elapsed time: {end - start}")
 
 
 if __name__ == "__main__":

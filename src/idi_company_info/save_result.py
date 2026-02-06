@@ -329,6 +329,7 @@ def get_args():
 
 def main():
     """Main entry point."""
+    start = datetime.now()
     args = get_args()
 
     # Validate input file exists
@@ -348,6 +349,9 @@ def main():
         s3_bucket=args.s3_bucket,
         s3_prefix=args.s3_prefix
     )
+
+    end = datetime.now()
+    logging.info(f"Elapsed time: {end - start}")
 
     return 0 if success else 1
 

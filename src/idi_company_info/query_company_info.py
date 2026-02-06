@@ -642,6 +642,7 @@ def print_stats(all_results: list[dict[str, Any]], batch_stats: dict):
 
 def main():
     """Main function to query PermID API and process company information."""
+    start = datetime.now()
     args = get_args()
 
     # Log arguments (except API key)
@@ -693,6 +694,8 @@ def main():
 
     # Print statistics
     print_stats(all_results, batch_stats)
+    end = datetime.now()
+    logging.info(f"Elapsed time: {end - start}")
 
 
 if __name__ == "__main__":

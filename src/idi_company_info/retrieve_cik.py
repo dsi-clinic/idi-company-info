@@ -7,6 +7,7 @@ and saves as JSON with investor_name as key and list of associated CIKs as value
 """
 
 import argparse
+import datetime
 import json
 import logging
 import pathlib
@@ -88,6 +89,7 @@ def save_result(result, output_file):
 
 def main():
     """Main function to process parquet data and extract CIK information."""
+    start = datetime.datetime.now()
     args = get_args()
     for key, value in args.__dict__.items():
         logging.info(f"{key}: {value}")
@@ -100,6 +102,8 @@ def main():
 
     # Save to JSON
     save_result(result, args.output_file)
+    end = datetime.datetime.now()
+    logging.info(f"Elapsed time: {end - start}")
 
 
 if __name__ == "__main__":
