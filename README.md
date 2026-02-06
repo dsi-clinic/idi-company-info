@@ -391,12 +391,16 @@ This starts the Ofelia scheduler, which will:
 
 **Manual one-time run:**
 ```bash
-# Run manually (outside the schedule)
+# Run manually (creates a new container instance)
 docker-compose run --rm orchestrator
 
-# Or trigger the scheduled job immediately
-docker exec idi-company-info-scheduler ofelia run orchestrator-daily
+# This runs the same configuration as the scheduled job
+# but executes immediately instead of waiting for the schedule
 ```
+
+**Important**: The orchestrator will NOT run automatically when you start docker-compose. It only runs:
+1. On schedule (daily at 2 AM by default)
+2. When manually triggered (see commands above)
 
 #### Managing the Service
 
@@ -435,7 +439,7 @@ Edit [docker-compose.yml](docker-compose.yml) to customize:
 **Change the schedule:**
 ```yaml
 labels:
-  ofelia.job-exec.orchestrator-daily.schedule: "0 0 3 * * *"  # Daily at 3 AM
+  ofelia.job-run.orchestrator-daily.schedule: "0 0 3 * * *"  # Daily at 3 AM
 ```
 
 **Change the input file:**

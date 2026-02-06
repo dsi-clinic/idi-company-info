@@ -3,14 +3,34 @@ services:
   scheduler:
     image: mcuadros/ofelia:latest
     container_name: idi-company-info-scheduler
-    depends_on:
-      - orchestrator
     command: daemon --docker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - WATCH_DIR=${WATCH_DIR:-./data/watch}
+      - OUTPUT_DIR=${OUTPUT_DIR:-./data/output}
+      - ARCHIVE_DIR=${ARCHIVE_DIR:-./data/archive}
+      - BATCH_SIZE=${BATCH_SIZE:-5000}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - SCHEDULE=${SCHEDULE:-0 0 2 * * *}
     labels:
       ofelia.enabled: "true"
+      # Schedule to run orchestrator (configurable via SCHEDULE env var, default: daily at 2 AM)
+      ofelia.job-run.orchestrator-daily.schedule: "${SCHEDULE:-0 0 2 * * *}"
+      ofelia.job-run.orchestrator-daily.image: "idi-company-information-orchestrator:latest"
+      ofelia.job-run.orchestrator-daily.volume: "${WATCH_DIR:-./data/watch}:/data/watch,${OUTPUT_DIR:-./data/output}:/data/output,${ARCHIVE_DIR:-./data/archive}:/data/archive"
+      ofelia.job-run.orchestrator-daily.environment: "PERMID_API_KEY=${PERMID_API_KEY},GEONAMES_USER=${GEONAMES_USER}"
+      ofelia.job-run.orchestrator-daily.command: "--input-file /data/watch/shareholder_tracker_release.parquet --output-directory /data/output --archive-directory /data/archive --permid-api-key ${PERMID_API_KEY} --geonames-user ${GEONAMES_USER} --batch-size ${BATCH_SIZE} --threshold-days ${THRESHOLD_DAYS}"
+      ofelia.job-run.orchestrator-daily.delete: "false"  # Keep containers to preserve logs
     restart: unless-stopped
+
+    # Logging configuration for scheduler
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"      # Max size per log file
+        max-file: "5"        # Keep 5 rotated log files
+        compress: "true"     # Compress rotated logs
 
   orchestrator:
     build:
@@ -18,10 +38,17 @@ services:
       dockerfile: Dockerfile
     container_name: idi-company-info-orchestrator
 
+    # This service is managed by Ofelia scheduler
+    # It will not start automatically - only when scheduled or manually triggered
+    profiles:
+      - manual  # Requires explicit profile to start
+
     # Environment variables for API credentials
     environment:
       - PERMID_API_KEY=${PERMID_API_KEY}
       - GEONAMES_USER=${GEONAMES_USER}
+      - BATCH_SIZE=${BATCH_SIZE:-5000}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
 
     # Volume mappings for data persistence
     volumes:
@@ -29,24 +56,15 @@ services:
       - ${OUTPUT_DIR:-./data/output}:/data/output        # Output JSON files
       - ${ARCHIVE_DIR:-./data/archive}:/data/archive      # Archived processed files
 
-    # Run as one-shot (scheduled by ofelia)
+    # Command that will be run by scheduler
     command: >
       --input-file /data/watch/shareholder_tracker_release.parquet
       --output-directory /data/output
       --archive-directory /data/archive
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
-      --batch-size 5000
-      --threshold-days 30
-
-    # Labels for ofelia scheduler
-    labels:
-      ofelia.enabled: "true"
-      ofelia.job-exec.orchestrator-daily.schedule: "0 0 2 * * *"  # Run daily at 2 AM
-      ofelia.job-exec.orchestrator-daily.container: "idi-company-info-orchestrator"
-
-    # Don't auto-restart (ofelia will trigger it)
-    restart: "no"
+      --batch-size ${BATCH_SIZE}
+      --threshold-days ${THRESHOLD_DAYS}
 
     # Health check
     healthcheck:
@@ -61,7 +79,8 @@ services:
       driver: "json-file"
       options:
         max-size: "10m"
-        max-file: "3"
+        max-file: "5"
+        compress: "true"
 
   # Optional: One-time processing mode (disabled by default)
   orchestrator-oneshot:
