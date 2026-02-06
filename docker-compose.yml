@@ -51,7 +51,7 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.orchestrator
     container_name: idi-company-info-orchestrator
 
     # This service is triggered by the scheduler via docker compose run
