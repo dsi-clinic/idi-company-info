@@ -412,7 +412,7 @@ docker-compose logs -f scheduler
 docker-compose logs orchestrator
 
 # Manually trigger a job (outside schedule)
-docker exec idi-company-info-scheduler ofelia run orchestrator-daily
+docker-compose run --rm orchestrator
 
 # Stop all services
 docker-compose down
@@ -507,6 +507,74 @@ sudo systemctl status idi-pipeline
 ```
 
 ### Monitoring
+
+**`docker-compose`**
+
+The orchestrator runs with the `--rm` flag, so **no containers are retained after execution** - they're automatically cleaned up. All orchestrator output is captured by the scheduler container logs.
+
+*View Scheduler and Orchestrator Logs:*
+
+The scheduler logs contain all output from scheduled orchestrator runs:
+
+```bash
+# View all scheduler logs (includes full orchestrator output)
+docker logs idi-company-info-scheduler
+
+# Follow logs in real-time
+docker logs -f idi-company-info-scheduler
+
+# View recent job executions summary
+docker logs idi-company-info-scheduler 2>&1 | grep -E "(Started|Finished|Pipeline completed)"
+
+# Save logs to a file
+docker logs idi-company-info-scheduler > scheduler-logs-$(date +%Y%m%d).log 2>&1
+
+# View logs with timestamps
+docker logs -t idi-company-info-scheduler
+```
+
+*Scheduler Logs on Disk:*
+
+Docker stores the scheduler logs in JSON format with automatic rotation (max 10MB per file, 5 files retained):
+
+```bash
+# Find the log file path
+docker inspect idi-company-info-scheduler --format='{{.LogPath}}'
+
+# Copy scheduler logs to current directory
+docker inspect idi-company-info-scheduler --format='{{.LogPath}}' | xargs -I {} sudo cp {} ./scheduler-logs.json
+
+# View logs directly (requires sudo)
+docker inspect idi-company-info-scheduler --format='{{.LogPath}}' | xargs sudo tail -f
+```
+
+*Check Service Health:*
+
+Both the scheduler and autoheal service have health checks:
+
+```bash
+# View all service statuses
+docker ps --format "table {{.Names}}\t{{.Status}}"
+
+# Check if scheduler is healthy
+docker ps --filter "name=idi-company-info-scheduler"
+```
+
+*Check Output Files:*
+
+View generated files in your output and archive directories:
+
+```bash
+# View output files (use your actual OUTPUT_DIR path)
+ls -lth ${OUTPUT_DIR:-./data/output}
+
+# View archived input files (use your actual ARCHIVE_DIR path)
+ls -lth ${ARCHIVE_DIR:-./data/archive}
+```
+
+**Note:** No container cleanup is needed - the `--rm` flag automatically removes orchestrator containers after each run.
+
+**`systemd`**
 
 Monitor the orchestrator with:
 ```bash

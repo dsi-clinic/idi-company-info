@@ -6,7 +6,6 @@ This script handles the final stage of the pipeline:
 1. Loads company information results from JSON
 2. Saves data to PostgreSQL database (placeholder)
 3. Uploads data to S3 bucket (placeholder)
-4. Archives the source file with timestamp
 
 Supports dry-run mode for testing without side effects.
 """
@@ -15,7 +14,6 @@ import argparse
 import json
 import logging
 import pathlib
-import shutil
 from datetime import datetime
 from typing import Any, Optional
 
@@ -27,13 +25,11 @@ logging.basicConfig(
 
 
 class ResultSaver:
-    """Handles saving results to various destinations and archiving source files."""
+    """Handles saving results to various destinations."""
 
     def __init__(
         self,
         input_file: pathlib.Path,
-        source_file: pathlib.Path,
-        archive_directory: pathlib.Path,
         dry_run: bool = False
     ):
         """
@@ -41,13 +37,9 @@ class ResultSaver:
 
         Args:
             input_file: Path to company info JSON file
-            source_file: Path to original parquet file to archive
-            archive_directory: Directory to move archived files to
             dry_run: If True, log actions without executing them
         """
         self.input_file = input_file
-        self.source_file = source_file
-        self.archive_directory = archive_directory
         self.dry_run = dry_run
         self.logger = logging.getLogger("save_result")
 
@@ -245,56 +237,6 @@ class ResultSaver:
         self.logger.info("S3 upload completed (placeholder)")
         return True
 
-    def archive_source_file(self) -> bool:
-        """
-        Archive the source parquet file with timestamp.
-
-        Moves the source file to the archive directory and renames it
-        with the current date and time (including seconds).
-
-        Returns:
-            True if archiving successful, False otherwise
-
-        Raises:
-            FileNotFoundError: If source file doesn't exist
-        """
-        self.logger.info("=" * 60)
-        self.logger.info("ARCHIVING SOURCE FILE")
-        self.logger.info("=" * 60)
-
-        if not self.source_file.exists():
-            raise FileNotFoundError(f"Source file not found: {self.source_file}")
-
-        # Create archive directory if it doesn't exist
-        if not self.dry_run:
-            self.archive_directory.mkdir(parents=True, exist_ok=True)
-        else:
-            self.logger.info(f"DRY RUN: Would create archive directory: {self.archive_directory}")
-
-        # Generate timestamped filename
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        original_stem = self.source_file.stem
-        original_suffix = self.source_file.suffix
-
-        # New filename: original_name_YYYYMMDD_HHMMSS.extension
-        archived_filename = f"{original_stem}_{timestamp}{original_suffix}"
-        archived_path = self.archive_directory / archived_filename
-
-        self.logger.info(f"Source file: {self.source_file}")
-        self.logger.info(f"Archive destination: {archived_path}")
-
-        if self.dry_run:
-            self.logger.info("DRY RUN: Would move file to archive")
-        else:
-            try:
-                shutil.move(str(self.source_file), str(archived_path))
-                self.logger.info("File archived successfully")
-            except Exception as e:
-                self.logger.error(f"Failed to archive file: {e}")
-                return False
-
-        return True
-
     def run(
         self,
         postgres_connection: Optional[str] = None,
@@ -334,11 +276,6 @@ class ResultSaver:
                 self.logger.error("S3 upload failed")
                 return False
 
-            # Archive source file
-            if not self.archive_source_file():
-                self.logger.error("File archiving failed")
-                return False
-
             self.logger.info("=" * 80)
             self.logger.info("RESULT SAVE PROCESS COMPLETED SUCCESSFULLY")
             self.logger.info("=" * 80)
@@ -352,7 +289,7 @@ class ResultSaver:
 def get_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Save pipeline results to database/storage and archive source file"
+        description="Save pipeline results to database/storage"
     )
 
     parser.add_argument(
@@ -360,20 +297,6 @@ def get_args():
         type=pathlib.Path,
         required=True,
         help="Path to company info JSON file from pipeline"
-    )
-
-    parser.add_argument(
-        "--source-file",
-        type=pathlib.Path,
-        required=True,
-        help="Path to original parquet file to archive"
-    )
-
-    parser.add_argument(
-        "--archive-directory",
-        type=pathlib.Path,
-        required=True,
-        help="Directory to move archived files to"
     )
 
     parser.add_argument(
@@ -413,16 +336,9 @@ def main():
         logging.error(f"Input file not found: {args.input_file}")
         return 1
 
-    # Validate source file exists
-    if not args.source_file.exists():
-        logging.error(f"Source file not found: {args.source_file}")
-        return 1
-
     # Create result saver
     saver = ResultSaver(
         input_file=args.input_file,
-        source_file=args.source_file,
-        archive_directory=args.archive_directory,
         dry_run=args.dry_run
     )
 

@@ -6,7 +6,7 @@ This orchestrator executes all four stages of the pipeline in sequence:
 1. Extract CIKs from parquet file
 2. Query PermID API for each CIK
 3. Retrieve detailed company information
-4. Save results and archive source file
+4. Save results to database/storage
 
 Supports configurable retry logic, error handling, and batch processing.
 """
@@ -64,7 +64,6 @@ class PipelineConfig:
     # Instance configuration
     input_file: pathlib.Path
     output_directory: pathlib.Path
-    archive_directory: pathlib.Path
     batch_size: int
     permid_api_key: str
     geonames_user: str
@@ -209,7 +208,7 @@ class PipelineOrchestrator:
             StageConfig(
                 name="save_results",
                 module="idi_company_info.save_result",
-                required_args=["input-file", "source-file", "archive-directory"],
+                required_args=["input-file"],
                 optional_args={
                     "postgres-connection": self.config.postgres_connection,
                     "s3-bucket": self.config.s3_bucket,
@@ -298,12 +297,10 @@ class PipelineOrchestrator:
             self.logger.error(f"Stage 3 failed: {error}")
             return False
 
-        # Stage 4: Save Results and Archive
+        # Stage 4: Save Results
         status, error = self.stages[3].execute(
             **{
                 "input-file": str(company_file),
-                "source-file": str(input_file),
-                "archive-directory": str(self.config.archive_directory),
                 "postgres-connection": self.config.postgres_connection,
                 "s3-bucket": self.config.s3_bucket,
                 "s3-prefix": self.config.s3_prefix
@@ -318,7 +315,6 @@ class PipelineOrchestrator:
         self.logger.info("=" * 80)
         self.logger.info(f"Pipeline completed successfully in {elapsed_time}")
         self.logger.info(f"Output file: {company_file}")
-        self.logger.info(f"Source file archived to: {self.config.archive_directory}")
         self.logger.info("=" * 80)
 
         return True
@@ -336,7 +332,6 @@ class PipelineOrchestrator:
 
             if success:
                 self.logger.info("Pipeline execution successful")
-                self.logger.info("Source file has been archived")
                 sys.exit(0)
             else:
                 self.logger.error("Pipeline execution failed")
@@ -368,13 +363,6 @@ def get_args():
         type=pathlib.Path,
         required=True,
         help="Directory for output files"
-    )
-
-    parser.add_argument(
-        "--archive-directory",
-        type=pathlib.Path,
-        required=True,
-        help="Directory to move processed files to"
     )
 
     parser.add_argument(
@@ -435,7 +423,6 @@ def main():
     config = PipelineConfig(
         input_file=args.input_file,
         output_directory=args.output_directory,
-        archive_directory=args.archive_directory,
         batch_size=args.batch_size,
         permid_api_key=args.permid_api_key,
         geonames_user=args.geonames_user,

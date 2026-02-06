@@ -1,28 +1,43 @@
 services:
-  # Cron scheduler for running orchestrator on schedule
-  scheduler:
-    image: mcuadros/ofelia:latest
-    container_name: idi-company-info-scheduler
-    command: daemon --docker
+  # Auto-restart unhealthy containers
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: idi-company-info-autoheal
+    restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - WATCH_DIR=${WATCH_DIR:-./data/watch}
-      - OUTPUT_DIR=${OUTPUT_DIR:-./data/output}
-      - ARCHIVE_DIR=${ARCHIVE_DIR:-./data/archive}
-      - BATCH_SIZE=${BATCH_SIZE:-5000}
-      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - AUTOHEAL_CONTAINER_LABEL=all
+      - AUTOHEAL_INTERVAL=10
+      - AUTOHEAL_START_PERIOD=60
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
+
+  # Cron scheduler for running orchestrator on schedule
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.scheduler
+    container_name: idi-company-info-scheduler
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - .:/app
+    working_dir: /app
+    environment:
       - SCHEDULE=${SCHEDULE:-0 0 2 * * *}
     labels:
       ofelia.enabled: "true"
-      # Schedule to run orchestrator (configurable via SCHEDULE env var, default: daily at 2 AM)
-      ofelia.job-run.orchestrator-daily.schedule: "${SCHEDULE:-0 0 2 * * *}"
-      ofelia.job-run.orchestrator-daily.image: "idi-company-information-orchestrator:latest"
-      ofelia.job-run.orchestrator-daily.volume: "${WATCH_DIR:-./data/watch}:/data/watch,${OUTPUT_DIR:-./data/output}:/data/output,${ARCHIVE_DIR:-./data/archive}:/data/archive"
-      ofelia.job-run.orchestrator-daily.environment: "PERMID_API_KEY=${PERMID_API_KEY},GEONAMES_USER=${GEONAMES_USER}"
-      ofelia.job-run.orchestrator-daily.command: "--input-file /data/watch/shareholder_tracker_release.parquet --output-directory /data/output --archive-directory /data/archive --permid-api-key ${PERMID_API_KEY} --geonames-user ${GEONAMES_USER} --batch-size ${BATCH_SIZE} --threshold-days ${THRESHOLD_DAYS}"
-      ofelia.job-run.orchestrator-daily.delete: "false"  # Keep containers to preserve logs
+      ofelia.job-local.orchestrator-daily.schedule: "${SCHEDULE:-0 0 2 * * *}"
+      ofelia.job-local.orchestrator-daily.command: "docker compose run --rm orchestrator"
     restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "ofelia"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
     # Logging configuration for scheduler
     logging:
@@ -32,64 +47,16 @@ services:
         max-file: "5"        # Keep 5 rotated log files
         compress: "true"     # Compress rotated logs
 
+  # Orchestrator service triggered by scheduler
   orchestrator:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: idi-company-info-orchestrator
 
-    # This service is managed by Ofelia scheduler
-    # It will not start automatically - only when scheduled or manually triggered
+    # This service is triggered by the scheduler via docker compose run
     profiles:
-      - manual  # Requires explicit profile to start
-
-    # Environment variables for API credentials
-    environment:
-      - PERMID_API_KEY=${PERMID_API_KEY}
-      - GEONAMES_USER=${GEONAMES_USER}
-      - BATCH_SIZE=${BATCH_SIZE:-5000}
-      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
-
-    # Volume mappings for data persistence
-    volumes:
-      - ${WATCH_DIR:-./data/watch}:/data/watch          # Input parquet files
-      - ${OUTPUT_DIR:-./data/output}:/data/output        # Output JSON files
-      - ${ARCHIVE_DIR:-./data/archive}:/data/archive      # Archived processed files
-
-    # Command that will be run by scheduler
-    command: >
-      --input-file /data/watch/shareholder_tracker_release.parquet
-      --output-directory /data/output
-      --archive-directory /data/archive
-      --permid-api-key ${PERMID_API_KEY}
-      --geonames-user ${GEONAMES_USER}
-      --batch-size ${BATCH_SIZE}
-      --threshold-days ${THRESHOLD_DAYS}
-
-    # Health check
-    healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-
-    # Logging configuration
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        compress: "true"
-
-  # Optional: One-time processing mode (disabled by default)
-  orchestrator-oneshot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: idi-company-info-oneshot
-    profiles:
-      - oneshot
+      - manual
 
     environment:
       - PERMID_API_KEY=${PERMID_API_KEY}
@@ -98,16 +65,14 @@ services:
     volumes:
       - ${WATCH_DIR:-./data/watch}:/data/watch
       - ${OUTPUT_DIR:-./data/output}:/data/output
-      - ${ARCHIVE_DIR:-./data/archive}:/data/archive
 
     command: >
       --input-file /data/watch/shareholder_tracker_release.parquet
       --output-directory /data/output
-      --archive-directory /data/archive
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
-      --batch-size 5000
-      --threshold-days 30
+      --batch-size ${BATCH_SIZE:-5000}
+      --threshold-days ${THRESHOLD_DAYS:-30}
 
     restart: "no"
 
@@ -115,4 +80,5 @@ services:
       driver: "json-file"
       options:
         max-size: "10m"
-        max-file: "3"
+        max-file: "5"
+        compress: "true"
