@@ -1,478 +1,172 @@
-# IDI Company Information
+# IDI Company Information Pipeline
 
-A four-stage automated pipeline for querying the PermID API to retrieve detailed company information from investor CIK data.
+Automated 4-stage pipeline for querying the PermID API to retrieve company information from investor CIK data.
 
-## Description
+## Pipeline Stages
 
-This tool processes institutional investor data through four sequential stages:
+1. **Extract CIKs** - Extract unique investor names and CIK identifiers from parquet files
+2. **Query PermIDs** - Query PermID API to retrieve PermID URLs for each CIK
+3. **Retrieve Company Info** - Fetch detailed company information (LEI, addresses, URLs)
+4. **Save Results** - Save to PostgreSQL/S3 and archive source file
 
-1. **Extract CIKs** - Extracts unique investor names and CIK identifiers from parquet files
-2. **Query PermIDs** - Queries the PermID API to retrieve PermID URLs for each CIK
-3. **Retrieve Company Info** - Fetches detailed company information (LEI, addresses, URLs, etc.) for each PermID
-4. **Save Results** - Saves data to PostgreSQL/S3 and archives the source file
-
-The orchestrator processes a single specified parquet file per run, making it ideal for scheduled daily execution with API rate limits. Batch tracking allows resumable processing if interrupted.
-
-## Architecture
-
-The pipeline can be run in two modes:
-
-- **Scheduled Mode** (Recommended): Uses Ofelia scheduler to run the orchestrator on a schedule (e.g., daily). Processes a specific parquet file through all stages, then exits. Perfect for production with API rate limits.
-- **Manual Mode**: Run the orchestrator once or individual stages via direct commands for debugging or custom workflows
-
-## Setup
-
-```bash
-# Install dependencies
-uv pip install -e .
-
-# For development with tests
-uv pip install -e ".[dev]"
-```
+Features: batch processing, resumable on interruption, rate limiting (1 req/sec), threshold-based re-querying of stale data
 
 ## Quick Start
 
-### Orchestrated Mode (Recommended for Production)
-
-Run the orchestrator to process a specific parquet file:
+### Installation
 
 ```bash
-# Set API credentials
-export PERMID_API_KEY='your-permid-api-key'
-export GEONAMES_USER='your-geonames-username'
+uv pip install -e .              # Production
+uv pip install -e ".[dev]"       # Development with tests
+```
 
-# Run orchestrator once for specified file
+### API Credentials
+
+Get credentials from:
+- **PermID API**: [LSEG/Refinitiv](https://developers.lseg.com/en/api-catalog/open-perm-id/permid-entity-search)
+- **Geonames API**: [geonames.org](https://www.geonames.org/login) (free)
+
+### Run Orchestrator (Recommended)
+
+```bash
+export PERMID_API_KEY='your-key'
+export GEONAMES_USER='your-username'
+
 python -m idi_company_info.orchestrator \
-  --input-file /path/to/shareholder_tracker_release.parquet \
+  --input-file /path/to/shareholder_tracker.parquet \
   --output-directory output \
   --archive-directory archive \
   --permid-api-key $PERMID_API_KEY \
   --geonames-user $GEONAMES_USER \
   --batch-size 5000 \
   --threshold-days 30
+
+# Optional: add database/S3 storage
+# --postgres-connection "postgresql://user:pass@host:5432/db"
+# --s3-bucket "my-bucket" --s3-prefix "company-info"
 ```
 
-The orchestrator will:
-1. Process the specified file through all four stages automatically
-2. Save results to database/S3 (if configured)
-3. Archive the source file with a timestamp
-4. Exit with status code (0=success, 1=failure)
-
-**For scheduled execution**, use Docker Compose with Ofelia (see [Docker Deployment](#docker-deployment-recommended) section).
-
-**Optional database/storage arguments:**
-```bash
---postgres-connection "postgresql://user:pass@host:5432/dbname"
---s3-bucket "my-company-data-bucket"
---s3-prefix "company-info/production"
-```
-
-### Manual Mode (Using Makefile)
+### Run Individual Stages (Makefile)
 
 ```bash
-# Install dependencies
 make install
-
-# Set API credentials
-export PERMID_API_KEY='your-permid-api-key'
-export GEONAMES_USER='your-geonames-username'
-
-# Run complete pipeline
 make pipeline INPUT_PARQUET=data/input.parquet
 
-# Or run individual stages
-make stage1 INPUT_PARQUET=data/input.parquet
-make stage2 OUTPUT_DIR=data/results.json
-make stage3 OUTPUT_DIR=data/results.json
-```
+# Or run stages individually
+make stage1 INPUT_PARQUET=data/input.parquet OUTPUT_DIR=output
+make stage2 OUTPUT_DIR=output
+make stage3 OUTPUT_DIR=output
 
-Run `make help` to see all available targets.
-
-## Makefile Configuration
-
-The Makefile supports flexible configuration through variables. All variables can be:
-- Set via command-line arguments: `make stage1 OUTPUT_DIR=results`
-- Set as environment variables: `export OUTPUT_DIR=results`
-- Left as defaults
-
-### Available Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `INPUT_PARQUET` | `data/input.parquet` | Input parquet file path |
-| `OUTPUT_DIR` | `output` | Directory for all output files |
-| `BATCH_SIZE` | `5000` | Number of items to process per batch |
-| `CIK_DATA` | `$(OUTPUT_DIR)/cik_data.json` | Stage 1 output file |
-| `PERMID_DATA` | `$(OUTPUT_DIR)/permid_data.json` | Stage 2 output file |
-| `COMPANY_INFO` | `$(OUTPUT_DIR)/company_info.json` | Stage 3 output file |
-| `PERMID_BATCH_TRACKING` | `$(OUTPUT_DIR)/permid_batch_tracking.json` | Stage 2 batch tracking |
-| `COMPANY_BATCH_TRACKING` | `$(OUTPUT_DIR)/company_batch_tracking.json` | Stage 3 batch tracking |
-| `PERMID_API_KEY` | *(from env)* | PermID API access token |
-| `GEONAMES_USER` | *(from env)* | Geonames API username |
-
-### Configuration Examples
-
-**Simple: Use OUTPUT_DIR**
-```bash
-# All files go to the same directory
-make pipeline \
-  INPUT_PARQUET=/path/to/data.parquet \
-  OUTPUT_DIR=results \
-  BATCH_SIZE=1000
-```
-
-**Advanced: Individual File Control**
-```bash
-# Stage 2 with custom paths
-make stage2 \
-  CIK_DATA=output/cik_data.json \
-  PERMID_DATA=results/my_permids.json \
-  PERMID_BATCH_TRACKING=results/batch_tracking.json \
-  BATCH_SIZE=500
-
-# Stage 3 with custom paths
-make stage3 \
-  PERMID_DATA=results/my_permids.json \
-  COMPANY_INFO=results/companies.json \
-  COMPANY_BATCH_TRACKING=results/company_batch.json \
-  BATCH_SIZE=500
-```
-
-**Environment Variables**
-```bash
-# Set once, use for all commands
-export OUTPUT_DIR=results
-export BATCH_SIZE=1000
-export PERMID_API_KEY='your-api-key'
-export GEONAMES_USER='your-username'
-
-make stage1 INPUT_PARQUET=/path/to/data.parquet
-make stage2
-make stage3
-```
-
-### Viewing Current Configuration
-
-```bash
+# See all options
 make help
 ```
 
-This displays all current variable values including paths and API credentials (credentials show as "set" or "not set").
+## Architecture
 
-## Architecture Details
+**Orchestrator** ([orchestrator.py](src/idi_company_info/orchestrator.py)):
+- Single-file processing with automatic execution of all stages
+- Retry logic with exponential backoff
+- Resumable processing via batch tracking
+- Exit codes: 0 (success), 1 (failure)
 
-### Orchestrator
+**Batch Processing**:
+- Progress saved to tracking files for resumable processing
+- Rate limiting: 1 request/second
+- Configurable batch size (default: 5000)
 
-The orchestrator ([orchestrator.py](src/idi_company_info/orchestrator.py)) provides:
-- **Single-file processing**: Processes one specified parquet file per run
-- **Automatic execution**: Runs all four stages sequentially
-- **Retry logic**: Configurable retries per stage with exponential backoff
-- **Error handling**: Centralized logging and error reporting
-- **Resumable processing**: Uses batch tracking to resume interrupted runs
-- **Exit codes**: Returns 0 on success, 1 on failure for easy monitoring
-- **Scheduled execution**: Integrates with Ofelia scheduler for cron-style jobs
+**Result Saver** ([save_result.py](src/idi_company_info/save_result.py)):
+- PostgreSQL/S3 integration (placeholder implementations with examples)
+- File archiving with timestamps
+- Dry-run mode for testing
 
-### Result Saver
+## Individual Stage Commands
 
-The result saver ([save_result.py](src/idi_company_info/save_result.py)) provides:
-- **Database integration**: PostgreSQL insertion (placeholder - ready for implementation)
-- **Cloud storage**: S3 upload (placeholder - ready for implementation)
-- **File archiving**: Moves processed files to archive directory with timestamps
-- **Dry-run mode**: Test without side effects
-
-### Batch Tracking
-
-Both query stages maintain batch tracking files to enable:
-- Resuming interrupted processing
-- Processing large datasets in chunks
-- Monitoring progress across multiple runs
-- Avoiding duplicate API calls
-
-## Usage (Direct Commands)
-
-### Stage 1: Extract CIKs from Parquet
-
-Reads a parquet file and extracts unique investor name/CIK pairs.
+If you need to run stages separately:
 
 ```bash
+# Stage 1: Extract CIKs from parquet
 python -m idi_company_info.retrieve_cik \
   --input-file data/input.parquet \
   --output-file output/cik_data.json
-```
 
-**Arguments:**
-- `--input-file`: Path to input parquet file (must contain `investor_name` and `investor_cik` columns)
-- `--output-file`: Path to save JSON output
-
-**Output:** JSON file with investor names as keys and lists of CIKs as values
-```json
-{
-  "Company A": ["0001234567", "0001234568"],
-  "Company B": ["0001234569"]
-}
-```
-
-### Stage 2: Query PermID by CIK
-
-Queries the PermID API to retrieve PermID URLs for each CIK. Supports batch processing with tracking.
-
-```bash
+# Stage 2: Query PermID by CIK
 python -m idi_company_info.query_permid \
-  --api-key YOUR_PERMID_API_KEY \
+  --api-key $PERMID_API_KEY \
   --input-file output/cik_data.json \
   --output-file output/permid_data.json \
   --batch-file output/permid_batch_tracking.json \
   --batch-size 5000
-```
 
-**Arguments:**
-- `--api-key`: PermID API access token (required)
-- `--input-file`: Path to CIK data JSON from Stage 1
-- `--output-file`: Path to save PermID results
-- `--batch-file`: Path to batch tracking file (for resumable processing)
-- `--batch-size`: Number of investors to process per batch (default: 5000)
-
-**Output:** JSON file with investor names as keys and lists of PermID URLs as values
-```json
-{
-  "Company A": ["https://permid.org/1-5000051854"],
-  "Company B": ["https://permid.org/1-5000051855"]
-}
-```
-
-### Stage 3: Retrieve Detailed Company Information
-
-Queries the PermID API to retrieve detailed company information for each PermID. Resolves location fields using Geonames API.
-
-```bash
+# Stage 3: Retrieve company information
 python -m idi_company_info.query_company_info \
-  --api-key YOUR_PERMID_API_KEY \
-  --geonames-user YOUR_GEONAMES_USERNAME \
+  --api-key $PERMID_API_KEY \
+  --geonames-user $GEONAMES_USER \
   --input-file output/permid_data.json \
   --output-file output/company_info.json \
   --batch-file output/company_batch_tracking.json \
   --batch-size 5000
-```
 
-**Arguments:**
-- `--api-key`: PermID API access token (required)
-- `--geonames-user`: Geonames API username (required)
-- `--input-file`: Path to PermID data JSON from Stage 2
-- `--output-file`: Path to save company information results
-- `--batch-file`: Path to batch tracking file (for resumable processing)
-- `--batch-size`: Number of investors to process per batch (default: 5000)
-
-**Output:** JSON file with array of company information objects
-```json
-[
-  {
-    "investor_name": "Company A",
-    "permid": "1-5000051854",
-    "lei": "ABC123DEF456",
-    "hq_address": "123 Main St",
-    "incorporated_in": "United States",
-    "domiciled_in": "Delaware",
-    "url": "https://example.com",
-    "original_investor_name": "Company A"
-  }
-]
-```
-
-### Stage 4: Save Results and Archive
-
-Saves pipeline results to database/storage and archives the source file.
-
-```bash
+# Stage 4: Save and archive
 python -m idi_company_info.save_result \
   --input-file output/company_info.json \
-  --source-file data/shareholder_tracker_release_20251218.parquet \
-  --archive-directory archive \
-  --postgres-connection "postgresql://user:pass@localhost:5432/companydb" \
-  --s3-bucket my-data-bucket \
-  --s3-prefix company-info
-```
-
-**Arguments:**
-- `--input-file`: Path to company info JSON from Stage 3
-- `--source-file`: Path to original parquet file to archive
-- `--archive-directory`: Directory to move archived files to
-- `--postgres-connection`: PostgreSQL connection string (optional)
-- `--s3-bucket`: S3 bucket name (optional)
-- `--s3-prefix`: S3 key prefix (optional, default: company-info)
-- `--dry-run`: Log actions without executing them
-
-**Output:**
-- Data saved to PostgreSQL (placeholder - ready for implementation)
-- Data uploaded to S3 (placeholder - ready for implementation)
-- Source file moved to: `archive/shareholder_tracker_release_20251218_20251203_142530.parquet`
-
-### Testing Save Result (Dry Run)
-
-```bash
-python -m idi_company_info.save_result \
-  --input-file output/company_info.json \
-  --source-file data/shareholder_tracker_release_20251218.parquet \
+  --source-file data/input.parquet \
   --archive-directory archive \
   --dry-run
 ```
 
-## Batch Processing
-
-Stages 2 and 3 support batch processing with automatic tracking:
-- Progress is saved to batch tracking files
-- Interrupted runs can be resumed by re-running the same command
-- Rate limiting: 1 request per second (configurable in source)
-
-## Running Tests
+## Testing
 
 ```bash
-# Install dependencies
 uv pip install -e ".[dev]"
-
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/test_retrieve_cik.py
-
-# Run with coverage
-pytest --cov=idi_company_info --cov-report=html
+pytest                                    # Run all tests
+pytest tests/test_retrieve_cik.py         # Run specific test
+pytest --cov=idi_company_info             # With coverage
 ```
 
-## API Requirements
+## Docker Deployment (Recommended)
 
-- **PermID API**: Requires API key from [LSEG/Refinitiv](https://developers.lseg.com/en/api-catalog/open-perm-id/permid-entity-search)
-- **Geonames API**: Requires free username from [geonames.org](https://www.geonames.org/login)
+### Setup
 
-## Production Deployment
-
-### Docker Deployment (Recommended)
-
-The easiest way to deploy the orchestrator is using Docker and Docker Compose with Ofelia scheduler for cron-style job execution.
-
-For detailed scheduling configuration, see [SCHEDULING.md](SCHEDULING.md).
-
-#### Setup
-
-1. **Copy environment template:**
 ```bash
+# 1. Configure environment
 cp .env.example .env
-```
+# Edit .env with your PERMID_API_KEY and GEONAMES_USER
 
-2. **Edit `.env` with your credentials:**
-```bash
-PERMID_API_KEY=your_permid_api_key_here
-GEONAMES_USER=your_geonames_username_here
-```
-
-3. **Create data directories:**
-```bash
+# 2. Create directories and add input file
 mkdir -p data/watch data/output data/archive
-```
-
-4. **Place input parquet file:**
-```bash
 cp /path/to/shareholder_tracker_release.parquet data/watch/
-```
 
-#### Running with Docker Compose
-
-**Scheduled mode (recommended for production):**
-```bash
+# 3. Start scheduler (runs daily at 2 AM by default)
 docker-compose up -d
-```
 
-This starts the Ofelia scheduler, which will:
-- Run the orchestrator daily at 2 AM (configurable)
-- Process the specified input file through all stages
-- Save results to `data/output/`
-- Archive processed files to `data/archive/`
-- Re-query company info not updated in the last 30 days
-
-**Manual one-time run:**
-```bash
-# Run manually (creates a new container instance)
+# 4. Manual run (executes immediately)
 docker-compose run --rm orchestrator
-
-# This runs the same configuration as the scheduled job
-# but executes immediately instead of waiting for the schedule
 ```
 
-**Important**: The orchestrator will NOT run automatically when you start docker-compose. It only runs:
-1. On schedule (daily at 2 AM by default)
-2. When manually triggered (see commands above)
+See [SCHEDULING.md](SCHEDULING.md) for scheduling configuration.
 
-#### Managing the Service
+### Management
 
 ```bash
-# View scheduler logs
-docker-compose logs -f scheduler
-
-# View orchestrator execution logs
-docker-compose logs orchestrator
-
-# Manually trigger a job (outside schedule)
-docker-compose run --rm orchestrator
-
-# Stop all services
-docker-compose down
-
-# Restart scheduler (to pick up schedule changes)
-docker-compose restart scheduler
-
-# Rebuild after code changes
-docker-compose up -d --build
+docker-compose logs -f scheduler           # View logs
+docker-compose run --rm orchestrator       # Manual trigger
+docker-compose restart scheduler           # Apply config changes
+docker-compose up -d --build               # Rebuild after code changes
+docker-compose down                        # Stop all services
 ```
 
-#### Configuration Options
+### Configuration
 
 Edit [docker-compose.yml](docker-compose.yml) to customize:
+- Schedule: `ofelia.job-run.orchestrator-daily.schedule: "0 0 2 * * *"`
+- Input file: `--input-file /data/watch/your-file.parquet`
+- Batch size: `--batch-size 5000`
+- Threshold: `--threshold-days 30`
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--input-file` | `/data/watch/shareholder_tracker_release.parquet` | Path to input parquet file |
-| `--batch-size` | `5000` | Number of investors per batch |
-| `--threshold-days` | `30` | Re-query company info older than N days |
-| Schedule | `0 0 2 * * *` | Cron schedule (daily at 2 AM) |
-| Volume paths | `./data/*` | Local directories for watch/output/archive |
+## Alternative: systemd Service
 
-**Change the schedule:**
-```yaml
-labels:
-  ofelia.job-run.orchestrator-daily.schedule: "0 0 3 * * *"  # Daily at 3 AM
-```
+For non-Docker deployments, create `/etc/systemd/system/idi-pipeline.service`:
 
-**Change the input file:**
-```yaml
-command: >
-  --input-file /data/watch/custom_file.parquet
-  --output-directory /data/output
-  --archive-directory /data/archive
-  --permid-api-key ${PERMID_API_KEY}
-  --geonames-user ${GEONAMES_USER}
-  --batch-size 1000
-  --threshold-days 60
-```
-
-**Common schedules:**
-- Daily at 3 AM: `"0 0 3 * * *"`
-- Every 12 hours: `"0 0 */12 * * *"`
-- Every Monday at 1 AM: `"0 0 1 * * 1"`
-
-See [SCHEDULING.md](SCHEDULING.md) for more scheduling options.
-
-#### Health Checks
-
-The container includes health checks to monitor service status:
-```bash
-docker inspect --format='{{json .State.Health}}' idi-company-info-orchestrator | jq
-```
-
-### Running as a Service (systemd)
-
-For non-Docker deployments, use systemd to run the orchestrator as a background service:
-
-**systemd example** (`/etc/systemd/system/idi-pipeline.service`):
 ```ini
 [Unit]
 Description=IDI Company Information Pipeline
@@ -485,13 +179,11 @@ WorkingDirectory=/opt/idi-company-information
 Environment="PERMID_API_KEY=your-key"
 Environment="GEONAMES_USER=your-user"
 ExecStart=/opt/idi-company-information/.venv/bin/python -m idi_company_info.orchestrator \
-  --watch-directory /data/shareholder_tracker \
+  --input-file /data/shareholder_tracker.parquet \
   --output-directory /data/output \
   --archive-directory /data/archive \
   --permid-api-key $PERMID_API_KEY \
-  --geonames-user $GEONAMES_USER \
-  --postgres-connection "postgresql://user:pass@localhost:5432/db" \
-  --s3-bucket company-data
+  --geonames-user $GEONAMES_USER
 Restart=always
 RestartSec=10
 
@@ -499,108 +191,33 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-Then:
 ```bash
 sudo systemctl enable idi-pipeline
 sudo systemctl start idi-pipeline
-sudo systemctl status idi-pipeline
+journalctl -u idi-pipeline -f              # View logs
 ```
 
-### Monitoring
+## Monitoring
 
-**`docker-compose`**
-
-The orchestrator runs with the `--rm` flag, so **no containers are retained after execution** - they're automatically cleaned up. All orchestrator output is captured by the scheduler container logs.
-
-*View Scheduler and Orchestrator Logs:*
-
-The scheduler logs contain all output from scheduled orchestrator runs:
-
+**Docker:**
 ```bash
-# View all scheduler logs (includes full orchestrator output)
-docker logs idi-company-info-scheduler
-
-# Follow logs in real-time
-docker logs -f idi-company-info-scheduler
-
-# View recent job executions summary
-docker logs idi-company-info-scheduler 2>&1 | grep -E "(Started|Finished|Pipeline completed)"
-
-# Save logs to a file
-docker logs idi-company-info-scheduler > scheduler-logs-$(date +%Y%m%d).log 2>&1
-
-# View logs with timestamps
-docker logs -t idi-company-info-scheduler
+docker logs -f idi-company-info-scheduler  # View logs
+docker ps                                   # Check health
+ls -lth data/output data/archive            # View output files
 ```
 
-*Scheduler Logs on Disk:*
-
-Docker stores the scheduler logs in JSON format with automatic rotation (max 10MB per file, 5 files retained):
-
+**systemd:**
 ```bash
-# Find the log file path
-docker inspect idi-company-info-scheduler --format='{{.LogPath}}'
-
-# Copy scheduler logs to current directory
-docker inspect idi-company-info-scheduler --format='{{.LogPath}}' | xargs -I {} sudo cp {} ./scheduler-logs.json
-
-# View logs directly (requires sudo)
-docker inspect idi-company-info-scheduler --format='{{.LogPath}}' | xargs sudo tail -f
+journalctl -u idi-pipeline -f              # View logs
+systemctl status idi-pipeline               # Check status
 ```
 
-*Check Service Health:*
+## Database/S3 Integration
 
-Both the scheduler and autoheal service have health checks:
-
-```bash
-# View all service statuses
-docker ps --format "table {{.Names}}\t{{.Status}}"
-
-# Check if scheduler is healthy
-docker ps --filter "name=idi-company-info-scheduler"
-```
-
-*Check Output Files:*
-
-View generated files in your output and archive directories:
-
-```bash
-# View output files (use your actual OUTPUT_DIR path)
-ls -lth ${OUTPUT_DIR:-./data/output}
-
-# View archived input files (use your actual ARCHIVE_DIR path)
-ls -lth ${ARCHIVE_DIR:-./data/archive}
-```
-
-**Note:** No container cleanup is needed - the `--rm` flag automatically removes orchestrator containers after each run.
-
-**`systemd`**
-
-Monitor the orchestrator with:
-```bash
-# View logs
-journalctl -u idi-pipeline -f
-
-# Check status
-systemctl status idi-pipeline
-
-# View output files
-ls -lh /data/output/
-ls -lh /data/archive/
-```
-
-### Implementing Database/S3 Storage
-
-The [save_result.py](src/idi_company_info/save_result.py) file contains placeholder implementations with detailed comments showing how to implement:
-
-1. **PostgreSQL Integration**: See `save_to_postgres()` method
-   - Install: `pip install psycopg2-binary`
-   - Uncomment and customize the example code
-
-2. **S3 Integration**: See `upload_to_s3()` method
-   - Install: `pip install boto3`
-   - Uncomment and customize the example code
+See [save_result.py](src/idi_company_info/save_result.py) for placeholder implementations:
+- PostgreSQL: Install `psycopg2-binary`, uncomment `save_to_postgres()`
+- S3: Install `boto3`, uncomment `upload_to_s3()`
 
 ## License
 
-MIT License
+MIT
