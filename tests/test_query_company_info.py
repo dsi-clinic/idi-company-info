@@ -383,7 +383,7 @@ class TestLoadExistingResults:
         """Test loading when no results file exists"""
         with patch.object(pathlib.Path, "exists", return_value=False):
             result = query_company_info.load_existing_results(
-                pathlib.Path("/fake/output.json")
+                pathlib.Path("/fake/output.json"), default_type="list"
             )
 
         assert result == []
@@ -451,7 +451,7 @@ class TestProcessInvestor:
         """Test successful investor processing"""
         mock_session = Mock()
         investor_name = "Company A"
-        permids = ["https://permid.org/1-5000051854"]
+        cik_permid_pairs = [{"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}]
         stats = {
             "total_investors": 0,
             "investors_with_multiple_permids": 0,
@@ -468,7 +468,7 @@ class TestProcessInvestor:
         result = query_company_info.process_investor(
             mock_session,
             investor_name,
-            permids,
+            cik_permid_pairs,
             "test-api-key",
             "test-username",
             stats
@@ -477,6 +477,7 @@ class TestProcessInvestor:
         assert len(result) == 1
         assert result[0]["investor_name"] == "Company A"
         assert result[0]["original_investor_name"] == "Company A"
+        assert result[0]["ciks"] == ["0001234567"]
         assert stats["total_investors"] == 1
         assert stats["successful_queries"] == 1
 
@@ -486,9 +487,9 @@ class TestProcessInvestor:
         """Test processing investor with multiple PermIDs"""
         mock_session = Mock()
         investor_name = "Company A"
-        permids = [
-            "https://permid.org/1-5000051854",
-            "https://permid.org/1-5000051855"
+        cik_permid_pairs = [
+            {"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"},
+            {"ciks": ["0001234568"], "permid": "https://permid.org/1-5000051855"}
         ]
         stats = {
             "total_investors": 0,
@@ -506,13 +507,15 @@ class TestProcessInvestor:
         result = query_company_info.process_investor(
             mock_session,
             investor_name,
-            permids,
+            cik_permid_pairs,
             "test-api-key",
             "test-username",
             stats
         )
 
         assert len(result) == 2
+        assert result[0]["ciks"] == ["0001234567"]
+        assert result[1]["ciks"] == ["0001234568"]
         assert stats["investors_with_multiple_permids"] == 1
 
     @patch("time.sleep")
@@ -521,7 +524,7 @@ class TestProcessInvestor:
         """Test processing investor with failed query"""
         mock_session = Mock()
         investor_name = "Company A"
-        permids = ["https://permid.org/1-5000051854"]
+        cik_permid_pairs = [{"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}]
         stats = {
             "total_investors": 0,
             "investors_with_multiple_permids": 0,
@@ -535,7 +538,7 @@ class TestProcessInvestor:
         result = query_company_info.process_investor(
             mock_session,
             investor_name,
-            permids,
+            cik_permid_pairs,
             "test-api-key",
             "test-username",
             stats
@@ -554,8 +557,8 @@ class TestProcessBatch:
         """Test successful batch processing"""
         mock_session = Mock()
         permid_data = {
-            "Company A": ["https://permid.org/1-5000051854"],
-            "Company B": ["https://permid.org/1-5000051855"]
+            "Company A": [{"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}],
+            "Company B": [{"ciks": ["0001234568"], "permid": "https://permid.org/1-5000051855"}]
         }
         investors_to_process = ["Company A", "Company B"]
 
@@ -583,7 +586,10 @@ class TestProcessBatch:
         """Test that null PermIDs are filtered out"""
         mock_session = Mock()
         permid_data = {
-            "Company A": ["https://permid.org/1-5000051854", None]
+            "Company A": [
+                {"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"},
+                {"ciks": ["0001234568"], "permid": None}
+            ]
         }
         investors_to_process = ["Company A"]
 
@@ -598,17 +604,22 @@ class TestProcessBatch:
             geonames_user="test-username"
         )
 
-        # Verify that process_investor was called with filtered permids
+        # Verify that process_investor was called with filtered permid pairs
         call_args = mock_process_investor.call_args
-        permids_arg = call_args[0][2]
-        assert None not in permids_arg
+        cik_permid_pairs_arg = call_args[0][2]
+        # Should only have the first pair (with valid PermID)
+        assert len(cik_permid_pairs_arg) == 1
+        assert cik_permid_pairs_arg[0]["permid"] is not None
 
     @patch("idi_company_info.query_company_info.process_investor")
     def test_process_batch_skips_all_null_permids(self, mock_process_investor):
         """Test that investors with all null PermIDs are skipped"""
         mock_session = Mock()
         permid_data = {
-            "Company A": [None, None]
+            "Company A": [
+                {"ciks": ["0001234567"], "permid": None},
+                {"ciks": ["0001234568"], "permid": None}
+            ]
         }
         investors_to_process = ["Company A"]
 

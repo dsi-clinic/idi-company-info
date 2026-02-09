@@ -320,9 +320,11 @@ class TestProcessBatch:
             api_key="test-api-key"
         )
 
-        assert len(results["Company A"]) == 2
-        assert "https://permid.org/1-5000051854" in results["Company A"]
-        assert None in results["Company A"]
+        # With the new structure, results are grouped by PermID
+        # Only the successful query creates an entry
+        assert len(results["Company A"]) == 1
+        assert results["Company A"][0]["ciks"] == ["0001234567"]
+        assert results["Company A"][0]["permid"] == "https://permid.org/1-5000051854"
         assert stats["successful_queries"] == 1
         assert stats["failed_queries"] == 1
 
