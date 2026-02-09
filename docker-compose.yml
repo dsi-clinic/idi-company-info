@@ -59,20 +59,23 @@ services:
       - manual
 
     environment:
-      - PERMID_API_KEY=${PERMID_API_KEY}
-      - GEONAMES_USER=${GEONAMES_USER}
+      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
+      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
+      - BATCH_SIZE=${BATCH_SIZE:-5000}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
 
     volumes:
-      - ${WATCH_DIR:-./data/watch}:/data/watch
+      # Mount specific input file directly
+      - ${INPUT_FILE_PATH:?INPUT_FILE_PATH is required}:/data/input/data.parquet:ro
       - ${OUTPUT_DIR:-./data/output}:/data/output
 
     command: >
-      --input-file /data/watch/shareholder_tracker_release.parquet
+      --input-file /data/input/data.parquet
       --output-directory /data/output
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
-      --batch-size ${BATCH_SIZE:-5000}
-      --threshold-days ${THRESHOLD_DAYS:-30}
+      --batch-size ${BATCH_SIZE}
+      --threshold-days ${THRESHOLD_DAYS}
 
     restart: "no"
 

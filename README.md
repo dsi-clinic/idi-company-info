@@ -157,11 +157,18 @@ docker-compose down                        # Stop all services
 
 ### Configuration
 
-Edit [docker-compose.yml](docker-compose.yml) to customize:
+Edit [.env](.env) or [docker-compose.yml](docker-compose.yml) to customize:
 - Schedule: `ofelia.job-run.orchestrator-daily.schedule: "0 0 2 * * *"`
-- Input file: `--input-file /data/watch/your-file.parquet`
-- Batch size: `--batch-size 5000`
-- Threshold: `--threshold-days 30`
+- Input file: `INPUT_FILE_PATH=/path/to/your-file.parquet`
+- Batch size: `BATCH_SIZE=5000`
+- Threshold: `THRESHOLD_DAYS=30`
+
+**Note:** Changes to `.env` require restarting the scheduler to take effect:
+```bash
+docker compose restart scheduler
+```
+
+For the orchestrator service (manual runs), `.env` changes are picked up automatically on each `docker compose run --rm orchestrator` invocation.
 
 ## Alternative: systemd Service
 
