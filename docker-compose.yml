@@ -68,14 +68,18 @@ services:
       # Mount specific input file directly
       - ${INPUT_FILE_PATH:?INPUT_FILE_PATH is required}:/data/input/data.parquet:ro
       - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
 
+    entrypoint: ["/bin/sh", "-c"]
     command: >
+      "python -m idi_company_info.orchestrator
       --input-file /data/input/data.parquet
       --output-directory /data/output
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
       --batch-size ${BATCH_SIZE}
       --threshold-days ${THRESHOLD_DAYS}
+      2>&1 | tee /logs/orchestrator_$(date +%Y%m%d_%H%M%S).log"
 
     restart: "no"
 

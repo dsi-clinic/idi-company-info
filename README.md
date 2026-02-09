@@ -133,7 +133,7 @@ cp .env.example .env
 # Edit .env with your PERMID_API_KEY and GEONAMES_USER
 
 # 2. Create directories and add input file
-mkdir -p data/watch data/output data/archive
+mkdir -p data/watch data/output data/archive logs
 cp /path/to/shareholder_tracker_release.parquet data/watch/
 
 # 3. Start scheduler (runs daily at 2 AM by default)
@@ -208,9 +208,18 @@ journalctl -u idi-pipeline -f              # View logs
 
 **Docker:**
 ```bash
-docker logs -f idi-company-info-scheduler  # View logs
-docker ps                                   # Check health
-ls -lth data/output data/archive            # View output files
+# View scheduler logs
+docker logs -f idi-company-info-scheduler
+
+# View orchestrator logs (timestamped files)
+tail -f logs/orchestrator_*.log
+ls -lth logs/                              # List all log files
+
+# Check container health
+docker ps
+
+# View output files
+ls -lth data/output data/archive
 ```
 
 **systemd:**
