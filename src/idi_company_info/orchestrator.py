@@ -183,9 +183,9 @@ class PipelineOrchestrator:
         stage_configs = [
             StageConfig(
                 name="extract_ciks",
-                module="idi_company_info.retrieve_cik",
+                module="idi_company_info.retrieve_identifiers",
                 required_args=["input-file", "output-file"],
-                optional_args={},
+                optional_args={"type": "cik"},
                 output_file="cik_data.json"
             ),
             StageConfig(
