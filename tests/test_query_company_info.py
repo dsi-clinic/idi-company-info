@@ -296,14 +296,91 @@ class TestLoadData:
         assert result is None
 
 
+class TestDetectInputFormat:
+    """Tests for detect_input_format function"""
+
+    def test_detect_cik_format(self):
+        """Test detection of CIK format"""
+        cik_data = {
+            "Company A": [
+                {"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}
+            ]
+        }
+        result = query_company_info.detect_input_format(cik_data)
+        assert result == "cik"
+
+    def test_detect_record_format(self):
+        """Test detection of Record format"""
+        record_data = {
+            "Company A": {
+                "ticker": "AAPL",
+                "mic": "XNAS",
+                "permid": "https://permid.org/1-5000051854"
+            }
+        }
+        result = query_company_info.detect_input_format(record_data)
+        assert result == "record"
+
+    def test_detect_empty_data(self):
+        """Test detection with empty data"""
+        with pytest.raises(ValueError, match="Empty input data"):
+            query_company_info.detect_input_format({})
+
+
+class TestNormalizeToUnifiedFormat:
+    """Tests for normalize_to_unified_format function"""
+
+    def test_normalize_cik_format(self):
+        """Test normalization of CIK format"""
+        cik_data = {
+            "Company A": [
+                {"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}
+            ]
+        }
+        result = query_company_info.normalize_to_unified_format(cik_data, "cik")
+
+        assert "Company A" in result
+        assert len(result["Company A"]) == 1
+        assert result["Company A"][0]["permid"] == "https://permid.org/1-5000051854"
+        assert result["Company A"][0]["ciks"] == ["0001234567"]
+        assert result["Company A"][0]["ticker"] is None
+        assert result["Company A"][0]["mic"] is None
+        assert result["Company A"][0]["match_org_name"] is None
+
+    def test_normalize_record_format(self):
+        """Test normalization of Record format"""
+        record_data = {
+            "Company A": {
+                "ticker": "AAPL",
+                "mic": "XNAS",
+                "permid": "https://permid.org/1-5000051854",
+                "match_org_name": "Apple Inc",
+                "match_score": "100%",
+                "match_level": "Excellent",
+                "input_standard_identifier": "Ticker:AAPL",
+                "input_name": "APPLE INC"
+            }
+        }
+        result = query_company_info.normalize_to_unified_format(record_data, "record")
+
+        assert "Company A" in result
+        assert len(result["Company A"]) == 1
+        assert result["Company A"][0]["permid"] == "https://permid.org/1-5000051854"
+        assert result["Company A"][0]["ticker"] == "AAPL"
+        assert result["Company A"][0]["mic"] == "XNAS"
+        assert result["Company A"][0]["match_org_name"] == "Apple Inc"
+        assert result["Company A"][0]["ciks"] is None
+
+
 class TestLoadPermidData:
     """Tests for load_permid_data function"""
 
-    def test_load_permid_data_success(self):
-        """Test successful loading of PermID data"""
+    def test_load_permid_data_cik_format(self):
+        """Test successful loading of CIK format PermID data"""
         mock_data = {
-            "Company A": ["https://permid.org/1-5000051854"],
-            "Company B": ["https://permid.org/1-5000051855"]
+            "Company A": [
+                {"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}
+            ]
         }
 
         m = mock_open(read_data=json.dumps(mock_data))
@@ -312,7 +389,36 @@ class TestLoadPermidData:
                 pathlib.Path("/fake/input.json")
             )
 
-        assert result == mock_data
+        # Should be normalized to unified format
+        assert "Company A" in result
+        assert result["Company A"][0]["ciks"] == ["0001234567"]
+        assert result["Company A"][0]["ticker"] is None
+
+    def test_load_permid_data_record_format(self):
+        """Test successful loading of Record format PermID data"""
+        mock_data = {
+            "Company A": {
+                "ticker": "AAPL",
+                "mic": "XNAS",
+                "permid": "https://permid.org/1-5000051854",
+                "match_org_name": "Apple Inc",
+                "match_score": "100%",
+                "match_level": "Excellent",
+                "input_standard_identifier": "Ticker:AAPL",
+                "input_name": "APPLE INC"
+            }
+        }
+
+        m = mock_open(read_data=json.dumps(mock_data))
+        with patch("builtins.open", m):
+            result = query_company_info.load_permid_data(
+                pathlib.Path("/fake/input.json")
+            )
+
+        # Should be normalized to unified format
+        assert "Company A" in result
+        assert result["Company A"][0]["ticker"] == "AAPL"
+        assert result["Company A"][0]["ciks"] is None
 
 
 class TestBatchTracking:
@@ -447,11 +553,21 @@ class TestProcessInvestor:
 
     @patch("time.sleep")
     @patch("idi_company_info.query_company_info.query_permid_entity")
-    def test_process_investor_success(self, mock_query, mock_sleep):
-        """Test successful investor processing"""
+    def test_process_investor_success_cik_format(self, mock_query, mock_sleep):
+        """Test successful investor processing with CIK format"""
         mock_session = Mock()
         investor_name = "Company A"
-        cik_permid_pairs = [{"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}]
+        unified_permid_data = [{
+            "permid": "https://permid.org/1-5000051854",
+            "ciks": ["0001234567"],
+            "ticker": None,
+            "mic": None,
+            "match_org_name": None,
+            "match_score": None,
+            "match_level": None,
+            "input_standard_identifier": None,
+            "input_name": None
+        }]
         stats = {
             "total_investors": 0,
             "investors_with_multiple_permids": 0,
@@ -468,7 +584,7 @@ class TestProcessInvestor:
         result = query_company_info.process_investor(
             mock_session,
             investor_name,
-            cik_permid_pairs,
+            unified_permid_data,
             "test-api-key",
             "test-username",
             stats
@@ -478,6 +594,57 @@ class TestProcessInvestor:
         assert result[0]["investor_name"] == "Company A"
         assert result[0]["original_investor_name"] == "Company A"
         assert result[0]["ciks"] == ["0001234567"]
+        assert result[0]["ticker"] is None
+        assert result[0]["match_org_name"] is None
+        assert stats["total_investors"] == 1
+        assert stats["successful_queries"] == 1
+
+    @patch("time.sleep")
+    @patch("idi_company_info.query_company_info.query_permid_entity")
+    def test_process_investor_success_record_format(self, mock_query, mock_sleep):
+        """Test successful investor processing with Record format"""
+        mock_session = Mock()
+        investor_name = "Company A"
+        unified_permid_data = [{
+            "permid": "https://permid.org/1-5000051854",
+            "ciks": None,
+            "ticker": "AAPL",
+            "mic": "XNAS",
+            "match_org_name": "Apple Inc",
+            "match_score": "100%",
+            "match_level": "Excellent",
+            "input_standard_identifier": "Ticker:AAPL",
+            "input_name": "APPLE INC"
+        }]
+        stats = {
+            "total_investors": 0,
+            "investors_with_multiple_permids": 0,
+            "total_permids_queried": 0,
+            "successful_queries": 0,
+            "failed_queries": 0
+        }
+
+        mock_query.return_value = {
+            "investor_name": "Apple Inc",
+            "permid": "1-5000051854"
+        }
+
+        result = query_company_info.process_investor(
+            mock_session,
+            investor_name,
+            unified_permid_data,
+            "test-api-key",
+            "test-username",
+            stats
+        )
+
+        assert len(result) == 1
+        assert result[0]["investor_name"] == "Apple Inc"
+        assert result[0]["original_investor_name"] == "Company A"
+        assert result[0]["ciks"] is None
+        assert result[0]["ticker"] == "AAPL"
+        assert result[0]["match_org_name"] == "Apple Inc"
+        assert result[0]["match_score"] == "100%"
         assert stats["total_investors"] == 1
         assert stats["successful_queries"] == 1
 
@@ -487,9 +654,29 @@ class TestProcessInvestor:
         """Test processing investor with multiple PermIDs"""
         mock_session = Mock()
         investor_name = "Company A"
-        cik_permid_pairs = [
-            {"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"},
-            {"ciks": ["0001234568"], "permid": "https://permid.org/1-5000051855"}
+        unified_permid_data = [
+            {
+                "permid": "https://permid.org/1-5000051854",
+                "ciks": ["0001234567"],
+                "ticker": None,
+                "mic": None,
+                "match_org_name": None,
+                "match_score": None,
+                "match_level": None,
+                "input_standard_identifier": None,
+                "input_name": None
+            },
+            {
+                "permid": "https://permid.org/1-5000051855",
+                "ciks": ["0001234568"],
+                "ticker": None,
+                "mic": None,
+                "match_org_name": None,
+                "match_score": None,
+                "match_level": None,
+                "input_standard_identifier": None,
+                "input_name": None
+            }
         ]
         stats = {
             "total_investors": 0,
@@ -507,7 +694,7 @@ class TestProcessInvestor:
         result = query_company_info.process_investor(
             mock_session,
             investor_name,
-            cik_permid_pairs,
+            unified_permid_data,
             "test-api-key",
             "test-username",
             stats
@@ -524,7 +711,17 @@ class TestProcessInvestor:
         """Test processing investor with failed query"""
         mock_session = Mock()
         investor_name = "Company A"
-        cik_permid_pairs = [{"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}]
+        unified_permid_data = [{
+            "permid": "https://permid.org/1-5000051854",
+            "ciks": ["0001234567"],
+            "ticker": None,
+            "mic": None,
+            "match_org_name": None,
+            "match_score": None,
+            "match_level": None,
+            "input_standard_identifier": None,
+            "input_name": None
+        }]
         stats = {
             "total_investors": 0,
             "investors_with_multiple_permids": 0,
@@ -538,7 +735,7 @@ class TestProcessInvestor:
         result = query_company_info.process_investor(
             mock_session,
             investor_name,
-            cik_permid_pairs,
+            unified_permid_data,
             "test-api-key",
             "test-username",
             stats
@@ -557,8 +754,28 @@ class TestProcessBatch:
         """Test successful batch processing"""
         mock_session = Mock()
         permid_data = {
-            "Company A": [{"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"}],
-            "Company B": [{"ciks": ["0001234568"], "permid": "https://permid.org/1-5000051855"}]
+            "Company A": [{
+                "permid": "https://permid.org/1-5000051854",
+                "ciks": ["0001234567"],
+                "ticker": None,
+                "mic": None,
+                "match_org_name": None,
+                "match_score": None,
+                "match_level": None,
+                "input_standard_identifier": None,
+                "input_name": None
+            }],
+            "Company B": [{
+                "permid": "https://permid.org/1-5000051855",
+                "ciks": ["0001234568"],
+                "ticker": None,
+                "mic": None,
+                "match_org_name": None,
+                "match_score": None,
+                "match_level": None,
+                "input_standard_identifier": None,
+                "input_name": None
+            }]
         }
         investors_to_process = ["Company A", "Company B"]
 
@@ -587,8 +804,28 @@ class TestProcessBatch:
         mock_session = Mock()
         permid_data = {
             "Company A": [
-                {"ciks": ["0001234567"], "permid": "https://permid.org/1-5000051854"},
-                {"ciks": ["0001234568"], "permid": None}
+                {
+                    "permid": "https://permid.org/1-5000051854",
+                    "ciks": ["0001234567"],
+                    "ticker": None,
+                    "mic": None,
+                    "match_org_name": None,
+                    "match_score": None,
+                    "match_level": None,
+                    "input_standard_identifier": None,
+                    "input_name": None
+                },
+                {
+                    "permid": None,
+                    "ciks": ["0001234568"],
+                    "ticker": None,
+                    "mic": None,
+                    "match_org_name": None,
+                    "match_score": None,
+                    "match_level": None,
+                    "input_standard_identifier": None,
+                    "input_name": None
+                }
             ]
         }
         investors_to_process = ["Company A"]
@@ -604,12 +841,12 @@ class TestProcessBatch:
             geonames_user="test-username"
         )
 
-        # Verify that process_investor was called with filtered permid pairs
+        # Verify that process_investor was called with filtered unified data
         call_args = mock_process_investor.call_args
-        cik_permid_pairs_arg = call_args[0][2]
-        # Should only have the first pair (with valid PermID)
-        assert len(cik_permid_pairs_arg) == 1
-        assert cik_permid_pairs_arg[0]["permid"] is not None
+        unified_data_arg = call_args[0][2]
+        # Should only have the first item (with valid PermID)
+        assert len(unified_data_arg) == 1
+        assert unified_data_arg[0]["permid"] is not None
 
     @patch("idi_company_info.query_company_info.process_investor")
     def test_process_batch_skips_all_null_permids(self, mock_process_investor):
@@ -617,8 +854,28 @@ class TestProcessBatch:
         mock_session = Mock()
         permid_data = {
             "Company A": [
-                {"ciks": ["0001234567"], "permid": None},
-                {"ciks": ["0001234568"], "permid": None}
+                {
+                    "permid": None,
+                    "ciks": ["0001234567"],
+                    "ticker": None,
+                    "mic": None,
+                    "match_org_name": None,
+                    "match_score": None,
+                    "match_level": None,
+                    "input_standard_identifier": None,
+                    "input_name": None
+                },
+                {
+                    "permid": None,
+                    "ciks": ["0001234568"],
+                    "ticker": None,
+                    "mic": None,
+                    "match_org_name": None,
+                    "match_score": None,
+                    "match_level": None,
+                    "input_standard_identifier": None,
+                    "input_name": None
+                }
             ]
         }
         investors_to_process = ["Company A"]
