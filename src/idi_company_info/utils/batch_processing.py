@@ -40,27 +40,29 @@ def get_unprocessed_investors(
     batch_tracking: dict
 ) -> list[str]:
     """
-    Get list of investors that haven't been processed yet.
+    Get list of entities (investors/issuers) that haven't been processed yet.
 
     Args:
-        investor_data: Dictionary mapping investor names to their data
+        investor_data: Dictionary mapping entity names to their data (investors or issuers)
         batch_tracking: Batch tracking dictionary
 
     Returns:
-        List of unprocessed investor names
+        List of unprocessed entity names
     """
-    processed_investors = set()
+    processed_entities = set()
 
-    # Collect all processed investors from all batches
+    # Collect all processed entities from all batches
+    # Support both "processed_investors" (CIK mode) and "processed_items" (record mode)
     for batch_info in batch_tracking.values():
-        processed_investors.update(batch_info.get("processed_investors", []))
+        entities = batch_info.get("processed_investors") or batch_info.get("processed_items") or []
+        processed_entities.update(entities)
 
-    # Find unprocessed investors
-    all_investors = set(investor_data.keys())
-    unprocessed = list(all_investors - processed_investors)
+    # Find unprocessed entities
+    all_entities = set(investor_data.keys())
+    unprocessed = list(all_entities - processed_entities)
 
-    logging.info(f"Total investors: {len(all_investors)}")
-    logging.info(f"Already processed: {len(processed_investors)}")
+    logging.info(f"Total entities: {len(all_entities)}")
+    logging.info(f"Already processed: {len(processed_entities)}")
     logging.info(f"Remaining to process: {len(unprocessed)}")
 
     return unprocessed

@@ -502,7 +502,7 @@ def process_record_batch(
     record_data: dict[str, dict],
     issuers_to_process: list[str],
     api_key: str
-) -> tuple[dict[str, str], list[str], dict]:
+) -> tuple[dict[str, dict], list[str], dict]:
     """
     Process issuers using Record Match API (record mode).
 
@@ -579,7 +579,13 @@ def process_record_batch(
             match_level = result["match_level"]
 
             if permid:
-                results[issuer_name] = permid
+                # Include ticker and MIC along with PermID (similar to CIK mode)
+                issuer_data = record_data[issuer_name]
+                results[issuer_name] = {
+                    "ticker": issuer_data.get("ticker"),
+                    "mic": issuer_data.get("mic"),
+                    "permid": permid
+                }
                 stats["successful_matches"] += 1
                 logging.info(f"  {issuer_name} -> {permid} ({match_level})")
             else:
