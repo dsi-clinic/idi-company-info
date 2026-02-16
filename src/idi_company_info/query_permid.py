@@ -425,7 +425,7 @@ def _parse_record_match_response(response_data: dict) -> list[dict]:
         response_data: JSON response dictionary
 
     Returns:
-        List of dicts with local_id and permid
+        List of dicts with match fields and input fields for verification
     """
     results = []
 
@@ -433,17 +433,28 @@ def _parse_record_match_response(response_data: dict) -> list[dict]:
     output_records = response_data.get("outputContentResponse", [])
 
     for row in output_records:
-        local_id = row.get("Input_LocalID", "")
-        # Try different PermID field names (API returns different names based on entity type)
+        # Extract match fields
         permid = (row.get("Match OpenPermID", "") or
                   row.get("Match OrgPermID", "") or
                   row.get("Match InstrumentPermID", ""))
+
+        match_org_name = row.get("Match OrgName", "")
+        match_score = row.get("Match Score", "")
         match_level = row.get("Match Level", "")
 
+        # Extract input fields for verification/debugging
+        input_local_id = row.get("Input_LocalID", "")
+        input_standard_identifier = row.get("Input_Standard Identifier", "")
+        input_name = row.get("Input_Name", "")
+
         results.append({
-            "local_id": local_id,
+            "local_id": input_local_id,
             "permid": permid if permid and match_level != "No Match" else None,
-            "match_level": match_level
+            "match_org_name": match_org_name,
+            "match_score": match_score,
+            "match_level": match_level,
+            "input_standard_identifier": input_standard_identifier,
+            "input_name": input_name
         })
 
     return results
@@ -472,7 +483,7 @@ def _query_record_batch(
         "Content-Type": "text/plain",
         "x-ag-access-token": api_key,
         "x-openmatch-numberOfMatchesPerRecord": "1",
-        "x-openmatch-dataType": "Instrument"
+        "x-openmatch-dataType": "Organization"  # Changed from Instrument to Organization for better name-based matching
     }
 
     csv_data = _build_record_match_csv(batch_records)
@@ -576,21 +587,30 @@ def process_record_batch(
                 continue
 
             permid = result["permid"]
+            match_org_name = result["match_org_name"]
+            match_score = result["match_score"]
             match_level = result["match_level"]
+            input_standard_identifier = result["input_standard_identifier"]
+            input_name = result["input_name"]
 
             if permid:
-                # Include ticker and MIC along with PermID (similar to CIK mode)
+                # Include all match data and input verification fields
                 issuer_data = record_data[issuer_name]
                 results[issuer_name] = {
                     "ticker": issuer_data.get("ticker"),
                     "mic": issuer_data.get("mic"),
-                    "permid": permid
+                    "permid": permid,
+                    "match_org_name": match_org_name,
+                    "match_score": match_score,
+                    "match_level": match_level,
+                    "input_standard_identifier": input_standard_identifier,
+                    "input_name": input_name
                 }
                 stats["successful_matches"] += 1
-                logging.info(f"  {issuer_name} -> {permid} ({match_level})")
+                logging.info(f"  {issuer_name} -> {match_org_name} | {permid} ({match_level})")
             else:
                 stats["no_matches"] += 1
-                logging.warning(f"  {issuer_name} -> No match ({match_level})")
+                logging.warning(f"  {issuer_name} ({issuer_data.get('ticker')}) -> No match ({match_level}, {match_score})")
 
             processed_issuers.append(issuer_name)
 
