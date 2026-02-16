@@ -120,11 +120,11 @@ def save_result_cik(result, output_file):
 
 def extract_filter_parquet_record(df):
     """
-    Extract issuer_name, ticker, and MIC for record matching.
+    Extract issuer_name, ticker, MIC, and local_id for record matching.
 
     Returns:
-        Dict with issuer_name as key, dict with ticker and optional mic as value
-        Example: {"ACTIVE BIOTECH AB": {"ticker": "ACTI", "mic": "XSTO"}}
+        Dict with issuer_name as key, dict with ticker, mic, and local_id as value
+        Example: {"ACTIVE BIOTECH AB": {"ticker": "ACTI", "mic": "XSTO", "local_id": 42}}
     """
     # Extract relevant columns
     subset = df[["issuer_name", "stock_ticker"]].copy()
@@ -147,7 +147,7 @@ def extract_filter_parquet_record(df):
     bonds_filtered = 0
     invalid_format = 0
 
-    for _, row in subset.iterrows():
+    for idx, row in subset.iterrows():
         ticker, mic = parse_ticker_and_mic(row["stock_ticker"])
 
         if ticker is None:
@@ -161,7 +161,8 @@ def extract_filter_parquet_record(df):
         parsed_records.append({
             "issuer_name": row["issuer_name"],
             "ticker": ticker,
-            "mic": mic
+            "mic": mic,
+            "local_id": int(idx)  # Store original parquet row index
         })
 
     logging.info(f"Parsed {len(parsed_records)} equity securities")
@@ -169,12 +170,13 @@ def extract_filter_parquet_record(df):
     logging.info(f"Skipped {invalid_format} records with invalid format")
 
     # Convert to desired output format
-    # {"issuer_name": {"ticker": "ACTI", "mic": "XSTO"}}
+    # {"issuer_name": {"ticker": "ACTI", "mic": "XSTO", "local_id": 123}}
     result = {}
     for record in parsed_records:
         result[record["issuer_name"]] = {
             "ticker": record["ticker"],
-            "mic": record["mic"]
+            "mic": record["mic"],
+            "local_id": record["local_id"]
         }
 
     return result
