@@ -529,13 +529,21 @@ class TestParseRecordMatchResponse:
             "outputContentResponse": [
                 {
                     "Input_LocalID": "0",
+                    "Match OpenPermID": "https://permid.org/1-21523463320",
+                    "Match OrgName": "Apple Inc Ord Shs",
+                    "Match Score": "100%",
                     "Match Level": "Excellent",
-                    "Match InstrumentPermID": "https://permid.org/1-21523463320"
+                    "Input_Standard Identifier": "Ticker:AAPL",
+                    "Input_Name": "APPLE INC"
                 },
                 {
                     "Input_LocalID": "1",
+                    "Match OpenPermID": "https://permid.org/1-21475135515",
+                    "Match OrgName": "Active Biotech AB Ord Shs",
+                    "Match Score": "98%",
                     "Match Level": "Good",
-                    "Match InstrumentPermID": "https://permid.org/1-21475135515"
+                    "Input_Standard Identifier": "Ticker:ACTI&&MIC:XSTO",
+                    "Input_Name": "ACTIVE BIOTECH AB"
                 }
             ]
         }
@@ -546,7 +554,9 @@ class TestParseRecordMatchResponse:
         assert results[0]["local_id"] == "0"
         assert results[0]["permid"] == "https://permid.org/1-21523463320"
         assert results[0]["match_level"] == "Excellent"
+        assert results[0]["match_org_name"] == "Apple Inc Ord Shs"
         assert results[1]["permid"] == "https://permid.org/1-21475135515"
+        assert results[1]["match_org_name"] == "Active Biotech AB Ord Shs"
 
     def test_parse_response_with_no_match(self):
         """Test parsing response with No Match"""
@@ -555,7 +565,10 @@ class TestParseRecordMatchResponse:
                 {
                     "Input_LocalID": "0",
                     "Match Level": "No Match",
-                    "Match InstrumentPermID": ""
+                    "Match OrgName": "",
+                    "Match Score": "",
+                    "Input_Standard Identifier": "Ticker:UNKN",
+                    "Input_Name": "UNKNOWN COMPANY"
                 }
             ]
         }
@@ -565,16 +578,20 @@ class TestParseRecordMatchResponse:
         assert len(results) == 1
         assert results[0]["permid"] is None
         assert results[0]["match_level"] == "No Match"
+        assert results[0]["match_org_name"] == ""
 
     def test_parse_response_with_org_permid(self):
-        """Test parsing response with OrgPermID instead of InstrumentPermID"""
+        """Test parsing response with OrgPermID instead of OpenPermID"""
         json_response = {
             "outputContentResponse": [
                 {
                     "Input_LocalID": "0",
-                    "Match Level": "Excellent",
                     "Match OrgPermID": "https://permid.org/1-5000051854",
-                    "Match InstrumentPermID": ""
+                    "Match OrgName": "Test Organization",
+                    "Match Score": "100%",
+                    "Match Level": "Excellent",
+                    "Input_Standard Identifier": "Ticker:TEST",
+                    "Input_Name": "TEST ORG"
                 }
             ]
         }
@@ -582,6 +599,7 @@ class TestParseRecordMatchResponse:
         results = query_permid._parse_record_match_response(json_response)
 
         assert results[0]["permid"] == "https://permid.org/1-5000051854"
+        assert results[0]["match_org_name"] == "Test Organization"
 
 
 class TestQueryRecordBatch:
@@ -657,8 +675,24 @@ class TestProcessRecordBatch:
         """Test successful record batch processing"""
         mock_session = Mock()
         mock_query_batch.return_value = [
-            {"local_id": "0", "permid": "https://permid.org/1-21523463320", "match_level": "Excellent"},
-            {"local_id": "1", "permid": "https://permid.org/1-21475135515", "match_level": "Good"}
+            {
+                "local_id": "0",
+                "permid": "https://permid.org/1-21523463320",
+                "match_org_name": "Apple Inc",
+                "match_score": "100%",
+                "match_level": "Excellent",
+                "input_standard_identifier": "Ticker:AAPL",
+                "input_name": "APPLE INC"
+            },
+            {
+                "local_id": "1",
+                "permid": "https://permid.org/1-21475135515",
+                "match_org_name": "Active Biotech AB",
+                "match_score": "100%",
+                "match_level": "Good",
+                "input_standard_identifier": "Ticker:ACTI&&MIC:XSTO",
+                "input_name": "ACTIVE BIOTECH AB"
+            }
         ]
 
         record_data = {
@@ -679,9 +713,15 @@ class TestProcessRecordBatch:
         assert results["APPLE INC"]["ticker"] == "AAPL"
         assert results["APPLE INC"]["mic"] is None
         assert results["APPLE INC"]["permid"] == "https://permid.org/1-21523463320"
+        assert results["APPLE INC"]["match_org_name"] == "Apple Inc"
+        assert results["APPLE INC"]["match_score"] == "100%"
+        assert results["APPLE INC"]["match_level"] == "Excellent"
+        assert results["APPLE INC"]["input_name"] == "APPLE INC"
         assert results["ACTIVE BIOTECH AB"]["ticker"] == "ACTI"
         assert results["ACTIVE BIOTECH AB"]["mic"] == "XSTO"
         assert results["ACTIVE BIOTECH AB"]["permid"] == "https://permid.org/1-21475135515"
+        assert results["ACTIVE BIOTECH AB"]["match_org_name"] == "Active Biotech AB"
+        assert results["ACTIVE BIOTECH AB"]["match_level"] == "Good"
         assert stats["successful_matches"] == 2
         assert stats["no_matches"] == 0
 
@@ -690,8 +730,24 @@ class TestProcessRecordBatch:
         """Test processing with some no matches"""
         mock_session = Mock()
         mock_query_batch.return_value = [
-            {"local_id": "0", "permid": "https://permid.org/1-21523463320", "match_level": "Excellent"},
-            {"local_id": "1", "permid": None, "match_level": "No Match"}
+            {
+                "local_id": "0",
+                "permid": "https://permid.org/1-21523463320",
+                "match_org_name": "Apple Inc Ord Shs",
+                "match_score": "100%",
+                "match_level": "Excellent",
+                "input_standard_identifier": "Ticker:AAPL",
+                "input_name": "APPLE INC"
+            },
+            {
+                "local_id": "1",
+                "permid": None,
+                "match_org_name": "",
+                "match_score": "",
+                "match_level": "No Match",
+                "input_standard_identifier": "Ticker:UNKN",
+                "input_name": "UNKNOWN CORP"
+            }
         ]
 
         record_data = {
@@ -720,7 +776,15 @@ class TestProcessRecordBatch:
         # First attempt fails, second succeeds
         mock_query_batch.side_effect = [
             None,  # First attempt fails
-            [{"local_id": "0", "permid": "https://permid.org/1-21523463320", "match_level": "Excellent"}]
+            [{
+                "local_id": "0",
+                "permid": "https://permid.org/1-21523463320",
+                "match_org_name": "Apple Inc Ord Shs",
+                "match_score": "100%",
+                "match_level": "Excellent",
+                "input_standard_identifier": "Ticker:AAPL",
+                "input_name": "APPLE INC"
+            }]
         ]
 
         record_data = {
