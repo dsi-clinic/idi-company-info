@@ -139,7 +139,7 @@ def extract_filter_parquet_record(df):
     logging.info(f"Found {len(subset)} rows with valid issuer_name and stock_ticker")
 
     # Remove duplicates by issuer_name (keep first occurrence)
-    subset = subset.drop_duplicates(subset=["issuer_name"], keep="first")
+    subset = subset.drop_duplicates(subset=["issuer_name", "stock_ticker"], keep="first")
     logging.info(f"After deduplication by issuer_name: {len(subset)} unique issuers")
 
     # Parse ticker and MIC
