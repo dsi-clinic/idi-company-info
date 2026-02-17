@@ -175,7 +175,8 @@ class TestOrchestratorIntegration:
             input_file=test_parquet_file,
             output_directory=test_data_dir / "output",
             pipeline_type="cik",
-            batch_size=10,  # Process all 10 rows in one batch
+            permid_batch_size=10,  # Process all 10 rows in one batch
+            company_info_batch_size=10,
             permid_api_key="fake-api-key-for-testing",
             geonames_user="fake-user-for-testing",
             max_retries=1  # Reduce retries for faster tests
@@ -273,7 +274,7 @@ class TestOrchestratorIntegration:
                 "input-file": str(cik_file),
                 "output-file": str(permid_file),
                 "batch-file": str(permid_batch_file),
-                "batch-size": str(config.batch_size)
+                "batch-size": str(config.permid_batch_size)
             }
         )
 
@@ -326,7 +327,7 @@ class TestOrchestratorIntegration:
                 "input-file": str(permid_file),
                 "output-file": str(company_file),
                 "batch-file": str(company_batch_file),
-                "batch-size": str(config.batch_size)
+                "batch-size": str(config.company_info_batch_size)
             }
         )
 
@@ -409,7 +410,8 @@ class TestOrchestratorIntegration:
             input_file=test_parquet_file,
             output_directory=test_data_dir / "output",
             pipeline_type="cik",
-            batch_size=5,
+            permid_batch_size=5,
+            company_info_batch_size=5,
             permid_api_key="test-key",
             geonames_user="test-user",
             threshold_days=30
@@ -427,8 +429,9 @@ class TestOrchestratorIntegration:
         assert "query_company_info" in stage_names
         assert "export_results" in stage_names
 
-        # Verify batch size is passed through
-        assert config.batch_size == 5
+        # Verify batch sizes are passed through
+        assert config.permid_batch_size == 5
+        assert config.company_info_batch_size == 5
 
     def test_orchestrator_missing_input_file(self, test_data_dir):
         """Test orchestrator handles missing input file gracefully."""
@@ -436,7 +439,8 @@ class TestOrchestratorIntegration:
             input_file=test_data_dir / "nonexistent.parquet",
             output_directory=test_data_dir / "output",
             pipeline_type="cik",
-            batch_size=10,
+            permid_batch_size=10,
+            company_info_batch_size=10,
             permid_api_key="test-api-key",
             geonames_user="test-user"
         )
@@ -452,7 +456,8 @@ class TestOrchestratorIntegration:
             input_file=test_parquet_file,
             output_directory=test_data_dir / "output",
             pipeline_type="cik",
-            batch_size=10,
+            permid_batch_size=10,
+            company_info_batch_size=10,
             permid_api_key="my-api-key",
             geonames_user="my-user"
         )
@@ -501,7 +506,8 @@ class TestOrchestratorIntegration:
             input_file=test_parquet_file,
             output_directory=test_data_dir / "output",
             pipeline_type="record",
-            batch_size=10,
+            permid_batch_size=10,
+            company_info_batch_size=10,
             permid_api_key="my-api-key",
             geonames_user="my-user"
         )

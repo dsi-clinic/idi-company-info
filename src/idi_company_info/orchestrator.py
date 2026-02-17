@@ -76,7 +76,8 @@ class PipelineConfig:
     input_file: pathlib.Path
     output_directory: pathlib.Path
     pipeline_type: str  # "cik" or "record"
-    batch_size: int
+    permid_batch_size: int  # Batch size for query_permid.py
+    company_info_batch_size: int  # Batch size for query_company_info.py
     permid_api_key: str
     geonames_user: str
     max_retries: int = 3
@@ -208,7 +209,7 @@ class PipelineOrchestrator:
                 name="query_permids",
                 module="idi_company_info.query_permid",
                 required_args=["type", "api-key", "input-file", "output-file", "batch-file"],
-                optional_args={"batch-size": str(self.config.batch_size)},
+                optional_args={"batch-size": str(self.config.permid_batch_size)},
                 output_file=(
                     PipelineConfig.PERMID_DATA_CIK_FILE
                     if self.config.pipeline_type == "cik"
@@ -220,7 +221,7 @@ class PipelineOrchestrator:
                 module="idi_company_info.query_company_info",
                 required_args=["api-key", "geonames-user", "input-file", "output-file", "batch-file"],
                 optional_args={
-                    "batch-size": str(self.config.batch_size),
+                    "batch-size": str(self.config.company_info_batch_size),
                     "threshold-days": str(self.config.threshold_days) if self.config.threshold_days else None
                 },
                 output_file=(
@@ -315,7 +316,7 @@ class PipelineOrchestrator:
                 "input-file": str(paths.identifiers),
                 "output-file": str(paths.permid),
                 "batch-file": str(paths.permid_batch),
-                "batch-size": str(self.config.batch_size),
+                "batch-size": str(self.config.permid_batch_size),
             },
         ):
             return False
@@ -327,7 +328,7 @@ class PipelineOrchestrator:
             "input-file": str(paths.permid),
             "output-file": str(paths.company),
             "batch-file": str(paths.company_batch),
-            "batch-size": str(self.config.batch_size),
+            "batch-size": str(self.config.company_info_batch_size),
         }
         if self.config.threshold_days is not None:
             stage3_kwargs["threshold-days"] = str(self.config.threshold_days)
@@ -359,7 +360,7 @@ class PipelineOrchestrator:
         self.logger.info(f"Pipeline type: {self.config.pipeline_type}")
         self.logger.info(f"Input file: {self.config.input_file}")
         self.logger.info(f"Output directory: {self.config.output_directory}")
-        self.logger.info(f"Batch size: {self.config.batch_size}")
+        self.logger.info(f"PermID batch size: {self.config.permid_batch_size}, Company info batch size: {self.config.company_info_batch_size}")
 
         try:
             # Run pipeline
@@ -409,10 +410,17 @@ def get_args():
     )
 
     parser.add_argument(
-        "--batch-size",
+        "--permid-batch-size",
         type=int,
         default=5000,
-        help="Number of items to process per batch (default: 5000)"
+        help="Batch size for query_permid stage (default: 5000)"
+    )
+
+    parser.add_argument(
+        "--company-info-batch-size",
+        type=int,
+        default=5000,
+        help="Batch size for query_company_info stage (default: 5000)"
     )
 
     parser.add_argument(
@@ -467,7 +475,8 @@ def main():
         input_file=args.input_file,
         output_directory=args.output_directory,
         pipeline_type=args.type,
-        batch_size=args.batch_size,
+        permid_batch_size=args.permid_batch_size,
+        company_info_batch_size=args.company_info_batch_size,
         permid_api_key=args.permid_api_key,
         geonames_user=args.geonames_user,
         threshold_days=args.threshold_days,

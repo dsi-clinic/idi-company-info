@@ -24,11 +24,14 @@ services:
       - .:/app
     working_dir: /app
     environment:
-      - SCHEDULE=${SCHEDULE:-0 0 2 * * *}
+      - SCHEDULE_CIK=${SCHEDULE_CIK:-0 0 2 * * *}
+      - SCHEDULE_RECORD=${SCHEDULE_RECORD:-0 30 2 * * *}
     labels:
       ofelia.enabled: "true"
-      ofelia.job-local.orchestrator-daily.schedule: "${SCHEDULE:-0 0 2 * * *}"
-      ofelia.job-local.orchestrator-daily.command: "docker compose run --rm orchestrator"
+      ofelia.job-local.orchestrator-cik.schedule: "${SCHEDULE_CIK:-0 0 2 * * *}"
+      ofelia.job-local.orchestrator-cik.command: "docker compose run --rm orchestrator-cik"
+      ofelia.job-local.orchestrator-record.schedule: "${SCHEDULE_RECORD:-0 30 2 * * *}"
+      ofelia.job-local.orchestrator-record.command: "docker compose run --rm orchestrator-record"
     restart: unless-stopped
 
     # Health check
@@ -47,26 +50,24 @@ services:
         max-file: "5"        # Keep 5 rotated log files
         compress: "true"     # Compress rotated logs
 
-  # Orchestrator service triggered by scheduler
-  orchestrator:
+  # Orchestrator CIK track - triggered by scheduler or manual run
+  orchestrator-cik:
     build:
       context: .
       dockerfile: Dockerfile.orchestrator
-    container_name: idi-company-info-orchestrator
+    container_name: idi-company-info-orchestrator-cik
 
-    # This service is triggered by the scheduler via docker compose run
     profiles:
       - manual
 
     environment:
       - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
       - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
-      - PIPELINE_TYPE=${PIPELINE_TYPE:-cik}
-      - BATCH_SIZE=${BATCH_SIZE:-5000}
+      - PERMID_BATCH_SIZE_CIK=${PERMID_BATCH_SIZE_CIK:-5000}
+      - COMPANY_INFO_BATCH_SIZE_CIK=${COMPANY_INFO_BATCH_SIZE_CIK:-5000}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
 
     volumes:
-      # Mount specific input file directly
       - ${INPUT_FILE_PATH:?INPUT_FILE_PATH is required}:/data/input/data.parquet:ro
       - ${OUTPUT_DIR:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
@@ -76,12 +77,57 @@ services:
       "python -m idi_company_info.orchestrator
       --input-file /data/input/data.parquet
       --output-directory /data/output
-      --type ${PIPELINE_TYPE:-cik}
+      --type cik
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
-      --batch-size ${BATCH_SIZE}
-      --threshold-days ${THRESHOLD_DAYS}
-      2>&1 | tee /logs/orchestrator_$(date +%Y%m%d_%H%M%S).log"
+      --permid-batch-size ${PERMID_BATCH_SIZE_CIK:-5000}
+      --company-info-batch-size ${COMPANY_INFO_BATCH_SIZE_CIK:-5000}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      2>&1 | tee /logs/orchestrator_cik_$(date +%Y%m%d_%H%M%S).log"
+
+    restart: "no"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+
+  # Orchestrator record track - triggered by scheduler or manual run
+  orchestrator-record:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    container_name: idi-company-info-orchestrator-record
+
+    profiles:
+      - manual
+
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
+      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
+      - PERMID_BATCH_SIZE_RECORD=${PERMID_BATCH_SIZE_RECORD:-5000}
+      - COMPANY_INFO_BATCH_SIZE_RECORD=${COMPANY_INFO_BATCH_SIZE_RECORD:-5000}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+
+    volumes:
+      - ${INPUT_FILE_PATH:?INPUT_FILE_PATH is required}:/data/input/data.parquet:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.orchestrator
+      --input-file /data/input/data.parquet
+      --output-directory /data/output
+      --type record
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --permid-batch-size ${PERMID_BATCH_SIZE_RECORD:-5000}
+      --company-info-batch-size ${COMPANY_INFO_BATCH_SIZE_RECORD:-5000}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      2>&1 | tee /logs/orchestrator_record_$(date +%Y%m%d_%H%M%S).log"
 
     restart: "no"
 

@@ -39,7 +39,8 @@ python -m idi_company_info.orchestrator \
   --type cik \
   --permid-api-key $PERMID_API_KEY \
   --geonames-user $GEONAMES_USER \
-  --batch-size 5000 \
+  --permid-batch-size 5000 \
+  --company-info-batch-size 5000 \
   --threshold-days 30
 
 # Record mode (ticker-based Record Match)
@@ -76,7 +77,7 @@ make help
 **Batch Processing**:
 - Progress saved to tracking files for resumable processing
 - Rate limiting: 1 request/second
-- Configurable batch size (default: 5000)
+- Separate batch sizes for PermID stage and company info stage (default: 5000 each)
 
 **Result Exporter** ([export_results.py](src/idi_company_info/export_results.py)):
 - PostgreSQL/S3 integration (placeholder implementations with examples)
@@ -142,14 +143,16 @@ cp /path/to/shareholder_tracker_release.parquet data/watch/
 docker-compose up -d
 
 # 4. Manual run (executes immediately)
-docker-compose run --rm orchestrator
+docker-compose run --rm orchestrator-cik      # CIK track
+docker-compose run --rm orchestrator-record   # Record track
 ```
 
 ### Management
 
 ```bash
 docker-compose logs -f scheduler           # View logs
-docker-compose run --rm orchestrator       # Manual trigger
+docker-compose run --rm orchestrator-cik   # Manual CIK track
+docker-compose run --rm orchestrator-record  # Manual record track
 docker-compose restart scheduler           # Apply config changes
 docker-compose up -d --build               # Rebuild after code changes
 docker-compose down                        # Stop all services
@@ -158,9 +161,9 @@ docker-compose down                        # Stop all services
 ### Configuration
 
 Edit [.env](.env) or [docker-compose.yml](docker-compose.yml) to customize:
-- Schedule: `ofelia.job-run.orchestrator-daily.schedule: "0 0 2 * * *"`
+- Schedules: `SCHEDULE_CIK` (CIK track, default 2 AM), `SCHEDULE_RECORD` (record track, default 2:30 AM)
 - Input file: `INPUT_FILE_PATH=/path/to/your-file.parquet`
-- Batch size: `BATCH_SIZE=5000`
+- Batch sizes (per run mode): `PERMID_BATCH_SIZE_CIK`, `COMPANY_INFO_BATCH_SIZE_CIK`, `PERMID_BATCH_SIZE_RECORD`, `COMPANY_INFO_BATCH_SIZE_RECORD`
 - Threshold: `THRESHOLD_DAYS=30`
 
 **Note:** Changes to `.env` require restarting the scheduler to take effect:
@@ -168,7 +171,7 @@ Edit [.env](.env) or [docker-compose.yml](docker-compose.yml) to customize:
 docker compose restart scheduler
 ```
 
-For the orchestrator service (manual runs), `.env` changes are picked up automatically on each `docker compose run --rm orchestrator` invocation.
+For orchestrator services (manual runs), `.env` changes are picked up automatically on each `docker compose run --rm orchestrator-cik` or `docker compose run --rm orchestrator-record` invocation.
 
 ## Alternative: Docker Compose as systemd Service
 
@@ -216,7 +219,7 @@ cd /opt/idi-company-information && docker compose run --rm orchestrator
 docker logs -f idi-company-info-scheduler
 
 # View orchestrator logs (timestamped files)
-tail -f logs/orchestrator_*.log
+tail -f logs/orchestrator_cik_*.log logs/orchestrator_record_*.log
 ls -lth logs/                              # List all log files
 
 # Check container health
