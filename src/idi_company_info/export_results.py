@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Result Saver - Saves pipeline results to database and cloud storage.
+Result Exporter - Exports pipeline results to database and cloud storage.
 
 This script handles the final stage of the pipeline:
 1. Loads company information results from JSON
-2. Saves data to PostgreSQL database (placeholder)
+2. Exports data to PostgreSQL database (placeholder)
 3. Uploads data to S3 bucket (placeholder)
 
 Supports dry-run mode for testing without side effects.
@@ -12,20 +12,17 @@ Supports dry-run mode for testing without side effects.
 
 import argparse
 import json
-import logging
 import pathlib
 from datetime import datetime
 from typing import Any, Optional
 
-logging.basicConfig(
-    format='%(asctime)s,%(msecs)d %(module)s:%(lineno)d %(levelname)s %(message)s',
-    datefmt='%Y-%m-%dT%H:%M:%S',
-    level=logging.INFO
-)
+from .utils import get_logger
+
+logger = get_logger(__name__)
 
 
-class ResultSaver:
-    """Handles saving results to various destinations."""
+class ResultExporter:
+    """Handles exporting results to various destinations."""
 
     def __init__(
         self,
@@ -33,7 +30,7 @@ class ResultSaver:
         dry_run: bool = False
     ):
         """
-        Initialize result saver.
+        Initialize result exporter.
 
         Args:
             input_file: Path to company info JSON file
@@ -41,7 +38,7 @@ class ResultSaver:
         """
         self.input_file = input_file
         self.dry_run = dry_run
-        self.logger = logging.getLogger("save_result")
+        self.logger = get_logger("export_results")
 
     def load_company_info(self) -> list[dict[str, Any]]:
         """
@@ -244,7 +241,7 @@ class ResultSaver:
         s3_prefix: Optional[str] = None
     ) -> bool:
         """
-        Execute the complete save and archive process.
+        Execute the complete export process.
 
         Args:
             postgres_connection: PostgreSQL connection string
@@ -255,7 +252,7 @@ class ResultSaver:
             True if all operations successful, False otherwise
         """
         self.logger.info("=" * 80)
-        self.logger.info("STARTING RESULT SAVE PROCESS")
+        self.logger.info("STARTING RESULT EXPORT PROCESS")
         self.logger.info("=" * 80)
 
         try:
@@ -263,7 +260,7 @@ class ResultSaver:
             company_data = self.load_company_info()
 
             if not company_data:
-                self.logger.warning("No company data to save")
+                self.logger.warning("No company data to export")
                 return False
 
             # Save to PostgreSQL
@@ -277,19 +274,19 @@ class ResultSaver:
                 return False
 
             self.logger.info("=" * 80)
-            self.logger.info("RESULT SAVE PROCESS COMPLETED SUCCESSFULLY")
+            self.logger.info("RESULT EXPORT PROCESS COMPLETED SUCCESSFULLY")
             self.logger.info("=" * 80)
             return True
 
         except Exception as e:
-            self.logger.error(f"Error during save process: {e}", exc_info=True)
+            self.logger.error(f"Error during export process: {e}", exc_info=True)
             return False
 
 
 def get_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Save pipeline results to database/storage"
+        description="Export pipeline results to database/storage"
     )
 
     parser.add_argument(
@@ -334,24 +331,24 @@ def main():
 
     # Validate input file exists
     if not args.input_file.exists():
-        logging.error(f"Input file not found: {args.input_file}")
+        logger.error(f"Input file not found: {args.input_file}")
         return 1
 
-    # Create result saver
-    saver = ResultSaver(
+    # Create result exporter
+    exporter = ResultExporter(
         input_file=args.input_file,
         dry_run=args.dry_run
     )
 
-    # Run save process
-    success = saver.run(
+    # Run export process
+    success = exporter.run(
         postgres_connection=args.postgres_connection,
         s3_bucket=args.s3_bucket,
         s3_prefix=args.s3_prefix
     )
 
     end = datetime.now()
-    logging.info(f"Elapsed time: {end - start}")
+    logger.info(f"Elapsed time: {end - start}")
 
     return 0 if success else 1
 

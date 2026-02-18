@@ -12,7 +12,6 @@ Supports configurable retry logic, error handling, and batch processing.
 """
 
 import argparse
-import logging
 import pathlib
 import subprocess
 import sys
@@ -22,11 +21,7 @@ from datetime import datetime
 from enum import Enum
 from typing import ClassVar, Optional
 
-logging.basicConfig(
-    format='%(asctime)s,%(msecs)d %(module)s:%(lineno)d %(levelname)s %(message)s',
-    datefmt='%Y-%m-%dT%H:%M:%S',
-    level=logging.INFO
-)
+from .utils import get_logger
 
 
 class StageStatus(Enum):
@@ -87,7 +82,7 @@ class StageExecutor:
         """
         self.config = config
         self.pipeline_config = pipeline_config
-        self.logger = logging.getLogger(f"stage.{config.name}")
+        self.logger = get_logger(f"stage.{config.name}")
 
     def build_command(self, **kwargs) -> list[str]:
         """
@@ -170,7 +165,7 @@ class PipelineOrchestrator:
             config: Pipeline configuration
         """
         self.config = config
-        self.logger = logging.getLogger("orchestrator")
+        self.logger = get_logger("orchestrator")
         self.stages = self._initialize_stages()
 
     def _initialize_stages(self) -> list[StageExecutor]:
@@ -206,8 +201,8 @@ class PipelineOrchestrator:
                 output_file="company_info.json"
             ),
             StageConfig(
-                name="save_results",
-                module="idi_company_info.save_result",
+                name="export_results",
+                module="idi_company_info.export_results",
                 required_args=["input-file"],
                 optional_args={
                     "postgres-connection": self.config.postgres_connection,
@@ -308,7 +303,7 @@ class PipelineOrchestrator:
         )
 
         if status != StageStatus.SUCCESS:
-            self.logger.error(f"Stage 4 (save results) failed: {error}")
+            self.logger.error(f"Stage 4 (export results) failed: {error}")
             return False
 
         elapsed_time = datetime.now() - start_time
