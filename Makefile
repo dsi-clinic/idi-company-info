@@ -1,8 +1,9 @@
 .PHONY: help install install-dev test clean clean-all stage1 stage2 stage3 pipeline resume-stage2 resume-stage3
+.PHONY: docker-orchestrator docker-up docker-down docker-build
 
 # Configuration variables
-# Use .venv Python if it exists, otherwise use system python
-PYTHON := $(shell if [ -f .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
+# Use uv run to execute Python (manages venv automatically)
+RUN := uv run
 INPUT_PARQUET ?= data/input.parquet
 OUTPUT_DIR ?= output
 BATCH_SIZE ?= 5000
@@ -10,6 +11,10 @@ BATCH_SIZE ?= 5000
 # API credentials (set via environment variables)
 PERMID_API_KEY ?= $(shell echo $$PERMID_API_KEY)
 GEONAMES_USER ?= $(shell echo $$GEONAMES_USER)
+
+# Docker Compose variables (for orchestrator)
+INPUT_FILE_PATH ?= $(shell echo $$INPUT_FILE_PATH)
+LOG_DIR ?= ./logs
 
 # Output files (can be overridden individually)
 CIK_DATA ?= $(OUTPUT_DIR)/cik_data.json
@@ -37,6 +42,12 @@ help:
 	@echo "  make test-verbose     Run tests with verbose output"
 	@echo "  make test-coverage    Run tests with coverage report"
 	@echo ""
+	@echo "Docker Compose targets:"
+	@echo "  make docker-build       Build orchestrator image"
+	@echo "  make docker-orchestrator  Run orchestrator via Docker (requires INPUT_FILE_PATH)"
+	@echo "  make docker-up          Start scheduler + autoheal stack"
+	@echo "  make docker-down        Stop Docker Compose stack"
+	@echo ""
 	@echo "Utility targets:"
 	@echo "  make clean            Remove output files"
 	@echo "  make clean-all        Remove output files and test artifacts"
@@ -52,6 +63,7 @@ help:
 	@echo "  COMPANY_BATCH_TRACKING=$(COMPANY_BATCH_TRACKING)"
 	@echo "  PERMID_API_KEY=$${PERMID_API_KEY:-'<not set>'}"
 	@echo "  GEONAMES_USER=$${GEONAMES_USER:-'<not set>'}"
+	@echo "  INPUT_FILE_PATH=$${INPUT_FILE_PATH:-'<not set> (required for docker-orchestrator)'}"
 	@echo ""
 	@echo "Example usage:"
 	@echo "  make install"
@@ -60,6 +72,8 @@ help:
 	@echo "  make pipeline INPUT_PARQUET=data/myfile.parquet OUTPUT_DIR=results"
 	@echo "  # Or specify individual files:"
 	@echo "  make stage2 PERMID_DATA=results/permids.json PERMID_BATCH_TRACKING=results/batch.json"
+	@echo "  # Docker: run orchestrator (ensure .env or env vars are set):"
+	@echo "  make docker-orchestrator INPUT_FILE_PATH=data/input.parquet"
 
 # Installation targets
 install:
@@ -76,7 +90,7 @@ stage1:
 		exit 1; \
 	fi
 	@mkdir -p $(OUTPUT_DIR)
-	$(PYTHON) -m idi_company_info.retrieve_cik \
+	$(RUN) -m idi_company_info.retrieve_cik \
 		--input-file $(INPUT_PARQUET) \
 		--output-file $(CIK_DATA)
 	@echo "Stage 1 complete: $(CIK_DATA)"
@@ -93,7 +107,7 @@ stage2:
 		exit 1; \
 	fi
 	@mkdir -p $(OUTPUT_DIR)
-	$(PYTHON) -m idi_company_info.query_permid \
+	$(RUN) -m idi_company_info.query_permid \
 		--api-key $(PERMID_API_KEY) \
 		--input-file $(CIK_DATA) \
 		--output-file $(PERMID_DATA) \
@@ -117,7 +131,7 @@ stage3:
 		exit 1; \
 	fi
 	@mkdir -p $(OUTPUT_DIR)
-	$(PYTHON) -m idi_company_info.query_company_info \
+	$(RUN) -m idi_company_info.query_company_info \
 		--api-key $(PERMID_API_KEY) \
 		--geonames-user $(GEONAMES_USER) \
 		--input-file $(PERMID_DATA) \
@@ -140,13 +154,13 @@ pipeline: stage1 stage2 stage3
 
 # Test targets
 test:
-	pytest
+	$(RUN) pytest
 
 test-verbose:
-	pytest -vv
+	$(RUN) pytest -vv
 
 test-coverage:
-	pytest --cov=idi_company_info --cov-report=html --cov-report=term
+	$(RUN) pytest --cov=idi_company_info --cov-report=html --cov-report=term
 	@echo ""
 	@echo "Coverage report generated in htmlcov/index.html"
 
@@ -174,7 +188,7 @@ resume-stage2:
 		echo "Error: PERMID_API_KEY not set. Set it with: export PERMID_API_KEY='your-key'"; \
 		exit 1; \
 	fi
-	$(PYTHON) -m idi_company_info.query_permid \
+	$(RUN) -m idi_company_info.query_permid \
 		--api-key $(PERMID_API_KEY) \
 		--input-file $(CIK_DATA) \
 		--output-file $(PERMID_DATA) \
@@ -191,10 +205,45 @@ resume-stage3:
 		echo "Error: GEONAMES_USER not set. Set it with: export GEONAMES_USER='your-username'"; \
 		exit 1; \
 	fi
-	$(PYTHON) -m idi_company_info.query_company_info \
+	$(RUN) -m idi_company_info.query_company_info \
 		--api-key $(PERMID_API_KEY) \
 		--geonames-user $(GEONAMES_USER) \
 		--input-file $(PERMID_DATA) \
 		--output-file $(COMPANY_INFO) \
 		--batch-file $(COMPANY_BATCH_TRACKING) \
 		--batch-size $(BATCH_SIZE)
+
+# Docker Compose targets
+docker-build:
+	@echo "Building orchestrator image..."
+	docker compose build orchestrator
+
+docker-orchestrator:
+	@echo "Running orchestrator via Docker Compose..."
+	@if [ -z "$(INPUT_FILE_PATH)" ]; then \
+		echo "Error: INPUT_FILE_PATH not set. Set it with: export INPUT_FILE_PATH=path/to/input.parquet"; \
+		echo "Or: make docker-orchestrator INPUT_FILE_PATH=data/input.parquet"; \
+		exit 1; \
+	fi
+	@if [ -z "$(PERMID_API_KEY)" ]; then \
+		echo "Error: PERMID_API_KEY not set. Set it with: export PERMID_API_KEY='your-key'"; \
+		exit 1; \
+	fi
+	@if [ -z "$(GEONAMES_USER)" ]; then \
+		echo "Error: GEONAMES_USER not set. Set it with: export GEONAMES_USER='your-username'"; \
+		exit 1; \
+	fi
+	@mkdir -p $(OUTPUT_DIR) $(LOG_DIR)
+	INPUT_FILE_PATH="$(INPUT_FILE_PATH)" OUTPUT_DIR="$(OUTPUT_DIR)" LOG_DIR="$(LOG_DIR)" \
+	PERMID_API_KEY="$(PERMID_API_KEY)" GEONAMES_USER="$(GEONAMES_USER)" \
+	BATCH_SIZE="$(BATCH_SIZE)" \
+	$(if $(THRESHOLD_DAYS),THRESHOLD_DAYS="$(THRESHOLD_DAYS)",) \
+	docker compose run --build --rm orchestrator
+
+docker-up:
+	@echo "Starting Docker Compose stack (scheduler + autoheal)..."
+	docker compose up -d
+
+docker-down:
+	@echo "Stopping Docker Compose stack..."
+	docker compose down
