@@ -398,7 +398,7 @@ class TestOrchestratorIntegration:
         assert "extract_ciks" in stage_names
         assert "query_permids" in stage_names
         assert "query_company_info" in stage_names
-        assert "save_results" in stage_names
+        assert "export_results" in stage_names
 
         # Verify batch size is passed through
         assert config.batch_size == 5

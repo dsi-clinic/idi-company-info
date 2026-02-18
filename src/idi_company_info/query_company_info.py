@@ -9,7 +9,6 @@ Supports batch processing with rate limiting and retry logic.
 
 import argparse
 import json
-import logging
 import pathlib
 import time
 from datetime import datetime, timedelta
@@ -18,6 +17,7 @@ from typing import Any
 import requests
 
 from .utils import (
+    get_logger,
     create_session,
     REQUEST_TIMEOUT,
     RATE_LIMIT_DELAY,
@@ -28,12 +28,7 @@ from .utils import (
     save_results,
 )
 
-logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(
-    format='%(asctime)s,%(msecs)d %(module)s:%(lineno)d %(levelname)s %(message)s',
-    datefmt='%Y-%m-%dT%H:%M:%S',
-    level=logging.INFO
-)
+logger = get_logger(__name__)
 
 # API configuration
 PERMID_BASE_URL = "https://permid.org"
@@ -164,7 +159,7 @@ def get_stale_investors(
                     most_recent = last_processed
             except (ValueError, TypeError):
                 # Invalid timestamp, treat as stale
-                logging.warning(f"Invalid timestamp for {investor_name}: {last_processed_str}")
+                logger.warning(f"Invalid timestamp for {investor_name}: {last_processed_str}")
                 most_recent = None
                 break
 
@@ -173,9 +168,9 @@ def get_stale_investors(
             stale_investors.add(investor_name)
             if most_recent:
                 days_old = (datetime.now() - most_recent).days
-                logging.info(f"  Marking {investor_name} as stale ({days_old} days old)")
+                logger.info(f"  Marking {investor_name} as stale ({days_old} days old)")
             else:
-                logging.info(f"  Marking {investor_name} as stale (no timestamp)")
+                logger.info(f"  Marking {investor_name} as stale (no timestamp)")
 
     return stale_investors
 
@@ -203,7 +198,7 @@ def remove_stale_records(
     ]
 
     removed_count = len(existing_results) - len(filtered_results)
-    logging.info(f"Removed {removed_count} stale record(s) for re-processing")
+    logger.info(f"Removed {removed_count} stale record(s) for re-processing")
 
     return filtered_results
 
@@ -245,13 +240,13 @@ def _handle_stale_investors(
     if threshold_days is None:
         return existing_results, set()
 
-    logging.info(f"Checking for investors not updated in last {threshold_days} days")
+    logger.info(f"Checking for investors not updated in last {threshold_days} days")
     stale_investors = get_stale_investors(existing_results, threshold_days)
 
     if not stale_investors:
         return existing_results, set()
 
-    logging.info(f"Found {len(stale_investors)} stale investor(s) to re-process")
+    logger.info(f"Found {len(stale_investors)} stale investor(s) to re-process")
 
     # Remove stale investor records so they can be re-processed
     filtered_results = remove_stale_records(existing_results, stale_investors)
@@ -285,10 +280,10 @@ def _get_investors_to_process(
     investors_to_process = list(set(unprocessed_investors) | stale_investors)
 
     if not investors_to_process:
-        logging.info("All investors are up to date!")
+        logger.info("All investors are up to date!")
         return None
 
-    logging.info(
+    logger.info(
         f"Investors to process: {len(investors_to_process)} "
         f"(unprocessed: {len(unprocessed_investors)}, stale: {len(stale_investors)})"
     )
@@ -330,7 +325,7 @@ def load_data(input_file, batch_file, output_file, batch_size, threshold_days=No
 
     # Validate batch size
     if batch_size > len(investors_to_process):
-        logging.warning(
+        logger.warning(
             f"Batch size ({batch_size}) is larger than investors to process "
             f"({len(investors_to_process)}). Processing all."
         )
@@ -394,7 +389,7 @@ def extract_permid_fields(
 
             # Handle URL fields
             if api_field in URL_FIELDS and resolve_urls and value:
-                logging.info(f"    Resolving URL field: {api_field} -> {value}")
+                logger.info(f"    Resolving URL field: {api_field} -> {value}")
                 result[output_field] = query_geonames_location(session, value, geonames_user)
             else:
                 result[output_field] = value
@@ -447,15 +442,15 @@ def query_permid_entity(
         return extract_permid_fields(data, session, geonames_user, resolve_urls)
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error querying PermID {permid_url}: {e}")
+        logger.error(f"Error querying PermID {permid_url}: {e}")
         return None
 
 def load_permid_data(input_file: pathlib.Path) -> dict[str, list[dict[str, list[str] | str]]]:
     """Load PermID data from JSON file."""
-    logging.info(f"Loading PermID data from: {input_file}")
+    logger.info(f"Loading PermID data from: {input_file}")
     with open(input_file) as f:
         data = json.load(f)
-    logging.info(f"Loaded {len(data)} investors with PermID data")
+    logger.info(f"Loaded {len(data)} investors with PermID data")
     return data
 
 def process_investor(
@@ -485,7 +480,7 @@ def process_investor(
     if len(cik_permid_pairs) > 1:
         stats["investors_with_multiple_permids"] += 1
         permid_list = [pair["permid"] for pair in cik_permid_pairs]
-        logging.warning(f"  Multiple PermIDs for {investor_name}: {permid_list}")
+        logger.warning(f"  Multiple PermIDs for {investor_name}: {permid_list}")
 
     # Query each PermID for this investor
     investor_results = []
@@ -496,7 +491,7 @@ def process_investor(
 
         # Log all CIKs that map to this PermID
         ciks_str = ", ".join(ciks)
-        logging.info(f"  Querying PermID: {permid_url} (CIKs: {ciks_str})")
+        logger.info(f"  Querying PermID: {permid_url} (CIKs: {ciks_str})")
         company_info = query_permid_entity(session, permid_url, api_key, geonames_user)
 
         if company_info:
@@ -506,11 +501,11 @@ def process_investor(
             company_info["ciks"] = ciks  # Store as list
             company_info["last_processed"] = datetime.now().isoformat()
             investor_results.append(company_info)
-            logging.info(f"  Successfully retrieved info for PermID {permid_url}")
+            logger.info(f"  Successfully retrieved info for PermID {permid_url}")
         else:
             stats["failed_queries"] += 1
             investor_results.append(None)
-            logging.warning(f"  Failed to retrieve info for PermID {permid_url}")
+            logger.warning(f"  Failed to retrieve info for PermID {permid_url}")
 
         # Rate limiting: wait 1 second between requests
         time.sleep(RATE_LIMIT_DELAY)
@@ -545,7 +540,7 @@ def process_batch(
     }
 
     batch = investors_to_process[:batch_size]
-    logging.info(f"Processing batch of {len(batch)} investors")
+    logger.info(f"Processing batch of {len(batch)} investors")
 
     for idx, investor_name in enumerate(batch, 1):
         cik_permid_pairs = permid_data[investor_name]
@@ -553,11 +548,11 @@ def process_batch(
         cik_permid_pairs = [pair for pair in cik_permid_pairs if pair.get("permid") is not None]
 
         if not cik_permid_pairs:
-            logging.warning(f"[{idx}/{len(batch)}] Skipping {investor_name}: No valid PermIDs")
+            logger.warning(f"[{idx}/{len(batch)}] Skipping {investor_name}: No valid PermIDs")
             investor_results = [ None ]
 
         else:
-            logging.info(
+            logger.info(
                 f"[{idx}/{len(batch)}] Processing: {investor_name} ({len(cik_permid_pairs)} PermID(s))"
             )
             # Process this investor
@@ -618,27 +613,27 @@ def finalize_batch(
 
 def print_stats(all_results: list[dict[str, Any]], batch_stats: dict):
     """Print statistics about the processing."""
-    logging.info("=" * 60)
-    logging.info("BATCH STATISTICS")
-    logging.info("=" * 60)
-    logging.info(f"Investors processed: {batch_stats['total_investors']}")
-    logging.info(f"PermIDs queried: {batch_stats['total_permids_queried']}")
-    logging.info(f"Successful queries: {batch_stats['successful_queries']}")
-    logging.info(f"Failed queries: {batch_stats['failed_queries']}")
-    logging.info(
+    logger.info("=" * 60)
+    logger.info("BATCH STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Investors processed: {batch_stats['total_investors']}")
+    logger.info(f"PermIDs queried: {batch_stats['total_permids_queried']}")
+    logger.info(f"Successful queries: {batch_stats['successful_queries']}")
+    logger.info(f"Failed queries: {batch_stats['failed_queries']}")
+    logger.info(
         f"Investors with multiple PermIDs: {batch_stats['investors_with_multiple_permids']}"
     )
 
-    logging.info("=" * 60)
-    logging.info("CUMULATIVE STATISTICS")
-    logging.info("=" * 60)
-    logging.info(f"Total company records: {len(all_results)}")
+    logger.info("=" * 60)
+    logger.info("CUMULATIVE STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Total company records: {len(all_results)}")
 
     # Count unique investors
     unique_investors = set(r.get("original_investor_name") for r in all_results if r)
-    logging.info(f"Unique investors: {len(unique_investors)}")
+    logger.info(f"Unique investors: {len(unique_investors)}")
 
-    logging.info("=" * 60)
+    logger.info("=" * 60)
 
 def main():
     """Main function to query PermID API and process company information."""
@@ -648,7 +643,7 @@ def main():
     # Log arguments (except API key)
     for key, value in args.__dict__.items():
         if key != "api_key":
-            logging.info(f"{key}: {value}")
+            logger.info(f"{key}: {value}")
 
     # Create output file's parent directory if it doesn't exist
     args.output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -664,7 +659,7 @@ def main():
 
     # Check if there's anything to process
     if load_result is None:
-        logging.info("Nothing to process. Exiting.")
+        logger.info("Nothing to process. Exiting.")
         return
 
     permid_data, existing_results, investors_to_process = load_result
@@ -695,7 +690,7 @@ def main():
     # Print statistics
     print_stats(all_results, batch_stats)
     end = datetime.now()
-    logging.info(f"Elapsed time: {end - start}")
+    logger.info(f"Elapsed time: {end - start}")
 
 
 if __name__ == "__main__":

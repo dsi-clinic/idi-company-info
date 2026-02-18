@@ -9,7 +9,6 @@ Supports batch processing with rate limiting and retry logic.
 
 import argparse
 import json
-import logging
 import pathlib
 import time
 from datetime import datetime
@@ -17,6 +16,7 @@ from datetime import datetime
 import requests
 
 from .utils import (
+    get_logger,
     create_session,
     REQUEST_TIMEOUT,
     RATE_LIMIT_DELAY,
@@ -27,12 +27,7 @@ from .utils import (
     save_results,
 )
 
-logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(
-    format='%(asctime)s,%(msecs)d %(module)s:%(lineno)d %(levelname)s %(message)s',
-    datefmt='%Y-%m-%dT%H:%M:%S',
-    level=logging.INFO
-)
+logger = get_logger(__name__)
 
 # API configuration
 API_URL = "https://api-eit.refinitiv.com/permid/search"
@@ -121,15 +116,15 @@ def query_permid_by_cik(session: requests.Session, cik: str, api_key: str) -> st
         return None
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error querying CIK {cik}: {e}")
+        logger.error(f"Error querying CIK {cik}: {e}")
         return None
 
 def load_cik_data(input_file: pathlib.Path) -> dict[str, list[str]]:
     """Load CIK data from JSON file."""
-    logging.info(f"Loading CIK data from: {input_file}")
+    logger.info(f"Loading CIK data from: {input_file}")
     with open(input_file) as f:
         data = json.load(f)
-    logging.info(f"Loaded {len(data)} investors with CIK data")
+    logger.info(f"Loaded {len(data)} investors with CIK data")
     return data
 
 def _initialize_batch_stats() -> dict:
@@ -174,11 +169,11 @@ def _process_investor_ciks(
         if permid:
             stats["successful_queries"] += 1
             results.append({"cik": cik, "permid": permid})
-            logging.info(f"  CIK {cik} -> PermID {permid}")
+            logger.info(f"  CIK {cik} -> PermID {permid}")
         else:
             stats["failed_queries"] += 1
             results.append({"cik": cik, "permid": None})
-            logging.warning(f"  CIK {cik} -> No PermID found")
+            logger.warning(f"  CIK {cik} -> No PermID found")
 
         # Rate limiting: wait 1 second between requests
         time.sleep(RATE_LIMIT_DELAY)
@@ -228,14 +223,14 @@ def _store_investor_results(
         # Log when investor has multiple PermIDs
         if len(unique_pairs) > 1:
             permid_list = [pair["permid"] for pair in unique_pairs]
-            logging.warning(
+            logger.warning(
                 f"  MULTIPLE PermIDs for {investor_name}: {permid_list}"
             )
 
         # Log when multiple CIKs map to same PermID
         for pair in unique_pairs:
             if len(pair["ciks"]) > 1:
-                logging.info(
+                logger.info(
                     f"  Multiple CIKs for same PermID {pair['permid']}: {pair['ciks']}"
                 )
 
@@ -263,7 +258,7 @@ def process_batch(
     stats = _initialize_batch_stats()
 
     batch = investors_to_process[:batch_size]
-    logging.info(f"Processing batch of {len(batch)} investors")
+    logger.info(f"Processing batch of {len(batch)} investors")
 
     for idx, investor_name in enumerate(batch, 1):
         ciks = cik_data[investor_name]
@@ -272,12 +267,12 @@ def process_batch(
         original_count = len(ciks)
         ciks = list(dict.fromkeys(ciks))  # Preserves order while removing duplicates
         if len(ciks) < original_count:
-            logging.info(f"  Removed {original_count - len(ciks)} duplicate CIK(s) for {investor_name}")
+            logger.info(f"  Removed {original_count - len(ciks)} duplicate CIK(s) for {investor_name}")
             stats["duplicates_removed_cik"] += 1
 
         stats["total_investors"] += 1
 
-        logging.info(f"[{idx}/{len(batch)}] Processing: {investor_name} ({len(ciks)} CIK(s))")
+        logger.info(f"[{idx}/{len(batch)}] Processing: {investor_name} ({len(ciks)} CIK(s))")
 
         # Process all CIKs for this investor
         cik_permid_pairs = _process_investor_ciks(session, ciks, api_key, stats)
@@ -291,29 +286,29 @@ def process_batch(
 
 def print_stats(stats: dict, batch_stats: dict):
     """Print statistics about the processing."""
-    logging.info("=" * 60)
-    logging.info("BATCH STATISTICS")
-    logging.info("=" * 60)
-    logging.info(f"Investors processed: {batch_stats['total_investors']}")
-    logging.info(f"CIKs queried: {batch_stats['total_ciks_queried']}")
-    logging.info(f"Successful queries: {batch_stats['successful_queries']}")
-    logging.info(f"Failed queries: {batch_stats['failed_queries']}")
-    logging.info(f"Investors with PermID: {batch_stats['investors_with_permid']}")
-    logging.info(f"Investors without PermID: {batch_stats['investors_without_permid']}")
-    logging.info(f"Total PermIDs found: {batch_stats['total_permids']}")
-    logging.info(f"Duplicates removed: {batch_stats['duplicates_removed']}")
-    logging.info(f"Duplicate CIKs removed: {batch_stats['duplicates_removed_cik']}")
+    logger.info("=" * 60)
+    logger.info("BATCH STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Investors processed: {batch_stats['total_investors']}")
+    logger.info(f"CIKs queried: {batch_stats['total_ciks_queried']}")
+    logger.info(f"Successful queries: {batch_stats['successful_queries']}")
+    logger.info(f"Failed queries: {batch_stats['failed_queries']}")
+    logger.info(f"Investors with PermID: {batch_stats['investors_with_permid']}")
+    logger.info(f"Investors without PermID: {batch_stats['investors_without_permid']}")
+    logger.info(f"Total PermIDs found: {batch_stats['total_permids']}")
+    logger.info(f"Duplicates removed: {batch_stats['duplicates_removed']}")
+    logger.info(f"Duplicate CIKs removed: {batch_stats['duplicates_removed_cik']}")
 
-    logging.info("=" * 60)
-    logging.info("CUMULATIVE STATISTICS")
-    logging.info("=" * 60)
-    logging.info(f"Total investors with PermID: {len(stats)}")
+    logger.info("=" * 60)
+    logger.info("CUMULATIVE STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Total investors with PermID: {len(stats)}")
     total_permids = sum(len(pairs) for pairs in stats.values())
-    logging.info(f"Total PermIDs: {total_permids}")
+    logger.info(f"Total PermIDs: {total_permids}")
     if stats:
         avg_permids = total_permids / len(stats)
-        logging.info(f"Average PermIDs per investor: {avg_permids:.2f}")
-    logging.info("=" * 60)
+        logger.info(f"Average PermIDs per investor: {avg_permids:.2f}")
+    logger.info("=" * 60)
 
 def _load_data(
     input_file: pathlib.Path,
@@ -386,7 +381,7 @@ def main():
     for key, value in args.__dict__.items():
         if key == "api_key":
             continue
-        logging.info(f"{key}: {value}")
+        logger.info(f"{key}: {value}")
 
     # Load data and get unprocessed investors
     cik_data, batch_tracking, existing_results, unprocessed_investors = _load_data(
@@ -396,11 +391,11 @@ def main():
     )
 
     if not unprocessed_investors:
-        logging.info("All investors have been processed!")
+        logger.info("All investors have been processed!")
         return
 
     if args.batch_size > len(unprocessed_investors):
-        logging.warning(
+        logger.warning(
             f"Batch size ({args.batch_size}) is larger than remaining investors "
             f"({len(unprocessed_investors)}). Processing all remaining investors."
         )
@@ -427,7 +422,7 @@ def main():
     )
 
     end = datetime.now()
-    logging.info(f"Elapsed time: {end - start}")
+    logger.info(f"Elapsed time: {end - start}")
 
 
 if __name__ == "__main__":

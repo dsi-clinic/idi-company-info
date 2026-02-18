@@ -1,6 +1,7 @@
 """Utility modules for batch processing and API operations."""
 
 from .api_utils import create_session, REQUEST_TIMEOUT, RATE_LIMIT_DELAY
+from .logging_config import get_logger
 from .batch_processing import (
     load_batch_tracking,
     save_batch_tracking,
@@ -10,6 +11,7 @@ from .batch_processing import (
 )
 
 __all__ = [
+    "get_logger",
     "create_session",
     "REQUEST_TIMEOUT",
     "RATE_LIMIT_DELAY",

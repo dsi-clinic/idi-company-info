@@ -9,15 +9,14 @@ and saves as JSON with investor_name as key and list of associated CIKs as value
 import argparse
 import datetime
 import json
-import logging
 import pathlib
 
 import pandas as pd
 
-logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(format='%(asctime)s,%(msecs)d %(module)s:%(lineno)d %(levelname)s %(message)s',
-                    datefmt='%Y-%m-%dT%H:%M:%S',
-                    level=logging.INFO)
+from .utils import get_logger
+
+logger = get_logger(__name__)
+
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -39,7 +38,7 @@ def get_args():
     return args
 
 def read_parquet(input_file):
-    logging.info(f"Reading parquet file: {input_file}")
+    logger.info(f"Reading parquet file: {input_file}")
     df = pd.read_parquet(input_file)
 
     # Select relevant columns
@@ -48,7 +47,7 @@ def read_parquet(input_file):
             "Required columns 'investor_name' and 'investor_cik' not found in dataframe"
         )
 
-    logging.info(f"Loaded {len(df)} rows")
+    logger.info(f"Loaded {len(df)} rows")
     return df
 
 def extract_filter_parquet(df):
@@ -57,7 +56,7 @@ def extract_filter_parquet(df):
 
     # Filter out rows where investor_cik is null or empty
     subset = subset[subset["investor_cik"].notna() & (subset["investor_cik"] != "")]
-    logging.info(f"Found {len(subset)} rows with valid CIKs")
+    logger.info(f"Found {len(subset)} rows with valid CIKs")
 
     # Convert investor_cik to string to ensure JSON serialization
     subset["investor_cik"] = subset["investor_cik"].astype(str)
@@ -67,7 +66,7 @@ def extract_filter_parquet(df):
 
     # Remove duplicates AFTER normalization to catch formatting differences
     subset = subset.drop_duplicates(subset=["investor_name", "investor_cik"])
-    logging.info(f"After normalization and deduplication: {len(subset)} unique investor_name/CIK pairs")
+    logger.info(f"After normalization and deduplication: {len(subset)} unique investor_name/CIK pairs")
 
     # Group by investor_name and aggregate CIKs into a list
     result = subset.groupby("investor_name")["investor_cik"].apply(list).to_dict()
@@ -76,23 +75,23 @@ def extract_filter_parquet(df):
 
 def save_result(result, output_file):
     # Save to JSON
-    logging.info(f"Writing {len(result)} unique investor names to: {output_file}")
+    logger.info(f"Writing {len(result)} unique investor names to: {output_file}")
     with open(output_file, "w") as f:
         json.dump(result, f, indent=2)
-    logging.info(f"Successfully wrote {len(result)} investor records to {output_file}")
+    logger.info(f"Successfully wrote {len(result)} investor records to {output_file}")
 
     # Print sample statistics
     total_ciks = sum(len(ciks) for ciks in result.values())
-    logging.info(f"Total investors: {len(result.keys())}")
-    logging.info(f"Total CIKs: {total_ciks}")
-    logging.info(f"Average CIKs per investor: {total_ciks / len(result):.2f}")
+    logger.info(f"Total investors: {len(result.keys())}")
+    logger.info(f"Total CIKs: {total_ciks}")
+    logger.info(f"Average CIKs per investor: {total_ciks / len(result):.2f}")
 
 def main():
     """Main function to process parquet data and extract CIK information."""
     start = datetime.datetime.now()
     args = get_args()
     for key, value in args.__dict__.items():
-        logging.info(f"{key}: {value}")
+        logger.info(f"{key}: {value}")
 
     # Read parquet file
     df = read_parquet(args.input_file)
@@ -103,7 +102,7 @@ def main():
     # Save to JSON
     save_result(result, args.output_file)
     end = datetime.datetime.now()
-    logging.info(f"Elapsed time: {end - start}")
+    logger.info(f"Elapsed time: {end - start}")
 
 
 if __name__ == "__main__":
