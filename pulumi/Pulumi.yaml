@@ -1,0 +1,19 @@
+name: idi
+runtime: python
+description: AWS infrastructure for IDI Company Information Pipeline
+
+config:
+  aws:region:
+    description: AWS region to deploy to
+    value: us-east-2
+  idi:instance_type:
+    description: EC2 instance type for processing instances
+    default: t2.small
+  idi:key_name:
+    description: SSH key pair name for EC2 instances
+    default: idi-acct-REMOVED
+  idi:permid_api_key:
+    description: PermID API key (stored as secret in AWS Secrets Manager)
+    secret: true
+  idi:geonames_user:
+    description: GeoNames username for geocoding

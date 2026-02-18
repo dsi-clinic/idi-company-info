@@ -16,3 +16,7 @@ wheels/
 output/
 # Log files
 logs/
+
+# Pulumi
+pulumi/venv/
+pulumi/__pycache__/

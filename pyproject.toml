@@ -28,3 +28,9 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+
+[dependency-groups]
+pulumi = [
+    "pulumi>=3.220.0",
+    "pulumi-aws>=7.19.0",
+]
