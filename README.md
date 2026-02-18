@@ -74,7 +74,7 @@ make help
 - Rate limiting: 1 request/second
 - Configurable batch size (default: 5000)
 
-**Result Saver** ([save_result.py](src/idi_company_info/save_result.py)):
+**Result Exporter** ([export_results.py](src/idi_company_info/export_results.py)):
 - PostgreSQL/S3 integration (placeholder implementations with examples)
 - File archiving with timestamps
 - Dry-run mode for testing
@@ -106,11 +106,9 @@ python -m idi_company_info.query_company_info \
   --batch-file output/company_batch_tracking.json \
   --batch-size 5000
 
-# Stage 4: Save and archive
-python -m idi_company_info.save_result \
+# Stage 4: Export to database/storage
+python -m idi_company_info.export_results \
   --input-file output/company_info.json \
-  --source-file data/input.parquet \
-  --archive-directory archive \
   --dry-run
 ```
 
@@ -143,8 +141,6 @@ docker-compose up -d
 docker-compose run --rm orchestrator
 ```
 
-See [SCHEDULING.md](SCHEDULING.md) for scheduling configuration.
-
 ### Management
 
 ```bash
@@ -170,39 +166,43 @@ docker compose restart scheduler
 
 For the orchestrator service (manual runs), `.env` changes are picked up automatically on each `docker compose run --rm orchestrator` invocation.
 
-## Alternative: systemd Service
+## Alternative: Docker Compose as systemd Service
 
-For non-Docker deployments, create `/etc/systemd/system/idi-pipeline.service`:
+To run the Docker Compose stack as a systemd service (start on boot, manage lifecycle), create `/etc/systemd/system/idi-pipeline-docker.service`:
 
 ```ini
 [Unit]
-Description=IDI Company Information Pipeline
-After=network.target
+Description=IDI Company Information Pipeline (Docker Compose)
+After=docker.service network-online.target
+Requires=docker.service
 
 [Service]
-Type=simple
-User=datauser
+Type=oneshot
+RemainAfterExit=yes
 WorkingDirectory=/opt/idi-company-information
-Environment="PERMID_API_KEY=your-key"
-Environment="GEONAMES_USER=your-user"
-ExecStart=/opt/idi-company-information/.venv/bin/python -m idi_company_info.orchestrator \
-  --input-file /data/shareholder_tracker.parquet \
-  --output-directory /data/output \
-  --archive-directory /data/archive \
-  --permid-api-key $PERMID_API_KEY \
-  --geonames-user $GEONAMES_USER
-Restart=always
-RestartSec=10
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=300
 
 [Install]
 WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl enable idi-pipeline
-sudo systemctl start idi-pipeline
-journalctl -u idi-pipeline -f              # View logs
+# Copy project to /opt/idi-company-information and configure .env
+sudo cp -r . /opt/idi-company-information
+sudo nano /opt/idi-company-information/.env   # Set PERMID_API_KEY, GEONAMES_USER, INPUT_FILE_PATH
+
+sudo systemctl daemon-reload
+sudo systemctl enable idi-pipeline-docker
+sudo systemctl start idi-pipeline-docker
+sudo systemctl status idi-pipeline-docker     # Verify stack is running
+
+# Manual orchestrator run
+cd /opt/idi-company-information && docker compose run --rm orchestrator
 ```
+
+**Note:** Ensure Docker is installed and the user has permission to run `docker compose`. The service starts the scheduler and autoheal containers; the orchestrator runs on schedule or via manual `docker compose run`.
 
 ## Monitoring
 
@@ -222,15 +222,16 @@ docker ps
 ls -lth data/output data/archive
 ```
 
-**systemd:**
+**systemd (Docker Compose service):**
 ```bash
-journalctl -u idi-pipeline -f              # View logs
-systemctl status idi-pipeline               # Check status
+journalctl -u idi-pipeline-docker -f         # View service logs
+systemctl status idi-pipeline-docker        # Check status
+# Container logs: docker logs -f idi-company-info-scheduler
 ```
 
 ## Database/S3 Integration
 
-See [save_result.py](src/idi_company_info/save_result.py) for placeholder implementations:
+See [export_results.py](src/idi_company_info/export_results.py) for placeholder implementations:
 - PostgreSQL: Install `psycopg2-binary`, uncomment `save_to_postgres()`
 - S3: Install `boto3`, uncomment `upload_to_s3()`
 
