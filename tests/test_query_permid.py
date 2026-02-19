@@ -279,7 +279,7 @@ class TestProcessBatch:
             "https://permid.org/1-5000051856"
         ]
 
-        results, processed, stats = query_permid.process_batch(
+        results, processed, stats = query_permid.process_cik_batch(
             mock_session,
             cik_data,
             investors_to_process,
@@ -312,7 +312,7 @@ class TestProcessBatch:
             None  # Failed query
         ]
 
-        results, processed, stats = query_permid.process_batch(
+        results, processed, stats = query_permid.process_cik_batch(
             mock_session,
             cik_data,
             investors_to_process,
@@ -344,7 +344,7 @@ class TestProcessBatch:
             "https://permid.org/1-5000051854"
         ]
 
-        results, processed, stats = query_permid.process_batch(
+        results, processed, stats = query_permid.process_cik_batch(
             mock_session,
             cik_data,
             investors_to_process,
@@ -359,10 +359,10 @@ class TestProcessBatch:
 class TestMain:
     """Tests for main function"""
 
-    @patch("idi_company_info.query_permid.print_stats")
+    @patch("idi_company_info.query_permid.print_cik_stats")
     @patch("idi_company_info.query_permid.save_batch_tracking")
     @patch("idi_company_info.query_permid.save_results")
-    @patch("idi_company_info.query_permid.process_batch")
+    @patch("idi_company_info.query_permid.process_cik_batch")
     @patch("idi_company_info.query_permid.create_session")
     @patch("idi_company_info.query_permid.get_unprocessed_investors")
     @patch("idi_company_info.query_permid.load_existing_results")
@@ -385,6 +385,7 @@ class TestMain:
         """Test main function integration"""
         # Setup mocks
         mock_args = Mock()
+        mock_args.type = "cik"
         mock_args.api_key = "test-api-key"
         mock_args.input_file = pathlib.Path("/fake/input.json")
         mock_args.output_file = pathlib.Path("/fake/output.json")
@@ -420,6 +421,7 @@ class TestMain:
         mock_save_batch.assert_called_once()
         mock_print_stats.assert_called_once()
 
+    @patch("idi_company_info.query_permid.create_session")
     @patch("idi_company_info.query_permid.get_unprocessed_investors")
     @patch("idi_company_info.query_permid.load_existing_results")
     @patch("idi_company_info.query_permid.load_batch_tracking")
@@ -431,11 +433,13 @@ class TestMain:
         mock_load_cik,
         mock_load_batch,
         mock_load_results,
-        mock_get_unprocessed
+        mock_get_unprocessed,
+        mock_create_session
     ):
         """Test main when all investors are already processed"""
         # Setup mocks
         mock_args = Mock()
+        mock_args.type = "cik"
         mock_get_args.return_value = mock_args
 
         mock_load_cik.return_value = {"Company A": ["0001234567"]}
@@ -449,3 +453,440 @@ class TestMain:
         # Should return early without processing
         mock_get_args.assert_called_once()
         mock_get_unprocessed.assert_called_once()
+
+# ============================================================================
+# Tests for Record Matching Mode
+# ============================================================================
+
+class TestLoadRecordData:
+    """Tests for load_record_data function"""
+
+    def test_load_record_data_success(self):
+        """Test successful loading of record data"""
+        mock_data = {
+            "APPLE INC": {"ticker": "AAPL", "mic": None},
+            "ACTIVE BIOTECH AB": {"ticker": "ACTI", "mic": "XSTO"}
+        }
+
+        m = mock_open(read_data=json.dumps(mock_data))
+        with patch("builtins.open", m):
+            result = query_permid.load_record_data(pathlib.Path("/fake/records.json"))
+
+        assert result == mock_data
+        assert len(result) == 2
+
+
+class TestBuildRecordMatchCsv:
+    """Tests for _build_record_match_csv function"""
+
+    def test_build_csv_with_ticker_and_mic(self):
+        """Test CSV building with both ticker and MIC"""
+        records = [
+            {"local_id": "0", "name": "ACTIVE BIOTECH AB", "ticker": "ACTI", "mic": "XSTO"}
+        ]
+
+        csv_result = query_permid._build_record_match_csv(records)
+
+        assert "LocalID" in csv_result
+        assert "Name" in csv_result
+        assert "Standard Identifier" in csv_result
+        assert "ACTIVE BIOTECH AB" in csv_result
+        assert "Ticker:ACTI&&MIC:XSTO" in csv_result
+
+    def test_build_csv_with_ticker_only(self):
+        """Test CSV building with ticker but no MIC"""
+        records = [
+            {"local_id": "0", "name": "APPLE INC", "ticker": "AAPL", "mic": None}
+        ]
+
+        csv_result = query_permid._build_record_match_csv(records)
+
+        assert "Ticker:AAPL" in csv_result
+        assert "&&MIC:" not in csv_result  # No MIC should be present
+
+    def test_build_csv_multiple_records(self):
+        """Test CSV building with multiple records"""
+        records = [
+            {"local_id": "0", "name": "APPLE INC", "ticker": "AAPL", "mic": None},
+            {"local_id": "1", "name": "ACTIVE BIOTECH AB", "ticker": "ACTI", "mic": "XSTO"}
+        ]
+
+        csv_result = query_permid._build_record_match_csv(records)
+
+        # Count rows (header + 2 data rows = 3 lines)
+        lines = csv_result.strip().split('\n')
+        assert len(lines) == 3
+        assert "APPLE INC" in csv_result
+        assert "ACTIVE BIOTECH AB" in csv_result
+
+
+class TestParseRecordMatchResponse:
+    """Tests for _parse_record_match_response function"""
+
+    def test_parse_response_with_matches(self):
+        """Test parsing response with successful matches"""
+        json_response = {
+            "outputContentResponse": [
+                {
+                    "Input_LocalID": "0",
+                    "Match Level": "Excellent",
+                    "Match InstrumentPermID": "https://permid.org/1-21523463320"
+                },
+                {
+                    "Input_LocalID": "1",
+                    "Match Level": "Good",
+                    "Match InstrumentPermID": "https://permid.org/1-21475135515"
+                }
+            ]
+        }
+
+        results = query_permid._parse_record_match_response(json_response)
+
+        assert len(results) == 2
+        assert results[0]["local_id"] == "0"
+        assert results[0]["permid"] == "https://permid.org/1-21523463320"
+        assert results[0]["match_level"] == "Excellent"
+        assert results[1]["permid"] == "https://permid.org/1-21475135515"
+
+    def test_parse_response_with_no_match(self):
+        """Test parsing response with No Match"""
+        json_response = {
+            "outputContentResponse": [
+                {
+                    "Input_LocalID": "0",
+                    "Match Level": "No Match",
+                    "Match InstrumentPermID": ""
+                }
+            ]
+        }
+
+        results = query_permid._parse_record_match_response(json_response)
+
+        assert len(results) == 1
+        assert results[0]["permid"] is None
+        assert results[0]["match_level"] == "No Match"
+
+    def test_parse_response_with_org_permid(self):
+        """Test parsing response with OrgPermID instead of InstrumentPermID"""
+        json_response = {
+            "outputContentResponse": [
+                {
+                    "Input_LocalID": "0",
+                    "Match Level": "Excellent",
+                    "Match OrgPermID": "https://permid.org/1-5000051854",
+                    "Match InstrumentPermID": ""
+                }
+            ]
+        }
+
+        results = query_permid._parse_record_match_response(json_response)
+
+        assert results[0]["permid"] == "https://permid.org/1-5000051854"
+
+
+class TestQueryRecordBatch:
+    """Tests for _query_record_batch function"""
+
+    def test_query_batch_success(self):
+        """Test successful batch query"""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "outputContentResponse": [
+                {
+                    "Input_LocalID": "0",
+                    "Match Level": "Excellent",
+                    "Match InstrumentPermID": "https://permid.org/1-21523463320"
+                }
+            ]
+        }
+        mock_session.post.return_value = mock_response
+
+        batch_records = [
+            {"local_id": "0", "name": "APPLE INC", "ticker": "AAPL", "mic": None}
+        ]
+
+        results = query_permid._query_record_batch(
+            mock_session, batch_records, "test-api-key", attempt=1
+        )
+
+        assert results is not None
+        assert len(results) == 1
+        assert results[0]["permid"] == "https://permid.org/1-21523463320"
+        mock_session.post.assert_called_once()
+
+    def test_query_batch_request_exception(self):
+        """Test handling of request exceptions"""
+        mock_session = Mock()
+        mock_session.post.side_effect = requests.exceptions.RequestException("API Error")
+
+        batch_records = [
+            {"local_id": "0", "name": "APPLE INC", "ticker": "AAPL", "mic": None}
+        ]
+
+        results = query_permid._query_record_batch(
+            mock_session, batch_records, "test-api-key", attempt=1
+        )
+
+        assert results is None
+
+    def test_query_batch_http_error(self):
+        """Test handling of HTTP errors"""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500")
+        mock_session.post.return_value = mock_response
+
+        batch_records = [
+            {"local_id": "0", "name": "APPLE INC", "ticker": "AAPL", "mic": None}
+        ]
+
+        results = query_permid._query_record_batch(
+            mock_session, batch_records, "test-api-key", attempt=1
+        )
+
+        assert results is None
+
+
+class TestProcessRecordBatch:
+    """Tests for process_record_batch function"""
+
+    @patch("idi_company_info.query_permid._query_record_batch")
+    def test_process_record_batch_success(self, mock_query_batch):
+        """Test successful record batch processing"""
+        mock_session = Mock()
+        mock_query_batch.return_value = [
+            {"local_id": "0", "permid": "https://permid.org/1-21523463320", "match_level": "Excellent"},
+            {"local_id": "1", "permid": "https://permid.org/1-21475135515", "match_level": "Good"}
+        ]
+
+        record_data = {
+            "APPLE INC": {"ticker": "AAPL", "mic": None, "local_id": 0},
+            "ACTIVE BIOTECH AB": {"ticker": "ACTI", "mic": "XSTO", "local_id": 1}
+        }
+
+        results, processed, stats = query_permid.process_record_batch(
+            mock_session,
+            record_data,
+            list(record_data.keys()),
+            "test-api-key"
+        )
+
+        assert len(results) == 2
+        assert "APPLE INC" in results
+        assert "ACTIVE BIOTECH AB" in results
+        assert results["APPLE INC"] == "https://permid.org/1-21523463320"
+        assert stats["successful_matches"] == 2
+        assert stats["no_matches"] == 0
+
+    @patch("idi_company_info.query_permid._query_record_batch")
+    def test_process_record_batch_with_no_matches(self, mock_query_batch):
+        """Test processing with some no matches"""
+        mock_session = Mock()
+        mock_query_batch.return_value = [
+            {"local_id": "0", "permid": "https://permid.org/1-21523463320", "match_level": "Excellent"},
+            {"local_id": "1", "permid": None, "match_level": "No Match"}
+        ]
+
+        record_data = {
+            "APPLE INC": {"ticker": "AAPL", "mic": None, "local_id": 0},
+            "UNKNOWN CORP": {"ticker": "UNKN", "mic": None, "local_id": 1}
+        }
+
+        results, processed, stats = query_permid.process_record_batch(
+            mock_session,
+            record_data,
+            list(record_data.keys()),
+            "test-api-key"
+        )
+
+        assert len(results) == 1  # Only one match
+        assert "APPLE INC" in results
+        assert "UNKNOWN CORP" not in results
+        assert stats["successful_matches"] == 1
+        assert stats["no_matches"] == 1
+
+    @patch("time.sleep")
+    @patch("idi_company_info.query_permid._query_record_batch")
+    def test_process_record_batch_with_retry(self, mock_query_batch, mock_sleep):
+        """Test batch processing with retry logic"""
+        mock_session = Mock()
+        # First attempt fails, second succeeds
+        mock_query_batch.side_effect = [
+            None,  # First attempt fails
+            [{"local_id": "0", "permid": "https://permid.org/1-21523463320", "match_level": "Excellent"}]
+        ]
+
+        record_data = {
+            "APPLE INC": {"ticker": "AAPL", "mic": None, "local_id": 0}
+        }
+
+        results, processed, stats = query_permid.process_record_batch(
+            mock_session,
+            record_data,
+            list(record_data.keys()),
+            "test-api-key"
+        )
+
+        assert len(results) == 1
+        assert stats["retries"] == 1
+        assert mock_query_batch.call_count == 2
+
+
+class TestMainRecordMode:
+    """Tests for main function in record mode"""
+
+    @patch("idi_company_info.query_permid.print_record_stats")
+    @patch("idi_company_info.query_permid.save_batch_tracking")
+    @patch("idi_company_info.query_permid.save_results")
+    @patch("idi_company_info.query_permid.process_record_batch")
+    @patch("idi_company_info.query_permid.create_session")
+    @patch("idi_company_info.query_permid.get_unprocessed_investors")
+    @patch("idi_company_info.query_permid.load_existing_results")
+    @patch("idi_company_info.query_permid.load_batch_tracking")
+    @patch("idi_company_info.query_permid.load_record_data")
+    @patch("idi_company_info.query_permid.get_args")
+    def test_main_record_mode(
+        self,
+        mock_get_args,
+        mock_load_record,
+        mock_load_batch,
+        mock_load_results,
+        mock_get_unprocessed,
+        mock_create_session,
+        mock_process_batch,
+        mock_save_results,
+        mock_save_batch,
+        mock_print_stats
+    ):
+        """Test main function in record mode"""
+        # Setup mocks
+        mock_args = Mock()
+        mock_args.type = "record"
+        mock_args.api_key = "test-api-key"
+        mock_args.input_file = pathlib.Path("/fake/records.json")
+        mock_args.output_file = pathlib.Path("/fake/output.json")
+        mock_args.batch_file = pathlib.Path("/fake/batch.json")
+        mock_args.batch_size = 5000
+        mock_get_args.return_value = mock_args
+
+        mock_load_record.return_value = {"APPLE INC": {"ticker": "AAPL", "mic": None, "local_id": 0}}
+        mock_load_batch.return_value = {}
+        mock_load_results.return_value = {}
+        mock_get_unprocessed.return_value = ["APPLE INC"]
+
+        mock_session = Mock()
+        mock_create_session.return_value = mock_session
+
+        mock_batch_results = {"APPLE INC": "https://permid.org/1-21523463320"}
+        mock_processed = ["APPLE INC"]
+        mock_stats = {"total_issuers": 1, "successful_matches": 1}
+        mock_process_batch.return_value = (mock_batch_results, mock_processed, mock_stats)
+
+        # Run main
+        query_permid.main()
+
+        # Verify calls
+        mock_get_args.assert_called_once()
+        mock_load_record.assert_called_once()
+        mock_load_batch.assert_called_once()
+        mock_load_results.assert_called_once()
+        mock_get_unprocessed.assert_called_once()
+        mock_create_session.assert_called_once()
+        mock_process_batch.assert_called_once()
+        mock_save_results.assert_called_once()
+        mock_save_batch.assert_called_once()
+        mock_print_stats.assert_called_once()
+
+    @patch("idi_company_info.query_permid.get_unprocessed_investors")
+    @patch("idi_company_info.query_permid.load_existing_results")
+    @patch("idi_company_info.query_permid.load_batch_tracking")
+    @patch("idi_company_info.query_permid.load_record_data")
+    @patch("idi_company_info.query_permid.get_args")
+    def test_main_record_mode_all_processed(
+        self,
+        mock_get_args,
+        mock_load_record,
+        mock_load_batch,
+        mock_load_results,
+        mock_get_unprocessed
+    ):
+        """Test main in record mode when all issuers are already processed"""
+        # Setup mocks
+        mock_args = Mock()
+        mock_args.type = "record"
+        mock_args.batch_size = 5000
+        mock_get_args.return_value = mock_args
+
+        mock_load_record.return_value = {"APPLE INC": {"ticker": "AAPL", "mic": None, "local_id": 0}}
+        mock_load_batch.return_value = {}
+        mock_load_results.return_value = {}
+        mock_get_unprocessed.return_value = []  # All processed
+
+        # Run main
+        query_permid.main()
+
+        # Should return early without processing
+        mock_get_args.assert_called_once()
+        mock_get_unprocessed.assert_called_once()
+
+    @patch("idi_company_info.query_permid.print_record_stats")
+    @patch("idi_company_info.query_permid.save_batch_tracking")
+    @patch("idi_company_info.query_permid.save_results")
+    @patch("idi_company_info.query_permid.process_record_batch")
+    @patch("idi_company_info.query_permid.create_session")
+    @patch("idi_company_info.query_permid.get_unprocessed_investors")
+    @patch("idi_company_info.query_permid.load_existing_results")
+    @patch("idi_company_info.query_permid.load_batch_tracking")
+    @patch("idi_company_info.query_permid.load_record_data")
+    @patch("idi_company_info.query_permid.get_args")
+    def test_main_record_mode_respects_batch_size(
+        self,
+        mock_get_args,
+        mock_load_record,
+        mock_load_batch,
+        mock_load_results,
+        mock_get_unprocessed,
+        mock_create_session,
+        mock_process_batch,
+        mock_save_results,
+        mock_save_batch,
+        mock_print_stats
+    ):
+        """Test that batch_size limits the number of issuers processed"""
+        # Setup mocks
+        mock_args = Mock()
+        mock_args.type = "record"
+        mock_args.api_key = "test-api-key"
+        mock_args.input_file = pathlib.Path("/fake/records.json")
+        mock_args.output_file = pathlib.Path("/fake/output.json")
+        mock_args.batch_file = pathlib.Path("/fake/batch.json")
+        mock_args.batch_size = 10  # Only process 10 at a time
+        mock_get_args.return_value = mock_args
+
+        # 50 unprocessed issuers, but batch_size is 10
+        record_data = {f"COMPANY_{i}": {"ticker": f"TKR{i}", "mic": None, "local_id": i} for i in range(50)}
+        unprocessed = list(record_data.keys())
+
+        mock_load_record.return_value = record_data
+        mock_load_batch.return_value = {}
+        mock_load_results.return_value = {}
+        mock_get_unprocessed.return_value = unprocessed
+
+        mock_session = Mock()
+        mock_create_session.return_value = mock_session
+
+        mock_batch_results = {f"COMPANY_{i}": f"https://permid.org/1-{i}" for i in range(10)}
+        mock_processed = list(mock_batch_results.keys())
+        mock_stats = {"total_issuers": 10, "successful_matches": 10}
+        mock_process_batch.return_value = (mock_batch_results, mock_processed, mock_stats)
+
+        # Run main
+        query_permid.main()
+
+        # Verify that process_record_batch was called with only 10 issuers
+        mock_process_batch.assert_called_once()
+        call_args = mock_process_batch.call_args
+        issuers_to_process = call_args[0][2]  # Third positional argument
+        assert len(issuers_to_process) == 10  # Should only process 10, not all 50
