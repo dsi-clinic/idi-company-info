@@ -439,9 +439,11 @@ class TestOrchestratorIntegration:
             }
         )
         assert "-m" in cmd1
-        assert "idi_company_info.retrieve_cik" in cmd1
+        assert "idi_company_info.retrieve_identifiers" in cmd1
         assert "--input-file" in cmd1
         assert "test.parquet" in cmd1
+        assert "--type" in cmd1
+        assert "cik" in cmd1
 
         # Test Stage 2 command (query_permids)
         stage2 = pipeline.stages[1]
