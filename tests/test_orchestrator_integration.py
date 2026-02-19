@@ -170,10 +170,11 @@ class TestOrchestratorIntegration:
         """
         assert test_parquet_file.exists(), f"Test file not found: {test_parquet_file}"
 
-        # Configure pipeline
+        # Configure pipeline (CIK mode for integration test)
         config = orchestrator.PipelineConfig(
             input_file=test_parquet_file,
             output_directory=test_data_dir / "output",
+            pipeline_type="cik",
             batch_size=10,  # Process all 10 rows in one batch
             permid_api_key="fake-api-key-for-testing",
             geonames_user="fake-user-for-testing",
@@ -186,13 +187,35 @@ class TestOrchestratorIntegration:
         # Create orchestrator
         pipeline = orchestrator.PipelineOrchestrator(config)
 
-        # Prepare output paths
+        # Prepare output paths (type-aware to keep CIK and record data separate)
+        is_cik = config.pipeline_type == "cik"
         output_paths = {
-            "cik_file": config.output_directory / orchestrator.PipelineConfig.CIK_DATA_FILE,
-            "permid_file": config.output_directory / orchestrator.PipelineConfig.PERMID_DATA_FILE,
-            "permid_batch_file": config.output_directory / orchestrator.PipelineConfig.PERMID_BATCH_TRACKING_FILE,
-            "company_file": config.output_directory / orchestrator.PipelineConfig.COMPANY_INFO_FILE,
-            "company_batch_file": config.output_directory / orchestrator.PipelineConfig.COMPANY_BATCH_TRACKING_FILE,
+            "cik_file": config.output_directory
+            / (orchestrator.PipelineConfig.CIK_DATA_FILE if is_cik else orchestrator.PipelineConfig.RECORD_DATA_FILE),
+            "permid_file": config.output_directory
+            / (
+                orchestrator.PipelineConfig.PERMID_DATA_CIK_FILE
+                if is_cik
+                else orchestrator.PipelineConfig.PERMID_DATA_RECORD_FILE
+            ),
+            "permid_batch_file": config.output_directory
+            / (
+                orchestrator.PipelineConfig.PERMID_BATCH_TRACKING_CIK_FILE
+                if is_cik
+                else orchestrator.PipelineConfig.PERMID_BATCH_TRACKING_RECORD_FILE
+            ),
+            "company_file": config.output_directory
+            / (
+                orchestrator.PipelineConfig.COMPANY_INFO_CIK_FILE
+                if is_cik
+                else orchestrator.PipelineConfig.COMPANY_INFO_RECORD_FILE
+            ),
+            "company_batch_file": config.output_directory
+            / (
+                orchestrator.PipelineConfig.COMPANY_BATCH_TRACKING_CIK_FILE
+                if is_cik
+                else orchestrator.PipelineConfig.COMPANY_BATCH_TRACKING_RECORD_FILE
+            ),
         }
 
         return config, pipeline, output_paths
@@ -210,6 +233,7 @@ class TestOrchestratorIntegration:
         """
         status, error = pipeline.stages[0].execute(
             **{
+                "type": config.pipeline_type,
                 "input-file": str(config.input_file),
                 "output-file": str(cik_file)
             }
@@ -244,6 +268,7 @@ class TestOrchestratorIntegration:
         """
         status, error = pipeline.stages[1].execute(
             **{
+                "type": config.pipeline_type,
                 "api-key": config.permid_api_key,
                 "input-file": str(cik_file),
                 "output-file": str(permid_file),
@@ -383,6 +408,7 @@ class TestOrchestratorIntegration:
         config = orchestrator.PipelineConfig(
             input_file=test_parquet_file,
             output_directory=test_data_dir / "output",
+            pipeline_type="cik",
             batch_size=5,
             permid_api_key="test-key",
             geonames_user="test-user",
@@ -409,6 +435,7 @@ class TestOrchestratorIntegration:
         config = orchestrator.PipelineConfig(
             input_file=test_data_dir / "nonexistent.parquet",
             output_directory=test_data_dir / "output",
+            pipeline_type="cik",
             batch_size=10,
             permid_api_key="test-api-key",
             geonames_user="test-user"
@@ -424,6 +451,7 @@ class TestOrchestratorIntegration:
         config = orchestrator.PipelineConfig(
             input_file=test_parquet_file,
             output_directory=test_data_dir / "output",
+            pipeline_type="cik",
             batch_size=10,
             permid_api_key="my-api-key",
             geonames_user="my-user"
@@ -435,6 +463,7 @@ class TestOrchestratorIntegration:
         stage1 = pipeline.stages[0]
         cmd1 = stage1.build_command(
             **{
+                "type": "cik",
                 "input-file": "test.parquet",
                 "output-file": "test_cik.json"
             }
@@ -450,6 +479,7 @@ class TestOrchestratorIntegration:
         stage2 = pipeline.stages[1]
         cmd2 = stage2.build_command(
             **{
+                "type": "cik",
                 "api-key": "my-key",
                 "input-file": "cik.json",
                 "output-file": "permid.json",
@@ -460,5 +490,48 @@ class TestOrchestratorIntegration:
         assert "idi_company_info.query_permid" in cmd2
         assert "--api-key" in cmd2
         assert "my-key" in cmd2
+        assert "--type" in cmd2
+        assert "cik" in cmd2
         assert "--batch-size" in cmd2
         assert "10" in cmd2
+
+    def test_orchestrator_record_mode_command_building(self, test_data_dir, test_parquet_file):
+        """Test that record mode builds correct commands with record_data.json."""
+        config = orchestrator.PipelineConfig(
+            input_file=test_parquet_file,
+            output_directory=test_data_dir / "output",
+            pipeline_type="record",
+            batch_size=10,
+            permid_api_key="my-api-key",
+            geonames_user="my-user"
+        )
+
+        pipeline = orchestrator.PipelineOrchestrator(config)
+
+        # Stage 1 in record mode should output record_data.json and pass --type record
+        stage1 = pipeline.stages[0]
+        cmd1 = stage1.build_command(
+            **{
+                "type": "record",
+                "input-file": "test.parquet",
+                "output-file": str(config.output_directory / "record_data.json")
+            }
+        )
+        assert "--type" in cmd1
+        assert "record" in cmd1
+        assert "record_data.json" in " ".join(cmd1)
+
+        # Stage 2 in record mode should pass --type record
+        stage2 = pipeline.stages[1]
+        cmd2 = stage2.build_command(
+            **{
+                "type": "record",
+                "api-key": "my-key",
+                "input-file": "record.json",
+                "output-file": "permid.json",
+                "batch-file": "batch.json",
+                "batch-size": "10"
+            }
+        )
+        assert "--type" in cmd2
+        assert "record" in cmd2

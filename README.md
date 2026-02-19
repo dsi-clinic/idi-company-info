@@ -32,14 +32,18 @@ Get credentials from:
 export PERMID_API_KEY='your-key'
 export GEONAMES_USER='your-username'
 
+# CIK mode (Entity Search)
 python -m idi_company_info.orchestrator \
   --input-file /path/to/shareholder_tracker.parquet \
   --output-directory output \
-  --archive-directory archive \
+  --type cik \
   --permid-api-key $PERMID_API_KEY \
   --geonames-user $GEONAMES_USER \
   --batch-size 5000 \
   --threshold-days 30
+
+# Record mode (ticker-based Record Match)
+# python -m idi_company_info.orchestrator ... --type record
 
 # Optional: add database/S3 storage
 # --postgres-connection "postgresql://user:pass@host:5432/db"

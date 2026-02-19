@@ -34,6 +34,17 @@ class StageStatus(Enum):
 
 
 @dataclass
+class PipelinePaths:
+    """Output file paths for a pipeline run (varies by CIK vs record mode)."""
+
+    identifiers: pathlib.Path
+    permid: pathlib.Path
+    permid_batch: pathlib.Path
+    company: pathlib.Path
+    company_batch: pathlib.Path
+
+
+@dataclass
 class StageConfig:
     """Configuration for a pipeline stage."""
     name: str
@@ -50,15 +61,21 @@ class PipelineConfig:
     """Configuration for the entire pipeline."""
 
     # Output file name constants (class-level, not instance attributes)
-    CIK_DATA_FILE: ClassVar[str] = "cik_data.json"
-    PERMID_DATA_FILE: ClassVar[str] = "permid_data.json"
-    PERMID_BATCH_TRACKING_FILE: ClassVar[str] = "permid_batch_tracking.json"
-    COMPANY_INFO_FILE: ClassVar[str] = "company_info.json"
-    COMPANY_BATCH_TRACKING_FILE: ClassVar[str] = "company_batch_tracking.json"
+    CIK_DATA_FILE: ClassVar[str] = "identifier_cik.json"
+    RECORD_DATA_FILE: ClassVar[str] = "identifier_record.json"
+    PERMID_DATA_CIK_FILE: ClassVar[str] = "permid_data_cik.json"
+    PERMID_DATA_RECORD_FILE: ClassVar[str] = "permid_data_record.json"
+    PERMID_BATCH_TRACKING_CIK_FILE: ClassVar[str] = "permid_batch_tracking_cik.json"
+    PERMID_BATCH_TRACKING_RECORD_FILE: ClassVar[str] = "permid_batch_tracking_record.json"
+    COMPANY_INFO_CIK_FILE: ClassVar[str] = "company_info_cik.json"
+    COMPANY_INFO_RECORD_FILE: ClassVar[str] = "company_info_record.json"
+    COMPANY_BATCH_TRACKING_CIK_FILE: ClassVar[str] = "company_batch_tracking_cik.json"
+    COMPANY_BATCH_TRACKING_RECORD_FILE: ClassVar[str] = "company_batch_tracking_record.json"
 
     # Instance configuration
     input_file: pathlib.Path
     output_directory: pathlib.Path
+    pipeline_type: str  # "cik" or "record"
     batch_size: int
     permid_api_key: str
     geonames_user: str
@@ -179,19 +196,24 @@ class PipelineOrchestrator:
             StageConfig(
                 name="extract_ciks",
                 module="idi_company_info.retrieve_identifiers",
-                required_args=["input-file", "output-file"],
-                optional_args={"type": "cik"},
-                output_file="cik_data.json"
+                required_args=["type", "input-file", "output-file"],
+                optional_args={},
+                output_file=(
+                    PipelineConfig.CIK_DATA_FILE
+                    if self.config.pipeline_type == "cik"
+                    else PipelineConfig.RECORD_DATA_FILE
+                )
             ),
             StageConfig(
                 name="query_permids",
                 module="idi_company_info.query_permid",
-                required_args=["api-key", "input-file", "output-file", "batch-file"],
-                optional_args={
-                    "type": "cik",
-                    "batch-size": str(self.config.batch_size)
-                },
-                output_file="permid_data.json"
+                required_args=["type", "api-key", "input-file", "output-file", "batch-file"],
+                optional_args={"batch-size": str(self.config.batch_size)},
+                output_file=(
+                    PipelineConfig.PERMID_DATA_CIK_FILE
+                    if self.config.pipeline_type == "cik"
+                    else PipelineConfig.PERMID_DATA_RECORD_FILE
+                )
             ),
             StageConfig(
                 name="query_company_info",
@@ -201,7 +223,11 @@ class PipelineOrchestrator:
                     "batch-size": str(self.config.batch_size),
                     "threshold-days": str(self.config.threshold_days) if self.config.threshold_days else None
                 },
-                output_file="company_info.json"
+                output_file=(
+                    PipelineConfig.COMPANY_INFO_CIK_FILE
+                    if self.config.pipeline_type == "cik"
+                    else PipelineConfig.COMPANY_INFO_RECORD_FILE
+                )
             ),
             StageConfig(
                 name="export_results",
@@ -218,6 +244,39 @@ class PipelineOrchestrator:
 
         return [StageExecutor(cfg, self.config) for cfg in stage_configs]
 
+    def _get_output_paths(self, output_dir: pathlib.Path) -> PipelinePaths:
+        """Build output paths for the current pipeline type (CIK vs record)."""
+        is_cik = self.config.pipeline_type == "cik"
+        return PipelinePaths(
+            identifiers=output_dir / (
+                PipelineConfig.CIK_DATA_FILE if is_cik else PipelineConfig.RECORD_DATA_FILE
+            ),
+            permid=output_dir / (
+                PipelineConfig.PERMID_DATA_CIK_FILE if is_cik else PipelineConfig.PERMID_DATA_RECORD_FILE
+            ),
+            permid_batch=output_dir / (
+                PipelineConfig.PERMID_BATCH_TRACKING_CIK_FILE
+                if is_cik
+                else PipelineConfig.PERMID_BATCH_TRACKING_RECORD_FILE
+            ),
+            company=output_dir / (
+                PipelineConfig.COMPANY_INFO_CIK_FILE if is_cik else PipelineConfig.COMPANY_INFO_RECORD_FILE
+            ),
+            company_batch=output_dir / (
+                PipelineConfig.COMPANY_BATCH_TRACKING_CIK_FILE
+                if is_cik
+                else PipelineConfig.COMPANY_BATCH_TRACKING_RECORD_FILE
+            ),
+        )
+
+    def _execute_stage(self, index: int, name: str, **kwargs) -> bool:
+        """Run a pipeline stage. Return True on success, False on failure."""
+        status, error = self.stages[index].execute(**kwargs)
+        if status != StageStatus.SUCCESS:
+            self.logger.error(f"{name} failed: {error}")
+            return False
+        return True
+
     def run_pipeline(self) -> bool:
         """
         Execute all pipeline stages in sequence for the configured input file.
@@ -225,101 +284,79 @@ class PipelineOrchestrator:
         Returns:
             True if all stages succeeded, False otherwise
         """
-        input_file = self.config.input_file
-
-        # Validate input file exists
-        if not input_file.exists():
-            self.logger.error(f"Input file does not exist: {input_file}")
+        if not self.config.input_file.exists():
+            self.logger.error(f"Input file does not exist: {self.config.input_file}")
             return False
 
         self.logger.info("=" * 80)
-        self.logger.info(f"Starting pipeline for: {input_file}")
+        self.logger.info(f"Starting pipeline for: {self.config.input_file}")
         self.logger.info("=" * 80)
-
         start_time = datetime.now()
 
-        # Prepare output paths
         output_dir = self.config.output_directory
         output_dir.mkdir(parents=True, exist_ok=True)
+        paths = self._get_output_paths(output_dir)
 
-        cik_file = output_dir / PipelineConfig.CIK_DATA_FILE
-        permid_file = output_dir / PipelineConfig.PERMID_DATA_FILE
-        permid_batch_file = output_dir / PipelineConfig.PERMID_BATCH_TRACKING_FILE
-        company_file = output_dir / PipelineConfig.COMPANY_INFO_FILE
-        company_batch_file = output_dir / PipelineConfig.COMPANY_BATCH_TRACKING_FILE
-
-        # Stage 1: Extract CIKs
-        status, error = self.stages[0].execute(
-            **{
-                "input-file": str(input_file),
-                "output-file": str(cik_file)
-            }
-        )
-
-        if status != StageStatus.SUCCESS:
-            self.logger.error(f"Stage 1 failed: {error}")
+        # Stage 1: Extract identifiers
+        if not self._execute_stage(
+            0,
+            "Stage 1 (Extract identifiers)",
+            **{"type": self.config.pipeline_type, "input-file": str(self.config.input_file), "output-file": str(paths.identifiers)},
+        ):
             return False
 
         # Stage 2: Query PermIDs
-        status, error = self.stages[1].execute(
+        if not self._execute_stage(
+            1,
+            "Stage 2 (Query PermIDs)",
             **{
+                "type": self.config.pipeline_type,
                 "api-key": self.config.permid_api_key,
-                "input-file": str(cik_file),
-                "output-file": str(permid_file),
-                "batch-file": str(permid_batch_file),
-                "batch-size": str(self.config.batch_size)
-            }
-        )
-
-        if status != StageStatus.SUCCESS:
-            self.logger.error(f"Stage 2 failed: {error}")
+                "input-file": str(paths.identifiers),
+                "output-file": str(paths.permid),
+                "batch-file": str(paths.permid_batch),
+                "batch-size": str(self.config.batch_size),
+            },
+        ):
             return False
 
         # Stage 3: Query Company Info
-        stage3_args = {
+        stage3_kwargs = {
             "api-key": self.config.permid_api_key,
             "geonames-user": self.config.geonames_user,
-            "input-file": str(permid_file),
-            "output-file": str(company_file),
-            "batch-file": str(company_batch_file),
-            "batch-size": str(self.config.batch_size)
+            "input-file": str(paths.permid),
+            "output-file": str(paths.company),
+            "batch-file": str(paths.company_batch),
+            "batch-size": str(self.config.batch_size),
         }
-
-        # Add threshold-days if configured
         if self.config.threshold_days is not None:
-            stage3_args["threshold-days"] = str(self.config.threshold_days)
-
-        status, error = self.stages[2].execute(**stage3_args)
-
-        if status != StageStatus.SUCCESS:
-            self.logger.error(f"Stage 3 failed: {error}")
+            stage3_kwargs["threshold-days"] = str(self.config.threshold_days)
+        if not self._execute_stage(2, "Stage 3 (Query Company Info)", **stage3_kwargs):
             return False
 
         # Stage 4: Save Results
-        status, error = self.stages[3].execute(
+        if not self._execute_stage(
+            3,
+            "Stage 4 (Save Results)",
             **{
-                "input-file": str(company_file),
+                "input-file": str(paths.company),
                 "postgres-connection": self.config.postgres_connection,
                 "s3-bucket": self.config.s3_bucket,
-                "s3-prefix": self.config.s3_prefix
-            }
-        )
-
-        if status != StageStatus.SUCCESS:
-            self.logger.error(f"Stage 4 (export results) failed: {error}")
+                "s3-prefix": self.config.s3_prefix,
+            },
+        ):
             return False
 
-        elapsed_time = datetime.now() - start_time
         self.logger.info("=" * 80)
-        self.logger.info(f"Pipeline completed successfully in {elapsed_time}")
-        self.logger.info(f"Output file: {company_file}")
+        self.logger.info(f"Pipeline completed successfully in {datetime.now() - start_time}")
+        self.logger.info(f"Output file: {paths.company}")
         self.logger.info("=" * 80)
-
         return True
 
     def run(self):
         """Run the orchestrator once for the specified input file."""
         self.logger.info("Starting Pipeline Orchestrator")
+        self.logger.info(f"Pipeline type: {self.config.pipeline_type}")
         self.logger.info(f"Input file: {self.config.input_file}")
         self.logger.info(f"Output directory: {self.config.output_directory}")
         self.logger.info(f"Batch size: {self.config.batch_size}")
@@ -361,6 +398,14 @@ def get_args():
         type=pathlib.Path,
         required=True,
         help="Directory for output files"
+    )
+
+    parser.add_argument(
+        "--type",
+        type=str,
+        choices=["cik", "record"],
+        required=True,
+        help="Pipeline mode: 'cik' for CIK-based Entity Search, 'record' for ticker-based Record Match"
     )
 
     parser.add_argument(
@@ -421,6 +466,7 @@ def main():
     config = PipelineConfig(
         input_file=args.input_file,
         output_directory=args.output_directory,
+        pipeline_type=args.type,
         batch_size=args.batch_size,
         permid_api_key=args.permid_api_key,
         geonames_user=args.geonames_user,
