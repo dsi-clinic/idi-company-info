@@ -676,7 +676,12 @@ class TestProcessRecordBatch:
         assert len(results) == 2
         assert "APPLE INC" in results
         assert "ACTIVE BIOTECH AB" in results
-        assert results["APPLE INC"] == "https://permid.org/1-21523463320"
+        assert results["APPLE INC"]["ticker"] == "AAPL"
+        assert results["APPLE INC"]["mic"] is None
+        assert results["APPLE INC"]["permid"] == "https://permid.org/1-21523463320"
+        assert results["ACTIVE BIOTECH AB"]["ticker"] == "ACTI"
+        assert results["ACTIVE BIOTECH AB"]["mic"] == "XSTO"
+        assert results["ACTIVE BIOTECH AB"]["permid"] == "https://permid.org/1-21475135515"
         assert stats["successful_matches"] == 2
         assert stats["no_matches"] == 0
 
