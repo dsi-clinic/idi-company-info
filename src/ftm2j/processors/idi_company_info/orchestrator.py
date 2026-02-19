@@ -12,6 +12,7 @@ Supports configurable retry logic, error handling, and batch processing.
 """
 
 import argparse
+import os
 import pathlib
 import subprocess
 import sys
@@ -146,8 +147,14 @@ class StageExecutor:
                 cmd = self.build_command(**kwargs)
                 self.logger.debug(f"Command: {' '.join(cmd)}")
 
-                # Stream output to parent's stdout/stderr (no capture)
-                subprocess.run(cmd, check=True)
+                # Run from project root with PYTHONPATH so subprocess finds idi_company_info
+                project_root = pathlib.Path(__file__).resolve().parent.parent.parent
+                src_path = project_root / "src"
+                env = os.environ.copy()
+                env["PYTHONPATH"] = str(src_path) + (
+                    os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+                )
+                subprocess.run(cmd, check=True, cwd=project_root, env=env)
 
                 self.logger.info(f"{self.config.name} completed successfully")
                 return StageStatus.SUCCESS, None
@@ -195,7 +202,7 @@ class PipelineOrchestrator:
         """
         stage_configs = [
             StageConfig(
-                name="extract_ciks",
+                name="retrieve_identifiers",
                 module="idi_company_info.retrieve_identifiers",
                 required_args=["type", "input-file", "output-file"],
                 optional_args={},

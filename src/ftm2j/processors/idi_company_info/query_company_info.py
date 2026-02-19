@@ -547,21 +547,21 @@ def load_permid_data(input_file: pathlib.Path) -> dict[str, list[dict[str, Any]]
     Supports both CIK and Record input formats.
     Returns empty dict when input is empty (e.g. no PermIDs found in prior stage).
     """
-    logging.info(f"Loading PermID data from: {input_file}")
+    logger.info(f"Loading PermID data from: {input_file}")
     with open(input_file) as f:
         data = json.load(f)
 
     if not data:
-        logging.info("Input data is empty (no entities with PermIDs)")
+        logger.info("Input data is empty (no entities with PermIDs)")
         return {}
 
     # Detect format
     format_type = detect_input_format(data)
-    logging.info(f"Detected input format: {format_type}")
+    logger.info(f"Detected input format: {format_type}")
 
     # Normalize to unified format
     normalized_data = normalize_to_unified_format(data, format_type)
-    logging.info(f"Loaded {len(normalized_data)} entities with PermID data")
+    logger.info(f"Loaded {len(normalized_data)} entities with PermID data")
 
     return normalized_data
 
@@ -592,7 +592,7 @@ def process_investor(
     if len(unified_permid_data) > 1:
         stats["investors_with_multiple_permids"] += 1
         permid_list = [item["permid"] for item in unified_permid_data]
-        logging.warning(f"  Multiple PermIDs for {investor_name}: {permid_list}")
+        logger.warning(f"  Multiple PermIDs for {investor_name}: {permid_list}")
 
     # Query each PermID for this entity
     investor_results = []
@@ -603,11 +603,11 @@ def process_investor(
         # Log identifier info
         if item["ciks"]:
             ciks_str = ", ".join(item["ciks"])
-            logging.info(f"  Querying PermID: {permid_url} (CIKs: {ciks_str})")
+            logger.info(f"  Querying PermID: {permid_url} (CIKs: {ciks_str})")
         elif item["ticker"]:
-            logging.info(f"  Querying PermID: {permid_url} (Ticker: {item['ticker']})")
+            logger.info(f"  Querying PermID: {permid_url} (Ticker: {item['ticker']})")
         else:
-            logging.info(f"  Querying PermID: {permid_url}")
+            logger.info(f"  Querying PermID: {permid_url}")
 
         company_info = query_permid_entity(session, permid_url, api_key, geonames_user)
 

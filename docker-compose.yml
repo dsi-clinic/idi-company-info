@@ -16,7 +16,7 @@ services:
   scheduler:
     build:
       context: .
-      dockerfile: Dockerfile.scheduler
+      dockerfile: dockerfiles/Dockerfile.scheduler
     container_name: idi-company-info-scheduler
     command: daemon --docker
     volumes:
@@ -54,7 +54,7 @@ services:
   orchestrator-cik:
     build:
       context: .
-      dockerfile: Dockerfile.orchestrator
+      dockerfile: dockerfiles/Dockerfile.orchestrator
     container_name: idi-company-info-orchestrator-cik
 
     profiles:
@@ -98,7 +98,7 @@ services:
   orchestrator-record:
     build:
       context: .
-      dockerfile: Dockerfile.orchestrator
+      dockerfile: dockerfiles/Dockerfile.orchestrator
     container_name: idi-company-info-orchestrator-record
 
     profiles:

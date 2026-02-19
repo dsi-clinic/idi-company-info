@@ -310,9 +310,8 @@ def process_cik_batch(
 
     return results, processed_investors, stats
 
-<<<<<<< HEAD
-def print_stats(stats: dict, batch_stats: dict):
-    """Print statistics about the processing."""
+def print_cik_stats(stats: dict, batch_stats: dict):
+    """Print statistics about CIK processing."""
     logger.info("=" * 60)
     logger.info("BATCH STATISTICS")
     logger.info("=" * 60)
@@ -325,23 +324,6 @@ def print_stats(stats: dict, batch_stats: dict):
     logger.info(f"Total PermIDs found: {batch_stats['total_permids']}")
     logger.info(f"Duplicates removed: {batch_stats['duplicates_removed']}")
     logger.info(f"Duplicate CIKs removed: {batch_stats['duplicates_removed_cik']}")
-=======
-
-def print_cik_stats(stats: dict, batch_stats: dict):
-    """Print statistics about CIK processing."""
-    logging.info("=" * 60)
-    logging.info("BATCH STATISTICS")
-    logging.info("=" * 60)
-    logging.info(f"Investors processed: {batch_stats['total_investors']}")
-    logging.info(f"CIKs queried: {batch_stats['total_ciks_queried']}")
-    logging.info(f"Successful queries: {batch_stats['successful_queries']}")
-    logging.info(f"Failed queries: {batch_stats['failed_queries']}")
-    logging.info(f"Investors with PermID: {batch_stats['investors_with_permid']}")
-    logging.info(f"Investors without PermID: {batch_stats['investors_without_permid']}")
-    logging.info(f"Total PermIDs found: {batch_stats['total_permids']}")
-    logging.info(f"Duplicates removed: {batch_stats['duplicates_removed']}")
-    logging.info(f"Duplicate CIKs removed: {batch_stats['duplicates_removed_cik']}")
->>>>>>> d7c7661 (Update query PermID to record match for issuer stock ticker data)
 
     logger.info("=" * 60)
     logger.info("CUMULATIVE STATISTICS")
@@ -369,10 +351,10 @@ def load_record_data(input_file: pathlib.Path) -> dict[str, dict]:
         ...
     }
     """
-    logging.info(f"Loading issuer record data from: {input_file}")
+    logger.info(f"Loading issuer record data from: {input_file}")
     with open(input_file) as f:
         data = json.load(f)
-    logging.info(f"Loaded {len(data)} issuers")
+    logger.info(f"Loaded {len(data)} issuers")
     return data
 
 
@@ -485,7 +467,7 @@ def _query_record_batch(
         session: requests Session object
         batch_records: List of records to match
         api_key: PermID API access token
-        attempt: Current attempt number (for logging)
+        attempt: Current attempt number (for logger)
 
     Returns:
         List of results or None if failed
@@ -500,7 +482,7 @@ def _query_record_batch(
 
     csv_data = _build_record_match_csv(batch_records)
 
-    logging.debug(f"Batch CSV (attempt {attempt}):\n{csv_data[:500]}...")
+    logger.debug(f"Batch CSV (attempt {attempt}):\n{csv_data[:500]}...")
 
     try:
         response = session.post(
@@ -516,7 +498,7 @@ def _query_record_batch(
         return results
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error querying batch (attempt {attempt}): {e}")
+        logger.error(f"Error querying batch (attempt {attempt}): {e}")
         return None
 
 
@@ -562,13 +544,13 @@ def process_record_batch(
 
     # Process in batches of 100
     total_batches = (len(all_records) + RECORD_BATCH_SIZE - 1) // RECORD_BATCH_SIZE
-    logging.info(f"Processing {len(all_records)} issuers in {total_batches} batches")
+    logger.info(f"Processing {len(all_records)} issuers in {total_batches} batches")
 
     for batch_idx in range(0, len(all_records), RECORD_BATCH_SIZE):
         batch_records = all_records[batch_idx:batch_idx + RECORD_BATCH_SIZE]
         batch_num = (batch_idx // RECORD_BATCH_SIZE) + 1
 
-        logging.info(f"[Batch {batch_num}/{total_batches}] Processing {len(batch_records)} issuers")
+        logger.info(f"[Batch {batch_num}/{total_batches}] Processing {len(batch_records)} issuers")
 
         # Retry logic
         batch_results = None
@@ -579,12 +561,12 @@ def process_record_batch(
                 break
 
             if attempt < RECORD_MAX_RETRIES:
-                logging.warning(f"Retrying batch {batch_num} (attempt {attempt + 1}/{RECORD_MAX_RETRIES})...")
+                logger.warning(f"Retrying batch {batch_num} (attempt {attempt + 1}/{RECORD_MAX_RETRIES})...")
                 stats["retries"] += 1
                 time.sleep(RECORD_BATCH_DELAY)
 
         if batch_results is None:
-            logging.error(f"Batch {batch_num} failed after {RECORD_MAX_RETRIES} attempts")
+            logger.error(f"Batch {batch_num} failed after {RECORD_MAX_RETRIES} attempts")
             stats["failed_batches"] += 1
             continue
 
@@ -619,10 +601,10 @@ def process_record_batch(
                     "input_name": input_name
                 }
                 stats["successful_matches"] += 1
-                logging.info(f"  {issuer_name} -> {match_org_name} | {permid} ({match_level})")
+                logger.info(f"  {issuer_name} -> {match_org_name} | {permid} ({match_level})")
             else:
                 stats["no_matches"] += 1
-                logging.warning(f"  {issuer_name} ({issuer_data.get('ticker')}) -> No match ({match_level}, {match_score})")
+                logger.warning(f"  {issuer_name} ({issuer_data.get('ticker')}) -> No match ({match_level}, {match_score})")
 
             processed_issuers.append(issuer_name)
 
@@ -635,21 +617,21 @@ def process_record_batch(
 
 def print_record_stats(stats: dict, batch_stats: dict):
     """Print statistics about record processing."""
-    logging.info("=" * 60)
-    logging.info("BATCH STATISTICS")
-    logging.info("=" * 60)
-    logging.info(f"Issuers processed: {batch_stats['total_issuers']}")
-    logging.info(f"Batches sent: {batch_stats['total_batches']}")
-    logging.info(f"Successful matches: {batch_stats['successful_matches']}")
-    logging.info(f"No matches: {batch_stats['no_matches']}")
-    logging.info(f"Failed batches: {batch_stats['failed_batches']}")
-    logging.info(f"Retries: {batch_stats['retries']}")
+    logger.info("=" * 60)
+    logger.info("BATCH STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Issuers processed: {batch_stats['total_issuers']}")
+    logger.info(f"Batches sent: {batch_stats['total_batches']}")
+    logger.info(f"Successful matches: {batch_stats['successful_matches']}")
+    logger.info(f"No matches: {batch_stats['no_matches']}")
+    logger.info(f"Failed batches: {batch_stats['failed_batches']}")
+    logger.info(f"Retries: {batch_stats['retries']}")
 
-    logging.info("=" * 60)
-    logging.info("CUMULATIVE STATISTICS")
-    logging.info("=" * 60)
-    logging.info(f"Total issuers with PermID: {len(stats)}")
-    logging.info("=" * 60)
+    logger.info("=" * 60)
+    logger.info("CUMULATIVE STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Total issuers with PermID: {len(stats)}")
+    logger.info("=" * 60)
 
 
 # ============================================================================
@@ -707,16 +689,6 @@ def main():
     # Create session
     session = create_session()
 
-<<<<<<< HEAD
-    if not unprocessed_investors:
-        logger.info("All investors have been processed!")
-        return
-
-    if args.batch_size > len(unprocessed_investors):
-        logger.warning(
-            f"Batch size ({args.batch_size}) is larger than remaining investors "
-            f"({len(unprocessed_investors)}). Processing all remaining investors."
-=======
     if args.type == "cik":
         # CIK MODE
         # Load data
@@ -726,11 +698,11 @@ def main():
         unprocessed_investors = get_unprocessed_investors(cik_data, batch_tracking)
 
         if not unprocessed_investors:
-            logging.info("All investors have been processed!")
+            logger.info("All investors have been processed!")
             return
 
         if args.batch_size > len(unprocessed_investors):
-            logging.warning(
+            logger.warning(
                 f"Batch size ({args.batch_size}) is larger than remaining investors "
                 f"({len(unprocessed_investors)}). Processing all remaining investors."
             )
@@ -742,7 +714,6 @@ def main():
             unprocessed_investors,
             args.batch_size,
             args.api_key
->>>>>>> d7c7661 (Update query PermID to record match for issuer stock ticker data)
         )
 
         # Save and print stats
@@ -766,11 +737,11 @@ def main():
         unprocessed_issuers = get_unprocessed_investors(record_data, batch_tracking)
 
         if not unprocessed_issuers:
-            logging.info("All issuers have been processed!")
+            logger.info("All issuers have been processed!")
             return
 
         if args.batch_size > len(unprocessed_issuers):
-            logging.warning(
+            logger.warning(
                 f"Batch size ({args.batch_size}) is larger than remaining issuers "
                 f"({len(unprocessed_issuers)}). Processing all remaining issuers."
             )
