@@ -445,61 +445,188 @@ def query_permid_entity(
         logger.error(f"Error querying PermID {permid_url}: {e}")
         return None
 
-def load_permid_data(input_file: pathlib.Path) -> dict[str, list[dict[str, list[str] | str]]]:
-    """Load PermID data from JSON file."""
-    logger.info(f"Loading PermID data from: {input_file}")
+def detect_input_format(data: dict) -> str:
+    """
+    Detect whether input data is in CIK or Record format.
+
+    Args:
+        data: Loaded JSON data
+
+    Returns:
+        "cik" or "record"
+    """
+    if not data:
+        raise ValueError("Empty input data")
+
+    # Get first value to inspect structure
+    first_value = next(iter(data.values()))
+
+    # CIK format: value is a list of dicts with "ciks" and "permid"
+    if isinstance(first_value, list):
+        return "cik"
+
+    # Record format: value is a dict with "ticker", "permid", etc.
+    if isinstance(first_value, dict) and "ticker" in first_value:
+        return "record"
+
+    raise ValueError(f"Unknown input format. Expected CIK or Record format.")
+
+
+def normalize_to_unified_format(
+    data: dict,
+    format_type: str
+) -> dict[str, list[dict[str, Any]]]:
+    """
+    Normalize input data to unified internal format.
+
+    Unified format structure:
+    {
+      "entity_name": [
+        {
+          "permid": "url",
+          "ciks": ["123"] or None,
+          "ticker": "AAPL" or None,
+          "mic": "XNAS" or None,
+          "match_org_name": "..." or None,
+          "match_score": "100%" or None,
+          "match_level": "Excellent" or None,
+          "input_standard_identifier": "Ticker:AAPL" or None,
+          "input_name": "..." or None
+        }
+      ]
+    }
+
+    Args:
+        data: Raw input data
+        format_type: "cik" or "record"
+
+    Returns:
+        Normalized data in unified format
+    """
+    normalized = {}
+
+    if format_type == "cik":
+        # CIK format is already close to unified, just add null fields
+        for entity_name, permid_list in data.items():
+            normalized[entity_name] = []
+            for item in permid_list:
+                normalized[entity_name].append({
+                    "permid": item.get("permid"),
+                    "ciks": item.get("ciks"),
+                    "ticker": None,
+                    "mic": None,
+                    "match_org_name": None,
+                    "match_score": None,
+                    "match_level": None,
+                    "input_standard_identifier": None,
+                    "input_name": None
+                })
+
+    elif format_type == "record":
+        # Record format needs to be converted to list structure
+        for entity_name, record_data in data.items():
+            normalized[entity_name] = [{
+                "permid": record_data.get("permid"),
+                "ciks": None,
+                "ticker": record_data.get("ticker"),
+                "mic": record_data.get("mic"),
+                "match_org_name": record_data.get("match_org_name"),
+                "match_score": record_data.get("match_score"),
+                "match_level": record_data.get("match_level"),
+                "input_standard_identifier": record_data.get("input_standard_identifier"),
+                "input_name": record_data.get("input_name")
+            }]
+
+    return normalized
+
+
+def load_permid_data(input_file: pathlib.Path) -> dict[str, list[dict[str, Any]]]:
+    """
+    Load PermID data from JSON file and normalize to unified format.
+
+    Supports both CIK and Record input formats.
+    Returns empty dict when input is empty (e.g. no PermIDs found in prior stage).
+    """
+    logging.info(f"Loading PermID data from: {input_file}")
     with open(input_file) as f:
         data = json.load(f)
-    logger.info(f"Loaded {len(data)} investors with PermID data")
-    return data
+
+    if not data:
+        logging.info("Input data is empty (no entities with PermIDs)")
+        return {}
+
+    # Detect format
+    format_type = detect_input_format(data)
+    logging.info(f"Detected input format: {format_type}")
+
+    # Normalize to unified format
+    normalized_data = normalize_to_unified_format(data, format_type)
+    logging.info(f"Loaded {len(normalized_data)} entities with PermID data")
+
+    return normalized_data
 
 def process_investor(
     session: requests.Session,
     investor_name: str,
-    cik_permid_pairs: list[dict[str, list[str] | str]],
+    unified_permid_data: list[dict[str, Any]],
     api_key: str,
     geonames_user: str,
     stats: dict
 ) -> list[dict[str, Any]]:
     """
-    Process a single investor by querying all their PermIDs.
+    Process a single entity by querying all their PermIDs.
 
     Args:
         session: requests Session object
-        investor_name: Name of the investor
-        cik_permid_pairs: List of dicts with CIKs (list) and PermID pairs
+        investor_name: Name of the entity (investor or issuer)
+        unified_permid_data: List of dicts in unified format with permid, ciks, ticker, etc.
         api_key: API access token
         geonames_user: Geonames API username
         stats: Statistics dictionary to update
 
     Returns:
-        List of company information dictionaries
+        List of company information dictionaries with all unified fields
     """
     stats["total_investors"] += 1
 
-    if len(cik_permid_pairs) > 1:
+    if len(unified_permid_data) > 1:
         stats["investors_with_multiple_permids"] += 1
-        permid_list = [pair["permid"] for pair in cik_permid_pairs]
-        logger.warning(f"  Multiple PermIDs for {investor_name}: {permid_list}")
+        permid_list = [item["permid"] for item in unified_permid_data]
+        logging.warning(f"  Multiple PermIDs for {investor_name}: {permid_list}")
 
-    # Query each PermID for this investor
+    # Query each PermID for this entity
     investor_results = []
-    for pair in cik_permid_pairs:
-        ciks = pair["ciks"]  # a list of CIKs
-        permid_url = pair["permid"]
+    for item in unified_permid_data:
+        permid_url = item["permid"]
         stats["total_permids_queried"] += 1
 
-        # Log all CIKs that map to this PermID
-        ciks_str = ", ".join(ciks)
-        logger.info(f"  Querying PermID: {permid_url} (CIKs: {ciks_str})")
+        # Log identifier info
+        if item["ciks"]:
+            ciks_str = ", ".join(item["ciks"])
+            logging.info(f"  Querying PermID: {permid_url} (CIKs: {ciks_str})")
+        elif item["ticker"]:
+            logging.info(f"  Querying PermID: {permid_url} (Ticker: {item['ticker']})")
+        else:
+            logging.info(f"  Querying PermID: {permid_url}")
+
         company_info = query_permid_entity(session, permid_url, api_key, geonames_user)
 
         if company_info:
             stats["successful_queries"] += 1
-            # Add the original investor name, CIKs, and processing timestamp
+            # Add the original entity name and processing timestamp
             company_info["original_investor_name"] = investor_name
-            company_info["ciks"] = ciks  # Store as list
             company_info["last_processed"] = datetime.now().isoformat()
+
+            # Add all unified fields (null for missing fields)
+            company_info["ciks"] = item["ciks"]
+            company_info["ticker"] = item["ticker"]
+            company_info["mic"] = item["mic"]
+            company_info["match_org_name"] = item["match_org_name"]
+            company_info["match_score"] = item["match_score"]
+            company_info["match_level"] = item["match_level"]
+            company_info["input_standard_identifier"] = item["input_standard_identifier"]
+            company_info["input_name"] = item["input_name"]
+
             investor_results.append(company_info)
             logger.info(f"  Successfully retrieved info for PermID {permid_url}")
         else:
@@ -543,21 +670,21 @@ def process_batch(
     logger.info(f"Processing batch of {len(batch)} investors")
 
     for idx, investor_name in enumerate(batch, 1):
-        cik_permid_pairs = permid_data[investor_name]
-        # Filter out pairs where PermID is None
-        cik_permid_pairs = [pair for pair in cik_permid_pairs if pair.get("permid") is not None]
+        unified_permid_data = permid_data[investor_name]
+        # Filter out items where PermID is None
+        unified_permid_data = [item for item in unified_permid_data if item.get("permid") is not None]
 
-        if not cik_permid_pairs:
+        if not unified_permid_data:
             logger.warning(f"[{idx}/{len(batch)}] Skipping {investor_name}: No valid PermIDs")
             investor_results = [ None ]
 
         else:
             logger.info(
-                f"[{idx}/{len(batch)}] Processing: {investor_name} ({len(cik_permid_pairs)} PermID(s))"
+                f"[{idx}/{len(batch)}] Processing: {investor_name} ({len(unified_permid_data)} PermID(s))"
             )
-            # Process this investor
+            # Process this entity
             investor_results = process_investor(
-                session, investor_name, cik_permid_pairs, api_key, geonames_user, stats
+                session, investor_name, unified_permid_data, api_key, geonames_user, stats
             )
 
         # Store all results for this investor

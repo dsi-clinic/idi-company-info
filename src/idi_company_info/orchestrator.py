@@ -187,7 +187,10 @@ class PipelineOrchestrator:
                 name="query_permids",
                 module="idi_company_info.query_permid",
                 required_args=["api-key", "input-file", "output-file", "batch-file"],
-                optional_args={"batch-size": str(self.config.batch_size)},
+                optional_args={
+                    "type": "cik",
+                    "batch-size": str(self.config.batch_size)
+                },
                 output_file="permid_data.json"
             ),
             StageConfig(

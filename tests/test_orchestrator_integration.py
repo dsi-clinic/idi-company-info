@@ -270,8 +270,9 @@ class TestOrchestratorIntegration:
         assert len(permid_batch_data) > 0, "Should have batch tracking data"
 
         # Check that all investors were processed
+        # query_permid uses "processed_items" (CIK/record mode); query_company_info uses "processed_investors"
         total_processed = sum(
-            len(batch_info.get("processed_investors", []))
+            len(batch_info.get("processed_investors") or batch_info.get("processed_items") or [])
             for batch_info in permid_batch_data.values()
         )
         assert total_processed == 10, "All 10 investors should be processed"
