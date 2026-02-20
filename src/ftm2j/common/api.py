@@ -4,6 +4,7 @@
 from abc import ABC, abstractmethod
 from functools import cached_property
 import logging
+from typing import Any
 
 # Third party imports
 import requests
@@ -51,7 +52,7 @@ class ApiClient(ABC):
             total=self.max_retries,
             backoff_factor=self.RETRY_BACKOFF_FACTOR,  # Wait 1, 2, 4 seconds between retries
             status_forcelist=self.RETRY_STATUS_FORCELIST,
-            allowed_methods=["GET"]
+            allowed_methods=["GET", "POST"]
         )
 
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -80,7 +81,7 @@ class ApiClient(ABC):
         return response
 
 
-    def post(self, url: str, data: dict = None, headers: dict = None) -> requests.Response:
+    def post(self, url: str, data: str | dict = None, headers: dict = None) -> requests.Response:
         """Post a resource to the API.
 
         Args:
@@ -100,8 +101,48 @@ class ApiClient(ABC):
         return response
 
 
+    def _query_with_error_handling(self, url: str, data: str | dict = None, params: dict = None,
+                                   headers: dict = None, method: str = "get") -> dict[str, Any]:
+        """Query an endpoint with error handling.
+
+        Args:
+            url: The URL to query.
+            data: The data to post to the API.
+            params: The parameters to pass to the API.
+            headers: The headers to pass to the API.
+            method: The method to use to query the API.
+
+        Returns:
+            The data from the API.
+        """
+        response, error = None, None
+        try:
+            if method == "get":
+                response = self.get(url=url, params=params, headers=headers)
+            elif method == "post":
+                response = self.post(url=url, data=data, headers=headers)
+            else:
+                error = f"Invalid method provided for {url}: {method}"
+                self.logger.error(error)
+
+        except requests.exceptions.RequestException as e:
+            error = f"Error querying {url}: {e}"
+            self.logger.error(error)
+
+        response_data = {}
+        if response is not None:
+            response_data.update({
+                "status_code": response.status_code,
+                "url": response.url,
+                "data": response.json()
+            })
+        if error is not None:
+            response_data.update({"error": error})
+
+        return response_data
+
     @abstractmethod
-    def query_endpoint(self) -> requests.Response:
+    def query_endpoint(self, **kwargs) -> dict[str, Any]:
         """Query an endpoint."""
         ...
 
@@ -110,17 +151,6 @@ class LsegEntitySearch(ApiClient):
     """API client for the LSEG Entity Search API."""
 
     ENTITY_SEARCH_URL = "https://api-eit.refinitiv.com/permid/search"
-
-    def __init__(self, api_key: str, max_retries: int = 3, logger: logging.Logger = None):
-        """
-        Initialize the LsegEntitySearch.
-
-        Args:
-            api_key: The API key.
-            max_retries: The maximum number of retries.
-            logger: The logger to use.
-        """
-        super().__init__(api_key=api_key, max_retries=max_retries, logger=logger)
 
     def query_endpoint(self, params: dict) -> dict:
         """Query the LSEG Entity Search API.
@@ -136,39 +166,13 @@ class LsegEntitySearch(ApiClient):
             "Accept": "application/json",
             "User-Agent": self.USER_AGENT,
         }
-
-        response = None
-        try:
-            response = self.get(url=self.ENTITY_SEARCH_URL, params=params, headers=headers)
-            data = {"data": response.json()}
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error querying LSEG Entity Search API: {e}")
-            data = {"error": str(e)}
-
-        if response is not None:
-            data.update({
-                "status_code": response.status_code,
-                "url": response.url
-            })
-
-        return data
+        return self._query_with_error_handling(url=self.ENTITY_SEARCH_URL, params=params, headers=headers, method="get")
 
 
 class LsegRecordMatch(ApiClient):
     """API client for the LSEG Record Match API."""
 
     RECORD_MATCH_URL = "https://api-eit.refinitiv.com/permid/match"
-
-    def __init__(self, api_key: str, max_retries: int = 3, logger: logging.Logger = None):
-        """
-        Initialize the LsegRecordMatch.
-
-        Args:
-            api_key: The API key.
-            max_retries: The maximum number of retries.
-            logger: The logger to use.
-        """
-        super().__init__(api_key=api_key, max_retries=max_retries, logger=logger)
 
     def query_endpoint(self, csv_data: str) -> dict:
         """Query the LSEG Record Match API.
@@ -187,37 +191,11 @@ class LsegRecordMatch(ApiClient):
             "x-openmatch-dataType": "Organization",
             "User-Agent": self.USER_AGENT,
         }
-
-        response = None
-        try:
-            response = self.post(url=self.RECORD_MATCH_URL, data=csv_data, headers=headers)
-            data = {"data": response.json()}
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error querying LSEG Record Match API: {e}")
-            data = {"error": str(e)}
-
-        if response is not None:
-            data.update({
-                "status_code": response.status_code,
-                "url": response.url
-            })
-
-        return data
+        return self._query_with_error_handling(url=self.RECORD_MATCH_URL, data=csv_data, headers=headers, method="post")
 
 
 class LSEGEntityLookup(ApiClient):
     """API client for the LSEG Entity Lookup API."""
-
-    def __init__(self, api_key: str, max_retries: int = 3, logger: logging.Logger = None):
-        """
-        Initialize the LSEGEntityLookup.
-
-        Args:
-            api_key: The API key.
-            max_retries: The maximum number of retries.
-            logger: The logger to use.
-        """
-        super().__init__(api_key=api_key, max_retries=max_retries, logger=logger)
 
     def query_endpoint(self, permid_url: str) -> dict:
         """Query the LSEG Entity Lookup API.
@@ -233,19 +211,26 @@ class LSEGEntityLookup(ApiClient):
             "Accept": "application/ld+json",
         }
         params = {"format": "json-ld"}
+        return self._query_with_error_handling(url=permid_url, params=params, headers=headers, method="get")
 
-        response = None
-        try:
-            response = self.get(url=permid_url, headers=headers, params=params)
-            data = {"data": response.json()}
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error querying LSEG Entity Lookup API: {e}")
-            data = {"error": str(e)}
 
-        if response is not None:
-            data.update({
-            "status_code": response.status_code,
-            "url": response.url
-        })
+class GeonamesApi(ApiClient):
+    """API client for the Geonames API."""
 
-        return data
+    GEONAMES_API_URL = "http://api.geonames.org/getJSON"
+
+    def query_endpoint(self, geoname_url: str, geonames_user: str) -> dict:
+        """Query the Geonames API.
+
+        Args:
+            params: The parameters to pass to the API.
+        """
+        # Extract geoname ID from URL (e.g., http://sws.geonames.org/6252001/)
+        geoname_id = geoname_url.rstrip('/').split('/')[-1]
+
+        # Query Geonames API with credentials (per https://www.geonames.org/export/web-services.html)
+        params = {
+            "geonameId": geoname_id,
+            "username": geonames_user
+        }
+        return self._query_with_error_handling(url=self.GEONAMES_API_URL, params=params, method="get")
