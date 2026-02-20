@@ -122,26 +122,22 @@ class LsegEntitySearch(ApiClient):
         """
         super().__init__(api_key=api_key, max_retries=max_retries, logger=logger)
 
-    def query_endpoint(self, cik:str) -> dict:
+    def query_endpoint(self, params: dict) -> dict:
         """Query the LSEG Entity Search API.
 
         Args:
-            cik: The CIK to search for.
+            params: The parameters to pass to the API.
 
         Returns:
             The data from the API.
         """
-        params = {
-            "q": f"cik:{cik}",
-            "format": "json",
-        }
-
         headers = {
             "X-AG-Access-Token": self.api_key,
             "Accept": "application/json",
             "User-Agent": self.USER_AGENT,
         }
 
+        response = None
         try:
             response = self.get(url=self.ENTITY_SEARCH_URL, params=params, headers=headers)
             data = {"data": response.json()}
@@ -149,10 +145,11 @@ class LsegEntitySearch(ApiClient):
             self.logger.error(f"Error querying LSEG Entity Search API: {e}")
             data = {"error": str(e)}
 
-        data.update({
-            "status_code": response.status_code,
-            "url": response.url
-        })
+        if response is not None:
+            data.update({
+                "status_code": response.status_code,
+                "url": response.url
+            })
 
         return data
 
@@ -178,6 +175,9 @@ class LsegRecordMatch(ApiClient):
 
         Args:
             csv_data: The CSV data to search for.
+
+        Returns:
+            The data from the API.
         """
         headers = {
             "accept": "application/json",
@@ -188,6 +188,7 @@ class LsegRecordMatch(ApiClient):
             "User-Agent": self.USER_AGENT,
         }
 
+        response = None
         try:
             response = self.post(url=self.RECORD_MATCH_URL, data=csv_data, headers=headers)
             data = {"data": response.json()}
@@ -195,7 +196,54 @@ class LsegRecordMatch(ApiClient):
             self.logger.error(f"Error querying LSEG Record Match API: {e}")
             data = {"error": str(e)}
 
-        data.update({
+        if response is not None:
+            data.update({
+                "status_code": response.status_code,
+                "url": response.url
+            })
+
+        return data
+
+
+class LSEGEntityLookup(ApiClient):
+    """API client for the LSEG Entity Lookup API."""
+
+    def __init__(self, api_key: str, max_retries: int = 3, logger: logging.Logger = None):
+        """
+        Initialize the LSEGEntityLookup.
+
+        Args:
+            api_key: The API key.
+            max_retries: The maximum number of retries.
+            logger: The logger to use.
+        """
+        super().__init__(api_key=api_key, max_retries=max_retries, logger=logger)
+
+    def query_endpoint(self, permid_url: str) -> dict:
+        """Query the LSEG Entity Lookup API.
+
+        Args:
+            permid_url: The PermID URL to lookup.
+
+        Returns:
+            The data from the API.
+        """
+        headers = {
+            "X-AG-Access-Token": self.api_key,
+            "Accept": "application/ld+json",
+        }
+        params = {"format": "json-ld"}
+
+        response = None
+        try:
+            response = self.get(url=permid_url, headers=headers, params=params)
+            data = {"data": response.json()}
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error querying LSEG Entity Lookup API: {e}")
+            data = {"error": str(e)}
+
+        if response is not None:
+            data.update({
             "status_code": response.status_code,
             "url": response.url
         })
