@@ -24,7 +24,7 @@ class ApiClient(ABC):
     RETRY_STATUS_FORCELIST: list[int] = [429, 500, 502, 503, 504]
     USER_AGENT: str = "idi-ftm2j"
 
-    def __init__(self, api_key: str, max_retries: int = DEFAULT_MAX_RETRIES, logger: logging.Logger = None):
+    def __init__(self, api_key: str, max_retries: int = DEFAULT_MAX_RETRIES):
         """
         Initialize the ApiClient.
 
@@ -35,7 +35,7 @@ class ApiClient(ABC):
         """
         self.api_key: str = api_key
         self.max_retries: int = max_retries if max_retries is not None else self.DEFAULT_MAX_RETRIES
-        self.logger: logging.Logger = logger if logger is not None else get_logger(__name__)
+        self.logger: logging.Logger = get_logger(__name__)
 
     @cached_property
     def session(self) -> requests.Session:
