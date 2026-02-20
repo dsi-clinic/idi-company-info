@@ -28,7 +28,6 @@ class ApiClient(ABC):
         Initialize the ApiClient.
 
         Args:
-            url: The URL of the API.
             api_key: The API key.
             max_retries: The maximum number of retries.
             logger: The logger to use.
@@ -75,6 +74,26 @@ class ApiClient(ABC):
             url,
             params=params,
             headers=headers,
+            timeout=self.REQUEST_TIMEOUT
+        )
+        response.raise_for_status()
+        return response
+
+
+    def post(self, url: str, data: dict = None, headers: dict = None) -> requests.Response:
+        """Post a resource to the API.
+
+        Args:
+            data: The data to post to the API.
+            headers: The headers to post to the API.
+
+        Returns:
+            The response from the API.
+        """
+        response = self.session.post(
+            url,
+            headers=headers,
+            data=data,
             timeout=self.REQUEST_TIMEOUT
         )
         response.raise_for_status()
@@ -128,6 +147,52 @@ class LsegEntitySearch(ApiClient):
             data = {"data": response.json()}
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error querying LSEG Entity Search API: {e}")
+            data = {"error": str(e)}
+
+        data.update({
+            "status_code": response.status_code,
+            "url": response.url
+        })
+
+        return data
+
+
+class LsegRecordMatch(ApiClient):
+    """API client for the LSEG Record Match API."""
+
+    RECORD_MATCH_URL = "https://api-eit.refinitiv.com/permid/match"
+
+    def __init__(self, api_key: str, max_retries: int = 3, logger: logging.Logger = None):
+        """
+        Initialize the LsegRecordMatch.
+
+        Args:
+            api_key: The API key.
+            max_retries: The maximum number of retries.
+            logger: The logger to use.
+        """
+        super().__init__(api_key=api_key, max_retries=max_retries, logger=logger)
+
+    def query_endpoint(self, csv_data: str) -> dict:
+        """Query the LSEG Record Match API.
+
+        Args:
+            csv_data: The CSV data to search for.
+        """
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "text/plain",
+            "x-ag-access-token": self.api_key,
+            "x-openmatch-numberOfMatchesPerRecord": "1",
+            "x-openmatch-dataType": "Organization",
+            "User-Agent": self.USER_AGENT,
+        }
+
+        try:
+            response = self.post(url=self.RECORD_MATCH_URL, data=csv_data, headers=headers)
+            data = {"data": response.json()}
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error querying LSEG Record Match API: {e}")
             data = {"error": str(e)}
 
         data.update({
