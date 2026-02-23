@@ -8,7 +8,7 @@ from dataclasses import asdict
 import pandas as pd
 
 # Application imports
-from ftm2j.processors.idi_company_info.Identifier import BatchStatsPermid, Identifier, FilePaths, BatchConfig, ApiCredentials
+from ftm2j.processors.idi_company_info.identifier import Identifier, BatchStatsPermid, Identifier, FilePaths, BatchConfig, ApiCredentials
 from ftm2j.common.storage import save_json
 
 class IdentifierCik(Identifier):
