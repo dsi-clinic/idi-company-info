@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from ftm2j.common.api import LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup, GeonamesApi
 from ftm2j.common.logs import get_logger
 from ftm2j.common.batch import BatchProcessing
-from ftm2j.common.storage import load_json
+from ftm2j.common.storage import load_json, save_json
 
 
 @dataclass
@@ -85,6 +85,7 @@ class Identifier(ABC):
             file_paths: The file paths.
             batch_config: The batch config.
             api_credentials: The API credentials.
+            identifier_type: The identifier type.
         """
         self.file_paths = file_paths
         self.batch_config = batch_config
@@ -97,24 +98,31 @@ class Identifier(ABC):
         )
         self.logger = get_logger(__name__)
 
+    @property
+    @abstractmethod
+    def identifier_type(self) -> str:
+        """Get the identifier type."""
+        ...
+
     @abstractmethod
     def load_data(self) -> dict[str, Any]:
-        """Load the data from the input file."""
+        """Load the data from the input file.
+
+        Returns:
+            The data from the input file.
+        """
         ...
 
     @abstractmethod
-    def retrieve_permid(self) -> dict[str, Any]:
-        """Retrieve the PermID for the company."""
-        ...
+    def _build_query_params(self, identifier: str) -> dict[str, Any]:
+        """Build the query parameters.
 
-    @abstractmethod
-    def retrieve_company_info(self) -> list[dict[str, Any]]:
-        """Retrieve the company information."""
-        ...
+        Args:
+            identifier: The identifier.
 
-    @abstractmethod
-    def save_company_info(self) -> list[str]:
-        """Save the company information."""
+        Returns:
+            The query parameters.
+        """
         ...
 
     def process_entities(self, batch_processing: BatchProcessing, entities_to_process: dict[str, Any], existing_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -177,6 +185,60 @@ class Identifier(ABC):
 
         return batch_stats
 
+    def retrieve_permid(self, entity_name: str, entity_data: list[str], batch_stats: BatchStatsPermid) -> dict[str, Any]:
+        """Retrieve the PermID for the company."""
+        batch_stats.total_ids += len(entity_data)
+
+        # Remove duplicate CIKs before processing
+        original_count = len(entity_data)
+        entity_data = list(dict.fromkeys(entity_data))  # Preserves order while removing duplicates
+        if len(entity_data) < original_count:
+            self.logger.info("  Removed %s duplicate CIK(s) for %s", original_count - len(entity_data), entity_name)
+            batch_stats.duplicates_ids_removed += 1
+
+        # Query by CIK for entity PermID
+        permid_data = {}
+        for cik in entity_data:
+            query_params = self._build_query_params(cik)
+            response = self.api_clients.entity_search.query_endpoint(params=query_params)
+            success, permids = self._handle_api_response(
+                response,
+                entity_name,
+                cik,
+                parse_fn=self._parse_permid_entities,
+                error_msg="PermID query error for entity %s with CIK %s: %s",
+                no_match_msg="No PermID found for entity %s with CIK %s",
+            )
+            permid_data[cik] = permids or []
+            if success:
+                batch_stats.total_permids += 1
+            else:
+                batch_stats.total_permid_failed += 1
+
+        return permid_data
+
+    def retrieve_company_info(self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStatsPermid) -> list[dict[str, Any]]:
+        """Retrieve the company information."""
+        company_info = []
+        for cik, permid_list in permid_data.items():
+            for permid in permid_list:
+                response = self.api_clients.entity_lookup.query_endpoint(permid_url=permid)
+                success, company_data = self._handle_api_response(
+                    response,
+                    entity_name,
+                    permid,
+                    parse_fn=self._parse_company_data(entity_name, cik, permid),
+                    error_msg="Company info query error for entity %s with PermID %s: %s",
+                    no_match_msg="No company data found for entity %s with PermID %s",
+                )
+                if success:
+                    company_info.append(company_data)
+                    batch_stats.total_company_info += 1
+                else:
+                    batch_stats.total_company_info_failed += 1
+
+        return company_info
+
     def _handle_api_response(
         self,
         response: dict,
@@ -213,12 +275,12 @@ class Identifier(ABC):
         entities = response.get("data", {}).get("result", {}).get("organizations", {}).get("entities", [])
         return [e.get("@id") for e in entities if e.get("@id")]
 
-    def _parse_company_data(self, entity_name: str, cik: str, permid: str) -> Callable[[dict], dict]:
+    def _parse_company_data(self, entity_name: str, identifier: str, permid: str) -> Callable[[dict], dict]:
         """Return a parse fn that closes over entity_name, cik, permid.
 
         Args:
             entity_name: The entity name.
-            cik: The CIK.
+            identifier: The identifier.
             permid: The PermID.
 
         Returns:
@@ -228,7 +290,7 @@ class Identifier(ABC):
             data = response.get("data")
             if not data:
                 return None
-            return asdict(self._parse_company_info(entity_name, cik, "cik", permid, data))
+            return asdict(self._parse_company_info(entity_name, identifier, self.identifier_type, permid, data))
         return _parse
 
     def _parse_company_info(self, entity_name: str, identifier: list[str], identifier_type: str, permid_id: dict[str, str], response: dict[str, Any]) -> dict[str, Any]:
@@ -269,6 +331,10 @@ class Identifier(ABC):
             batch_stats: The batch stats.
         """
         self.logger.info(f"Batch stats: {asdict(batch_stats)}")
+
+    def save_company_info(self, company_info: list[dict[str, Any]]) -> list[str]:
+        """Save the company information."""
+        save_json(self.file_paths.result_file, company_info)
 
     def run(self):
         """Run the identifier pipeline."""

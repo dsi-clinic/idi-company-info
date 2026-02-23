@@ -8,10 +8,14 @@ from dataclasses import asdict
 import pandas as pd
 
 # Application imports
-from ftm2j.processors.idi_company_info.identifier import Identifier, BatchStatsPermid, Identifier, FilePaths, BatchConfig, ApiCredentials
-from ftm2j.common.storage import save_json
+from ftm2j.processors.idi_company_info.identifier import Identifier
 
 class IdentifierCik(Identifier):
+
+    @property
+    def identifier_type(self) -> str:
+        """Get the identifier type."""
+        return "cik"
 
     @staticmethod
     def _read_parquet(input_file, required_columns):
@@ -60,65 +64,20 @@ class IdentifierCik(Identifier):
         result = self._extract_filter_parquet_cik(df)
         return result
 
-    def retrieve_permid(self, entity_name: str, entity_data: list[str], batch_stats: BatchStatsPermid) -> dict[str, Any]:
-        """Retrieve the PermID for the company."""
-        batch_stats.total_ids += len(entity_data)
+    def _build_query_params(self, identifier: str) -> dict[str, Any]:
+        """Build the query parameters.
+            Args:
+                identifier: The identifier.
 
-        # Remove duplicate CIKs before processing
-        original_count = len(entity_data)
-        entity_data = list(dict.fromkeys(entity_data))  # Preserves order while removing duplicates
-        if len(entity_data) < original_count:
-            self.logger.info("  Removed %s duplicate CIK(s) for %s", original_count - len(entity_data), entity_name)
-            batch_stats.duplicates_ids_removed += 1
-
-        # Query by CIK for entity PermID
-        permid_data = {}
-        for cik in entity_data:
-            response = self.api_clients.entity_search.query_endpoint(params={"q": f"cik:{cik}", "format": "json"})
-            success, permids = self._handle_api_response(
-                response,
-                entity_name,
-                cik,
-                parse_fn=self._parse_permid_entities,
-                error_msg="PermID query error for entity %s with CIK %s: %s",
-                no_match_msg="No PermID found for entity %s with CIK %s",
-            )
-            permid_data[cik] = permids or []
-            if success:
-                batch_stats.total_permids += 1
-            else:
-                batch_stats.total_permid_failed += 1
-
-        return permid_data
-
-    def retrieve_company_info(self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStatsPermid) -> list[dict[str, Any]]:
-        """Retrieve the company information."""
-        company_info = []
-        for cik, permid_list in permid_data.items():
-            for permid in permid_list:
-                response = self.api_clients.entity_lookup.query_endpoint(permid_url=permid)
-                success, company_data = self._handle_api_response(
-                    response,
-                    entity_name,
-                    permid,
-                    parse_fn=self._parse_company_data(entity_name, cik, permid),
-                    error_msg="Company info query error for entity %s with PermID %s: %s",
-                    no_match_msg="No company data found for entity %s with PermID %s",
-                )
-                if success:
-                    company_info.append(company_data)
-                    batch_stats.total_company_info += 1
-                else:
-                    batch_stats.total_company_info_failed += 1
-
-        return company_info
-
-    def save_company_info(self, company_info: list[dict[str, Any]]) -> list[str]:
-        """Save the company information."""
-        save_json(self.file_paths.result_file, company_info)
+            Returns:
+                The query parameters.
+        """
+        return {"q": f"cik:{identifier}", "format": "json"}
 
 
 if __name__ == "__main__":
+    from ftm2j.processors.idi_company_info.identifier import Identifier, FilePaths, BatchConfig, ApiCredentials
+
     identifier = IdentifierCik(
         file_paths=FilePaths(input_file="/Users/REMOVED/Documents/workspace/11hour/ftm2j/data/company-info/shareholder_tracker/shareholder_tracker_release_20251218.parquet",
         result_file="/Users/REMOVED/Documents/workspace/11hour/ftm2j/data/company-info/processing_data/company_info_cik.json",
@@ -132,3 +91,6 @@ if __name__ == "__main__":
         geonames_user="REMOVED")
     )
     identifier.run()
+
+
+    # {"q": f"cik:{cik}", "format": "json"}
