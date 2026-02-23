@@ -219,7 +219,17 @@ class GeonamesApi(ApiClient):
 
     GEONAMES_API_URL = "http://api.geonames.org/getJSON"
 
-    def query_endpoint(self, geoname_url: str, geonames_user: str) -> dict:
+    def __init__(self, api_key: str, geonames_user: str):
+        """Initialize the GeonamesApi.
+
+        Args:
+            api_key: The API key.
+            geonames_user: The Geonames user.
+        """
+        super().__init__(api_key=api_key)
+        self.geonames_user = geonames_user
+
+    def query_endpoint(self, geoname_url: str) -> dict:
         """Query the Geonames API.
 
         Args:
@@ -231,6 +241,6 @@ class GeonamesApi(ApiClient):
         # Query Geonames API with credentials (per https://www.geonames.org/export/web-services.html)
         params = {
             "geonameId": geoname_id,
-            "username": geonames_user
+            "username": self.geonames_user
         }
         return self._query_with_error_handling(url=self.GEONAMES_API_URL, params=params, method="get")
