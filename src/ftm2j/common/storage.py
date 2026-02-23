@@ -3,21 +3,31 @@
 # Standard library imports
 import json
 import tempfile
+import pathlib
 
 # Third party imports
 import smart_open
 
 
-def load_json(file_path: str, mode: str = "r") -> dict | list:
+def load_json(file_path: str, mode: str = "r", return_type: str = "dict") -> dict | list:
     """Loads a JSON file from the given path.
 
     Args:
         file_path: The path to the JSON file.
         mode: The mode to open the file in.
+        return_type: The type to return the data as.
 
     Returns:
         The JSON data loaded from the file as a dictionary or list.
     """
+    if not pathlib.Path(file_path).exists():
+        if return_type == "dict":
+            return {}
+        elif return_type == "list":
+            return []
+        else:
+            raise ValueError(f"Invalid return type: {return_type}")
+
     with smart_open.open(file_path, mode=mode) as f:
         json_data = json.load(f)
     return json_data
