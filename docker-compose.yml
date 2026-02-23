@@ -1,0 +1,91 @@
+services:
+  # Auto-restart unhealthy containers
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: idi-company-info-autoheal
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all
+      - AUTOHEAL_INTERVAL=10
+      - AUTOHEAL_START_PERIOD=60
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
+
+  # Cron scheduler for running orchestrator on schedule
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.scheduler
+    container_name: idi-company-info-scheduler
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - .:/app
+    working_dir: /app
+    environment:
+      - SCHEDULE=${SCHEDULE:-0 0 2 * * *}
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-local.orchestrator-daily.schedule: "${SCHEDULE:-0 0 2 * * *}"
+      ofelia.job-local.orchestrator-daily.command: "docker compose run --rm orchestrator"
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "ofelia"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+    # Logging configuration for scheduler
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"      # Max size per log file
+        max-file: "5"        # Keep 5 rotated log files
+        compress: "true"     # Compress rotated logs
+
+  # Orchestrator service triggered by scheduler
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    container_name: idi-company-info-orchestrator
+
+    # This service is triggered by the scheduler via docker compose run
+    profiles:
+      - manual
+
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
+      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
+      - BATCH_SIZE=${BATCH_SIZE:-5000}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+
+    volumes:
+      # Mount specific input file directly
+      - ${INPUT_FILE_PATH:?INPUT_FILE_PATH is required}:/data/input/data.parquet:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.orchestrator
+      --input-file /data/input/data.parquet
+      --output-directory /data/output
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${BATCH_SIZE}
+      --threshold-days ${THRESHOLD_DAYS}
+      2>&1 | tee /logs/orchestrator_$(date +%Y%m%d_%H%M%S).log"
+
+    restart: "no"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
