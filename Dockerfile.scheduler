@@ -1,0 +1,7 @@
+FROM mcuadros/ofelia:latest
+
+# Install docker CLI and compose plugin
+RUN apk add --no-cache docker-cli docker-cli-compose
+
+# Set working directory
+WORKDIR /app

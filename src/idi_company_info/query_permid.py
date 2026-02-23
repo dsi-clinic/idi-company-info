@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+"""
+Job #2: Query PermID API by CIK to retrieve PermID and company information.
+
+Reads CIK data from JSON, queries the PermID API for each CIK,
+and saves investor_name to PermID mappings as JSON.
+Supports batch processing with rate limiting and retry logic.
+"""
+
+import argparse
+import json
+import pathlib
+import time
+from datetime import datetime
+
+import requests
+
+from .utils import (
+    get_logger,
+    create_session,
+    REQUEST_TIMEOUT,
+    RATE_LIMIT_DELAY,
+    load_batch_tracking,
+    save_batch_tracking,
+    get_unprocessed_investors,
+    load_existing_results,
+    save_results,
+)
+
+logger = get_logger(__name__)
+
+# API configuration
+API_URL = "https://api-eit.refinitiv.com/permid/search"
+
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Query PermID API by CIK to retrieve PermID and company information"
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        required=True,
+        help="PermID API access token"
+    )
+    parser.add_argument(
+        "--input-file",
+        type=pathlib.Path,
+        required=True,
+        help="Path to input JSON file with CIK data"
+    )
+    parser.add_argument(
+        "--output-file",
+        type=pathlib.Path,
+        required=True,
+        help="Path to output JSON file for PermID results"
+    )
+    parser.add_argument(
+        "--batch-file",
+        type=pathlib.Path,
+        required=True,
+        help="Path to batch tracking file"
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=5000,
+        help="Number of investors to process in this batch"
+    )
+    args = parser.parse_args()
+    return args
+
+def query_permid_by_cik(session: requests.Session, cik: str, api_key: str) -> str | None:
+    """
+    Query PermID API by CIK and return the PermID.
+
+    Args:
+        session: requests Session object
+        cik: CIK identifier
+        api_key: PermID API access token
+
+    Returns:
+        PermID string (extracted from @id field) or None if not found
+    """
+    params = {
+        "q": f"cik:{cik}",
+        "format": "json",
+    }
+
+    headers = {
+        "X-AG-Access-Token": api_key,
+        "Accept": "application/json",
+        "User-Agent": "ftm2j/1.0 (contact: research@example.com)",
+    }
+
+    try:
+        response = session.get(
+            API_URL,
+            params=params,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT
+        )
+        response.raise_for_status()
+
+        data = response.json()
+
+        # Extract PermID from organizations entities
+        organizations = data.get("result", {}).get("organizations", {})
+        entities = organizations.get("entities", [])
+
+        if entities:
+            # Get the @id field and extract just the PermID part
+            id_url = entities[0].get("@id", "")
+            return id_url
+
+        return None
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error querying CIK {cik}: {e}")
+        return None
+
+def load_cik_data(input_file: pathlib.Path) -> dict[str, list[str]]:
+    """Load CIK data from JSON file."""
+    logger.info(f"Loading CIK data from: {input_file}")
+    with open(input_file) as f:
+        data = json.load(f)
+    logger.info(f"Loaded {len(data)} investors with CIK data")
+    return data
+
+def _initialize_batch_stats() -> dict:
+    """Initialize statistics dictionary for batch processing."""
+    return {
+        "total_investors": 0,
+        "total_ciks_queried": 0,
+        "successful_queries": 0,
+        "failed_queries": 0,
+        "investors_with_permid": 0,
+        "investors_without_permid": 0,
+        "total_permids": 0,
+        "duplicates_removed": 0,
+        "duplicates_removed_cik": 0
+    }
+
+def _process_investor_ciks(
+    session: requests.Session,
+    ciks: list[str],
+    api_key: str,
+    stats: dict
+) -> list[dict[str, str | None]]:
+    """
+    Process all CIKs for a single investor with rate limiting.
+
+    Args:
+        session: requests Session object
+        ciks: List of CIK identifiers for this investor
+        api_key: PermID API access token
+        stats: Statistics dictionary to update
+
+    Returns:
+        List of dicts with CIK and PermID pairs (PermID may be None for failed queries)
+    """
+    results = []
+    for cik in ciks:
+        stats["total_ciks_queried"] += 1
+
+        # Query API with rate limiting
+        permid = query_permid_by_cik(session, cik, api_key)
+
+        if permid:
+            stats["successful_queries"] += 1
+            results.append({"cik": cik, "permid": permid})
+            logger.info(f"  CIK {cik} -> PermID {permid}")
+        else:
+            stats["failed_queries"] += 1
+            results.append({"cik": cik, "permid": None})
+            logger.warning(f"  CIK {cik} -> No PermID found")
+
+        # Rate limiting: wait 1 second between requests
+        time.sleep(RATE_LIMIT_DELAY)
+
+    return results
+
+def _store_investor_results(
+    investor_name: str,
+    cik_permid_pairs: list[dict[str, str | None]],
+    results: dict[str, list[dict[str, list[str] | str]]],
+    stats: dict
+):
+    """
+    Store investor results with deduplication and update statistics.
+    Groups multiple CIKs that map to the same PermID together.
+
+    Args:
+        investor_name: Name of the investor
+        cik_permid_pairs: List of dicts with CIK and PermID (PermID may be None)
+        results: Results dictionary to update
+        stats: Statistics dictionary to update
+    """
+    # Filter out entries where PermID is None
+    valid_pairs = [pair for pair in cik_permid_pairs if pair["permid"] is not None]
+
+    if valid_pairs:
+        # Group CIKs by PermID
+        permid_to_ciks: dict[str, list[str]] = {}
+        for pair in valid_pairs:
+            permid = pair["permid"]
+            cik = pair["cik"]
+            if permid not in permid_to_ciks:
+                permid_to_ciks[permid] = []
+            permid_to_ciks[permid].append(cik)
+
+        # Create unique pairs with all CIKs grouped by PermID
+        unique_pairs = [
+            {"ciks": ciks, "permid": permid}
+            for permid, ciks in permid_to_ciks.items()
+        ]
+
+        # Track duplicates (CIKs that mapped to the same PermID)
+        total_ciks = len(valid_pairs)
+        unique_mappings = len(unique_pairs)
+        stats["duplicates_removed"] += total_ciks - unique_mappings
+
+        # Log when investor has multiple PermIDs
+        if len(unique_pairs) > 1:
+            permid_list = [pair["permid"] for pair in unique_pairs]
+            logger.warning(
+                f"  MULTIPLE PermIDs for {investor_name}: {permid_list}"
+            )
+
+        # Log when multiple CIKs map to same PermID
+        for pair in unique_pairs:
+            if len(pair["ciks"]) > 1:
+                logger.info(
+                    f"  Multiple CIKs for same PermID {pair['permid']}: {pair['ciks']}"
+                )
+
+        results[investor_name] = unique_pairs
+        stats["investors_with_permid"] += 1
+        stats["total_permids"] += len(unique_pairs)
+    else:
+        stats["investors_without_permid"] += 1
+
+def process_batch(
+    session: requests.Session,
+    cik_data: dict[str, list[str]],
+    investors_to_process: list[str],
+    batch_size: int,
+    api_key: str
+) -> tuple[dict[str, list[dict[str, list[str] | str]]], list[str], dict]:
+    """
+    Process a batch of investors.
+
+    Returns:
+        Tuple of (results_dict, processed_investors_list, stats_dict)
+    """
+    results = {}
+    processed_investors = []
+    stats = _initialize_batch_stats()
+
+    batch = investors_to_process[:batch_size]
+    logger.info(f"Processing batch of {len(batch)} investors")
+
+    for idx, investor_name in enumerate(batch, 1):
+        ciks = cik_data[investor_name]
+
+        # Remove duplicate CIKs before processing
+        original_count = len(ciks)
+        ciks = list(dict.fromkeys(ciks))  # Preserves order while removing duplicates
+        if len(ciks) < original_count:
+            logger.info(f"  Removed {original_count - len(ciks)} duplicate CIK(s) for {investor_name}")
+            stats["duplicates_removed_cik"] += 1
+
+        stats["total_investors"] += 1
+
+        logger.info(f"[{idx}/{len(batch)}] Processing: {investor_name} ({len(ciks)} CIK(s))")
+
+        # Process all CIKs for this investor
+        cik_permid_pairs = _process_investor_ciks(session, ciks, api_key, stats)
+
+        # Store results and update stats
+        _store_investor_results(investor_name, cik_permid_pairs, results, stats)
+
+        processed_investors.append(investor_name)
+
+    return results, processed_investors, stats
+
+def print_stats(stats: dict, batch_stats: dict):
+    """Print statistics about the processing."""
+    logger.info("=" * 60)
+    logger.info("BATCH STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Investors processed: {batch_stats['total_investors']}")
+    logger.info(f"CIKs queried: {batch_stats['total_ciks_queried']}")
+    logger.info(f"Successful queries: {batch_stats['successful_queries']}")
+    logger.info(f"Failed queries: {batch_stats['failed_queries']}")
+    logger.info(f"Investors with PermID: {batch_stats['investors_with_permid']}")
+    logger.info(f"Investors without PermID: {batch_stats['investors_without_permid']}")
+    logger.info(f"Total PermIDs found: {batch_stats['total_permids']}")
+    logger.info(f"Duplicates removed: {batch_stats['duplicates_removed']}")
+    logger.info(f"Duplicate CIKs removed: {batch_stats['duplicates_removed_cik']}")
+
+    logger.info("=" * 60)
+    logger.info("CUMULATIVE STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Total investors with PermID: {len(stats)}")
+    total_permids = sum(len(pairs) for pairs in stats.values())
+    logger.info(f"Total PermIDs: {total_permids}")
+    if stats:
+        avg_permids = total_permids / len(stats)
+        logger.info(f"Average PermIDs per investor: {avg_permids:.2f}")
+    logger.info("=" * 60)
+
+def _load_data(
+    input_file: pathlib.Path,
+    batch_file: pathlib.Path,
+    output_file: pathlib.Path
+) -> tuple[dict[str, list[str]], dict, dict[str, list[str]], list[str]]:
+    """
+    Load all input data and determine unprocessed investors.
+
+    Args:
+        input_file: Path to CIK data JSON file
+        batch_file: Path to batch tracking file
+        output_file: Path to existing results file
+
+    Returns:
+        Tuple of (cik_data, batch_tracking, existing_results, unprocessed_investors)
+    """
+    cik_data = load_cik_data(input_file)
+    batch_tracking = load_batch_tracking(batch_file)
+    existing_results = load_existing_results(output_file, default_type="dict")
+    unprocessed_investors = get_unprocessed_investors(cik_data, batch_tracking)
+
+    return cik_data, batch_tracking, existing_results, unprocessed_investors
+
+def _finalize_batch(
+    output_file: pathlib.Path,
+    batch_file: pathlib.Path,
+    existing_results: dict[str, list[dict[str, list[str] | str]]],
+    batch_results: dict[str, list[dict[str, list[str] | str]]],
+    batch_tracking: dict,
+    processed_investors: list[str],
+    batch_stats: dict
+):
+    """
+    Save results and update batch tracking.
+
+    Args:
+        output_file: Path to save results
+        batch_file: Path to save batch tracking
+        existing_results: Previously saved results
+        batch_results: Results from current batch
+        batch_tracking: Batch tracking data
+        processed_investors: List of investors processed in this batch
+        batch_stats: Statistics from batch processing
+    """
+    # Merge with existing results
+    all_results = {**existing_results, **batch_results}
+
+    # Save results
+    save_results(output_file, all_results)
+
+    # Update batch tracking
+    batch_timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    batch_tracking[batch_timestamp] = {
+        "processed_investors": processed_investors,
+        "batch_size": len(processed_investors),
+        "stats": batch_stats
+    }
+    save_batch_tracking(batch_file, batch_tracking)
+
+    # Print statistics
+    print_stats(all_results, batch_stats)
+
+def main():
+    """Main function to query PermID API and process results."""
+    start = datetime.now()
+    args = get_args()
+
+    # Log arguments
+    for key, value in args.__dict__.items():
+        if key == "api_key":
+            continue
+        logger.info(f"{key}: {value}")
+
+    # Load data and get unprocessed investors
+    cik_data, batch_tracking, existing_results, unprocessed_investors = _load_data(
+        args.input_file,
+        args.batch_file,
+        args.output_file
+    )
+
+    if not unprocessed_investors:
+        logger.info("All investors have been processed!")
+        return
+
+    if args.batch_size > len(unprocessed_investors):
+        logger.warning(
+            f"Batch size ({args.batch_size}) is larger than remaining investors "
+            f"({len(unprocessed_investors)}). Processing all remaining investors."
+        )
+
+    # Create session and process batch
+    session = create_session()
+    batch_results, processed_investors, batch_stats = process_batch(
+        session,
+        cik_data,
+        unprocessed_investors,
+        args.batch_size,
+        args.api_key
+    )
+
+    # Save results and update tracking
+    _finalize_batch(
+        args.output_file,
+        args.batch_file,
+        existing_results,
+        batch_results,
+        batch_tracking,
+        processed_investors,
+        batch_stats
+    )
+
+    end = datetime.now()
+    logger.info(f"Elapsed time: {end - start}")
+
+
+if __name__ == "__main__":
+    main()
