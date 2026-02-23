@@ -7,6 +7,9 @@ from typing import Any, Callable
 from dataclasses import asdict
 from datetime import datetime, timezone
 
+# Third party imports
+import pandas as pd
+
 # Application imports
 from ftm2j.common.api import LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup, GeonamesApi
 from ftm2j.common.logs import get_logger
@@ -113,6 +116,28 @@ class Identifier(ABC):
         """
         ...
 
+    @staticmethod
+    def read_parquet(input_file: str, required_columns: list[str]) -> pd.DataFrame:
+        """Read parquet file and validate required columns exist.
+
+        Args:
+            input_file: The input file to read.
+            required_columns: The required columns to validate.
+
+        Returns:
+            The dataframe with the required columns.
+        """
+        df = pd.read_parquet(input_file)
+
+        # Validate required columns
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(
+                f"Required columns {missing_columns} not found in dataframe"
+            )
+
+        return df
+
     @abstractmethod
     def _build_query_params(self, identifier: str) -> dict[str, Any]:
         """Build the query parameters.
@@ -186,7 +211,16 @@ class Identifier(ABC):
         return batch_stats
 
     def retrieve_permid(self, entity_name: str, entity_data: list[str], batch_stats: BatchStatsPermid) -> dict[str, Any]:
-        """Retrieve the PermID for the company."""
+        """Retrieve the PermID for the company.
+
+        Args:
+            entity_name: The entity name.
+            entity_data: The entity data.
+            batch_stats: The batch stats.
+
+        Returns:
+            The PermID data.
+        """
         batch_stats.total_ids += len(entity_data)
 
         # Remove duplicate CIKs before processing
@@ -218,7 +252,16 @@ class Identifier(ABC):
         return permid_data
 
     def retrieve_company_info(self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStatsPermid) -> list[dict[str, Any]]:
-        """Retrieve the company information."""
+        """Retrieve the company information.
+
+        Args:
+            entity_name: The entity name.
+            permid_data: The PermID data.
+            batch_stats: The batch stats.
+
+        Returns:
+            A list of company information.
+        """
         company_info = []
         for cik, permid_list in permid_data.items():
             for permid in permid_list:
@@ -250,7 +293,19 @@ class Identifier(ABC):
     ) -> tuple[bool, Any]:
         """
         Parse API response and handle success/failure logging.
-        Returns (success, data). Caller updates stats.
+
+        Args:
+            response: The API response.
+            entity_name: The entity name.
+            identifier: The identifier.
+            parse_fn: The parse function.
+            error_msg: The error message.
+            no_match_msg: The no match message.
+
+        Returns:
+            A tuple of (success, data).
+                success: True if the API response is successful, False otherwise.
+                data: The data from the API response.
         """
         if response.get("status_code") != 200:
             self.logger.error(error_msg, entity_name, identifier, response.get("error"))
@@ -294,7 +349,18 @@ class Identifier(ABC):
         return _parse
 
     def _parse_company_info(self, entity_name: str, identifier: list[str], identifier_type: str, permid_id: dict[str, str], response: dict[str, Any]) -> dict[str, Any]:
-        """Parse the company information."""
+        """Parse the company information.
+
+        Args:
+            entity_name: The entity name.
+            identifier: The identifier.
+            identifier_type: The identifier type.
+            permid_id: The PermID.
+            response: The API response.
+
+        Returns:
+            A CompanyInfo object.
+        """
         company_info = CompanyInfo(
             investor_name=response.get("vcard:organization-name"),
             original_entity_name=entity_name,
@@ -317,7 +383,14 @@ class Identifier(ABC):
         return company_info
 
     def _query_geonames_location(self, url: str) -> str:
-        """Query the Geonames API to get the location information."""
+        """Query the Geonames API to get the location information.
+
+        Args:
+            url: The URL to query.
+
+        Returns:
+            The location information.
+        """
         response = self.api_clients.geonames_api.query_endpoint(url)
         if response.get("status_code") == 200:
             return response.get("data").get("name") or response.get("data").get("asciiName") or response.get("data").get("countryName")
@@ -333,7 +406,14 @@ class Identifier(ABC):
         self.logger.info(f"Batch stats: {asdict(batch_stats)}")
 
     def save_company_info(self, company_info: list[dict[str, Any]]) -> list[str]:
-        """Save the company information."""
+        """Save the company information.
+
+        Args:
+            company_info: The company information.
+
+        Returns:
+            The company information.
+        """
         save_json(self.file_paths.result_file, company_info)
 
     def run(self):

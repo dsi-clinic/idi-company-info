@@ -2,10 +2,6 @@
 
 # Standard library imports
 from typing import Any
-from dataclasses import asdict
-
-# Third party imports
-import pandas as pd
 
 # Application imports
 from ftm2j.processors.idi_company_info.identifier import Identifier
@@ -14,25 +10,22 @@ class IdentifierCik(Identifier):
 
     @property
     def identifier_type(self) -> str:
-        """Get the identifier type."""
+        """Get the identifier type.
+
+        Returns:
+            The identifier type.
+        """
         return "cik"
 
-    @staticmethod
-    def _read_parquet(input_file, required_columns):
-        """Read parquet file and validate required columns exist."""
-        df = pd.read_parquet(input_file)
-
-        # Validate required columns
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            raise ValueError(
-                f"Required columns {missing_columns} not found in dataframe"
-            )
-
-        return df
-
     def _extract_filter_parquet_cik(self,df):
-        """Extract investor_name and investor_cik pairs (CIK mode)."""
+        """Extract investor_name and investor_cik pairs (CIK mode).
+
+        Args:
+            df: The dataframe to extract the data from.
+
+        Returns:
+            A dictionary with investor_name as key and a list of investor_cik as value.
+        """
         # Extract investor_name and investor_cik columns
         subset = df[["investor_name", "investor_cik"]].copy()
 
@@ -56,9 +49,13 @@ class IdentifierCik(Identifier):
         return result
 
     def load_data(self) -> dict[str, Any]:
-        """Load the data from the input file."""
+        """Load the data from the input file.
 
-        df = self._read_parquet(self.file_paths.input_file, required_columns=["investor_name", "investor_cik"])
+        Returns:
+            A dictionary with investor_name as key and a list of investor_cik as value.
+        """
+
+        df = self.read_parquet(self.file_paths.input_file, required_columns=["investor_name", "investor_cik"])
         self.logger.info("Loaded %s rows", len(df))
 
         result = self._extract_filter_parquet_cik(df)
@@ -73,24 +70,3 @@ class IdentifierCik(Identifier):
                 The query parameters.
         """
         return {"q": f"cik:{identifier}", "format": "json"}
-
-
-if __name__ == "__main__":
-    from ftm2j.processors.idi_company_info.identifier import Identifier, FilePaths, BatchConfig, ApiCredentials
-
-    identifier = IdentifierCik(
-        file_paths=FilePaths(input_file="/Users/REMOVED/Documents/workspace/11hour/ftm2j/data/company-info/shareholder_tracker/shareholder_tracker_release_20251218.parquet",
-        result_file="/Users/REMOVED/Documents/workspace/11hour/ftm2j/data/company-info/processing_data/company_info_cik.json",
-        batch_file="/Users/REMOVED/Documents/workspace/11hour/ftm2j/data/company-info/batch_data/batch_tracking_cik.json"),
-        batch_config=BatchConfig(
-            batch_size=10,
-            buffer_size=5,
-            threshold_days=30
-        ),
-        api_credentials=ApiCredentials(api_key="REMOVED",
-        geonames_user="REMOVED")
-    )
-    identifier.run()
-
-
-    # {"q": f"cik:{cik}", "format": "json"}
