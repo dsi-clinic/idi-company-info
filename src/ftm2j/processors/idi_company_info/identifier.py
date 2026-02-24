@@ -2,10 +2,10 @@
 
 # Standard library imports
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Callable
-from dataclasses import asdict
+from dataclasses import asdict,dataclass
 from datetime import datetime, timezone
+from enum import StrEnum
+from typing import Any, Callable
 
 # Third party imports
 import pandas as pd
@@ -15,6 +15,7 @@ from ftm2j.common.api import LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup
 from ftm2j.common.logs import get_logger
 from ftm2j.common.batch import BatchProcessing
 from ftm2j.common.storage import load_json, save_json
+from ftm2j.processors.idi_company_info.permid_retriever import PermidRetriever, EntitySearchRetriever, RecordMatchRetriever
 
 
 @dataclass
@@ -67,7 +68,7 @@ class CompanyInfo:
 
 
 @dataclass
-class BatchStatsPermid:
+class BatchStats:
     total_entities: int = 0
     total_records: int = 0
     total_ids: int = 0
@@ -78,10 +79,15 @@ class BatchStatsPermid:
     duplicates_ids_removed: int = 0
 
 
+class QueryType(StrEnum):
+    ENTITY_SEARCH = "entity_search"
+    RECORD_MATCH = "record_match"
+
+
 class Identifier(ABC):
     """Base class for identifier types."""
 
-    def __init__(self, file_paths: FilePaths, batch_config: BatchConfig, api_credentials: ApiCredentials):
+    def __init__(self, file_paths: FilePaths, batch_config: BatchConfig, api_credentials: ApiCredentials, query_type: QueryType = QueryType.ENTITY_SEARCH):
         """Initialize the Identifier.
 
         Args:
@@ -89,6 +95,7 @@ class Identifier(ABC):
             batch_config: The batch config.
             api_credentials: The API credentials.
             identifier_type: The identifier type.
+            query_type: The query type.
         """
         self.file_paths = file_paths
         self.batch_config = batch_config
@@ -100,6 +107,21 @@ class Identifier(ABC):
             geonames_api=GeonamesApi(api_key=api_credentials.api_key, geonames_user=api_credentials.geonames_user)
         )
         self.logger = get_logger(__name__)
+        self.permid_retriever: PermidRetriever = self._create_permid_retriever(query_type)  # Strategy pattern
+
+    def _create_permid_retriever(self, query_type: QueryType) -> PermidRetriever:
+        """Create the PermID retriever.
+
+        Args:
+            query_type: The query type.
+
+        Returns:
+            The PermID retriever.
+        """
+        return {
+            QueryType.ENTITY_SEARCH: EntitySearchRetriever(context=self),
+            QueryType.RECORD_MATCH: RecordMatchRetriever(context=self),
+        }[query_type]
 
     @property
     @abstractmethod
@@ -161,97 +183,49 @@ class Identifier(ABC):
         Returns:
             The batch stats.
         """
-        buffer = []
-        new_results = []
+        batch_stats = BatchStats()
+        permid_data = self.permid_retriever.retrieve(entities_to_process, self.batch_config.batch_size, batch_stats)
 
-        batch_stats = BatchStatsPermid()
-        batch = list(entities_to_process.keys())[:self.batch_config.batch_size]
-
-        for idx, entity_name in enumerate(batch, 1):
-            permid_data = None
-            company = None
-            try:
-                # Retrieve the PermID for the company
-                entity_data = entities_to_process[entity_name]
-                self.logger.info(f"[{idx}/{len(batch)}] Processing: {entity_name} ({len(entity_data)})")
-                permid_data = self.retrieve_permid(entity_name,entity_data, batch_stats)
-
-                # Retrieve the company information (if PermID is found)
-                permid_data_count = sum(len(permid_data[i]) for i in permid_data.keys())
-                if permid_data_count > 0:
-                    company = self.retrieve_company_info(entity_name,permid_data, batch_stats)
-                    new_results.extend(company)
-
-                # Add the company information to the buffer
-                if company:
-                    batch_stats.total_entities += 1
-                    batch_stats.total_records += len(company)
-                    buffer.extend(c["original_entity_name"] for c in company)
-
-                # Check if buffer is full
-                if len(buffer) >= self.batch_config.buffer_size:
-                    # Save the company information to the file and update the batch tracking
-                    self.save_company_info(new_results + existing_results)
-                    batch_processing.update_batch_tracking(buffer, batch_stats)
-                    buffer = []
-
-            except Exception as e:
-                self.logger.error(f"Error processing entity {entity_name}: {e}")
-                if permid_data is not None:
-                    batch_stats.total_company_info_failed += 1
-                else:
-                    batch_stats.total_permid_failed += 1
-                continue
-
-        # Save company info and batch tracking
-        if buffer:
-            self.save_company_info(new_results + existing_results)
-            batch_processing.update_batch_tracking(buffer, batch_stats)
-
+        self.generate_company_info(permid_data, existing_results, batch_processing, batch_stats)
         return batch_stats
 
-    def retrieve_permid(self, entity_name: str, entity_data: list[str], batch_stats: BatchStatsPermid) -> dict[str, Any]:
-        """Retrieve the PermID for the company.
+    def generate_company_info(self, permid_data: dict[str, Any], existing_results: list[dict[str, Any]], batch_processing: BatchProcessing, batch_stats: BatchStats) -> None:
+        """Generate the company information.
 
         Args:
-            entity_name: The entity name.
-            entity_data: The entity data.
+            permid_data: The PermID data.
+            existing_results: The existing results.
+            batch_processing: The batch processing.
             batch_stats: The batch stats.
-
-        Returns:
-            The PermID data.
         """
-        batch_stats.total_ids += len(entity_data)
+        batch = list(permid_data.keys())[:self.batch_config.batch_size]
+        self.logger.info(f"Generating company info for {len(batch)} entities")
 
-        # Remove duplicate CIKs before processing
-        original_count = len(entity_data)
-        entity_data = list(dict.fromkeys(entity_data))  # Preserves order while removing duplicates
-        if len(entity_data) < original_count:
-            self.logger.info("  Removed %s duplicate CIK(s) for %s", original_count - len(entity_data), entity_name)
-            batch_stats.duplicates_ids_removed += 1
+        existing_length = len(existing_results)
+        company_info = existing_results
 
-        # Query by CIK for entity PermID
-        permid_data = {}
-        for cik in entity_data:
-            query_params = self._build_query_params(cik)
-            response = self.api_clients.entity_search.query_endpoint(params=query_params)
-            success, permids = self._handle_api_response(
-                response,
-                entity_name,
-                cik,
-                parse_fn=self._parse_permid_entities,
-                error_msg="PermID query error for entity %s with CIK %s: %s",
-                no_match_msg="No PermID found for entity %s with CIK %s",
-            )
-            permid_data[cik] = permids or []
-            if success:
-                batch_stats.total_permids += 1
-            else:
-                batch_stats.total_permid_failed += 1
+        buffer = []
+        for idx, entity_name in enumerate(batch, 1):
+            self.logger.info(f"[{idx}/{len(batch)}] Processing: {entity_name} ({len(permid_data[entity_name])})")
+            company = self.retrieve_company_info(entity_name, permid_data[entity_name], batch_stats)
 
-        return permid_data
+            company_info.extend(company)
+            buffer.extend([c["original_entity_name"] for c in company])
 
-    def retrieve_company_info(self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStatsPermid) -> list[dict[str, Any]]:
+            if len(buffer) >= self.batch_config.buffer_size:
+                self.save_company_info(company_info)
+                batch_processing.update_batch_tracking(buffer, batch_stats)
+                buffer = []
+
+            batch_stats.total_entities += 1
+
+        if buffer:
+            self.save_company_info(company_info)
+            batch_processing.update_batch_tracking(buffer, batch_stats)
+
+        batch_stats.total_records = len(company_info) - existing_length
+
+    def retrieve_company_info(self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStats) -> list[dict[str, Any]]:
         """Retrieve the company information.
 
         Args:
@@ -263,14 +237,14 @@ class Identifier(ABC):
             A list of company information.
         """
         company_info = []
-        for cik, permid_list in permid_data.items():
+        for identifier, permid_list in permid_data:
             for permid in permid_list:
                 response = self.api_clients.entity_lookup.query_endpoint(permid_url=permid)
                 success, company_data = self._handle_api_response(
                     response,
                     entity_name,
                     permid,
-                    parse_fn=self._parse_company_data(entity_name, cik, permid),
+                    parse_fn=self._parse_company_data(entity_name, identifier, permid),
                     error_msg="Company info query error for entity %s with PermID %s: %s",
                     no_match_msg="No company data found for entity %s with PermID %s",
                 )
@@ -391,19 +365,40 @@ class Identifier(ABC):
         Returns:
             The location information.
         """
+        if not url:
+            return None
+
         response = self.api_clients.geonames_api.query_endpoint(url)
         if response.get("status_code") == 200:
             return response.get("data").get("name") or response.get("data").get("asciiName") or response.get("data").get("countryName")
         else:
             return None
 
-    def print_stats(self, batch_stats: BatchStatsPermid) -> None:
+    def print_stats(self, batch_stats: BatchStats) -> None:
         """Print the stats.
 
         Args:
             batch_stats: The batch stats.
         """
-        self.logger.info(f"Batch stats: {asdict(batch_stats)}")
+        stats = asdict(batch_stats)
+
+        # Compute rates (avoid division by zero)
+        permid_total = stats["total_permids"] + stats["total_permid_failed"]
+        permid_rate = (stats["total_permids"] / permid_total * 100) if permid_total else 0
+
+        company_total = stats["total_company_info"] + stats["total_company_info_failed"]
+        company_rate = (stats["total_company_info"] / company_total * 100) if company_total else 0
+
+        self.logger.info("=" * 50)
+        self.logger.info("BATCH PROCESSING STATS")
+        self.logger.info("=" * 50)
+        self.logger.info("PermID retrieval:     %d found, %d failed (%.1f%% success)",
+                        stats["total_permids"], stats["total_permid_failed"], permid_rate)
+        self.logger.info("Company info lookup:  %d fetched, %d failed (%.1f%% success)",
+                        stats["total_company_info"], stats["total_company_info_failed"], company_rate)
+        self.logger.info("Processed:   Entities: %d | Records: %d | Duplicates removed: %d",
+                        stats["total_entities"], stats["total_records"], stats["duplicates_ids_removed"])
+        self.logger.info("=" * 50)
 
     def save_company_info(self, company_info: list[dict[str, Any]]) -> list[str]:
         """Save the company information.
