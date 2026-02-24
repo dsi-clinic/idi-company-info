@@ -61,6 +61,26 @@ class ApiClient(ABC):
 
         return session
 
+    @staticmethod
+    def http_get(url: str, params: dict = None, headers: dict = None, timeout: tuple[int, int] = (10, 30)) -> requests.Response:
+        """Get a resource from the API without retries.
+
+        Simpler get request (compared to self.get) for use as a static method
+        where no retries are needed.
+
+        Args:
+            url: The URL to get.
+            params: The parameters to pass to the API.
+            headers: The headers to pass to the API.
+            timeout: The timeout to use.
+
+        Returns:
+            The response from the API.
+        """
+        response = requests.get(url, params=params, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        return response
+
     def get(self, url: str, params: dict = None, headers: dict = None) -> requests.Response:
         """Get a resource from the API.
 

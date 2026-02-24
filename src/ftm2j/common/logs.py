@@ -7,6 +7,9 @@ import requests
 # Third party imports
 import watchtower
 
+# Application imports
+from ftm2j.common.api import ApiClient
+
 EC2_METADATA_ENDPOINT = "http://169.254.169.254/latest/meta-data/instance-id"
 HEADERS = { "User-Agent": "ftm2j/1.0" }
 
@@ -65,7 +68,7 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None :
     """
     # Determine if executing on AWS EC2 instance
     try:
-        r = requests.get(EC2_METADATA_ENDPOINT, headers=HEADERS, timeout=2)
+        r = ApiClient.http_get(EC2_METADATA_ENDPOINT, headers=HEADERS, timeout=2)
         is_ec2 = r.status_code == 200
     except Exception:
         is_ec2 = False
