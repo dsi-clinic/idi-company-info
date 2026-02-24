@@ -7,13 +7,11 @@ import requests
 # Third party imports
 import watchtower
 
-# Application imports
-from ftm2j.common.api import ApiClient
 
 EC2_METADATA_ENDPOINT = "http://169.254.169.254/latest/meta-data/instance-id"
 HEADERS = { "User-Agent": "ftm2j/1.0" }
 
-_configred_loggers: set[str] = set()
+_configured_loggers: set[str] = set()
 
 def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     """Creates a logger with the given name and level.
@@ -30,7 +28,7 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
         The logger.
     """
     # Check if logger has already been configured
-    if name in _configred_loggers:
+    if name in _configured_loggers:
         return logging.getLogger(name)
 
     # Create logger and set level
@@ -54,7 +52,7 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     _configure_cloudwatch(logger, name)
 
     # Add logger to set of configured loggers
-    _configred_loggers.add(name)
+    _configured_loggers.add(name)
 
     return logger
 
@@ -68,7 +66,7 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None :
     """
     # Determine if executing on AWS EC2 instance
     try:
-        r = ApiClient.http_get(EC2_METADATA_ENDPOINT, headers=HEADERS, timeout=2)
+        r = requests.get(EC2_METADATA_ENDPOINT, headers=HEADERS, timeout=2)
         is_ec2 = r.status_code == 200
     except Exception:
         is_ec2 = False
