@@ -14,6 +14,7 @@ import pandas as pd
 from ftm2j.common.api import LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup, GeonamesApi
 from ftm2j.common.logs import get_logger
 from ftm2j.common.batch import BatchProcessing
+from ftm2j.common.buffer import CompanyInfoBuffer
 from ftm2j.common.storage import load_json, save_json
 from ftm2j.processors.idi_company_info.permid_retriever import PermidRetriever, EntitySearchRetriever, RecordMatchRetriever
 
@@ -23,6 +24,7 @@ class FilePaths:
     input_file: str
     result_file: str
     batch_file: str
+    permid_file: str
 
 
 @dataclass
@@ -205,26 +207,23 @@ class Identifier(ABC):
         existing_length = len(existing_results)
         company_info = existing_results
 
-        buffer = []
+        buffer = CompanyInfoBuffer(
+            file_path=self.file_paths.result_file,
+            buffer_size=self.batch_config.buffer_size,
+            batch_processing=batch_processing,
+            batch_stats=batch_stats,
+            existing_results=existing_results
+        )
+
         for idx, entity_name in enumerate(batch, 1):
             self.logger.info(f"[{idx}/{len(batch)}] Processing: {entity_name} ({len(permid_data[entity_name])})")
             company = self.retrieve_company_info(entity_name, permid_data[entity_name], batch_stats)
 
             company_info.extend(company)
-            buffer.extend([c["original_entity_name"] for c in company])
-
-            if len(buffer) >= self.batch_config.buffer_size:
-                self.save_company_info(company_info)
-                batch_processing.update_batch_tracking(buffer, batch_stats)
-                buffer = []
-
+            buffer.add(company, [c["original_entity_name"] for c in company])
             batch_stats.total_entities += 1
 
-        if buffer:
-            self.save_company_info(company_info)
-            batch_processing.update_batch_tracking(buffer, batch_stats)
-
-        batch_stats.total_records = len(company_info) - existing_length
+        batch_stats.total_records = buffer.finalize() - existing_length
 
     def retrieve_company_info(self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStats) -> list[dict[str, Any]]:
         """Retrieve the company information.
