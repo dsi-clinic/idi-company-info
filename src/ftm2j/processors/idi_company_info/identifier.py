@@ -187,7 +187,10 @@ class Identifier(ABC):
             The batch stats.
         """
         batch_stats = BatchStats()
-        permid_data = self.permid_retriever.retrieve(entities_to_process, self.batch_config.batch_size, batch_stats)
+        self.permid_retriever.retrieve(entities_to_process, self.batch_config.batch_size, batch_stats)
+
+        # Retrieve the PermID data from file
+        permid_data = load_json(self.file_paths.permid_file, return_type="dict")
 
         self.generate_company_info(permid_data, existing_results, batch_processing, batch_stats)
         return batch_stats

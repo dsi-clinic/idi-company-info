@@ -91,7 +91,7 @@ class EntitySearchRetriever(PermidRetriever):
             permid_data[entity_name] = self._retrieve_permid_search(entity_name, identifier_list, batch_stats)
             buffer.add({entity_name: permid_data[entity_name]})
 
-        return permid_data
+        buffer.flush()
 
     def _retrieve_permid_search(self, entity_name: str, identifier_list: list[str], batch_stats: "BatchStats") -> dict[str, Any]:
         """Retrieve the PermID for the entity.
@@ -166,8 +166,8 @@ class RecordMatchRetriever(PermidRetriever):
             else:
                 batch_stats.total_permid_failed += 1
 
+        buffer.flush()
         batch_stats.total_permids += sum(len(permid_list) for permid_list in permid_data.values())
-        return permid_data
 
     def _retrieve_record_match(self, batch_entities: list[tuple[str, list[str]]], batch_stats: "BatchStats") -> dict[str, Any]:
         """Retrieve the PermID for the records.
