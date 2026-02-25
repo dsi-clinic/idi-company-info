@@ -11,6 +11,9 @@ from ftm2j.common.logs import get_logger
 if TYPE_CHECKING:
     from ftm2j.processors.idi_company_info.identifier import BatchStats, ApiClients
 
+# Third party imports
+import pandas as pd
+
 
 class EntitySearchContext(Protocol):
     """Context for the Entity Search API."""
@@ -36,9 +39,10 @@ class EntitySearchContext(Protocol):
 class PermidRetriever(ABC):
     """Strategy for retrieving PermIDs. Produces unified {identifier: [permid, ...]} format."""
 
-    def __init__(self, context: EntitySearchContext):
+    def __init__(self, context: EntitySearchContext, match_score_threshold: int = 1):
         """Initialize the PermidRetriever."""
         self._context = context
+        self._match_score_threshold = match_score_threshold
 
     @cached_property
     def logger(self) -> logging.Logger:
@@ -120,6 +124,8 @@ class EntitySearchRetriever(PermidRetriever):
 class RecordMatchRetriever(PermidRetriever):
     """Retrieve PermIDs for entities using the Record Match API."""
 
+    RECORD_BATCH_SIZE = 1000
+
     def retrieve(self, entities_to_process: dict[str, Any], batch_size: int, batch_stats: "BatchStats") -> dict[str, Any]:
         """Retrieve PermIDs for entities using the Record Match API.
 
@@ -128,4 +134,100 @@ class RecordMatchRetriever(PermidRetriever):
             batch_size: The batch size.
             batch_stats: The batch stats.
         """
-        ...
+        items = list(entities_to_process.keys())[:batch_size]
+        self.logger.info(f"Retrieving PermIDs for {len(items)} entities")
+
+        total_batches = (len(items) + self.RECORD_BATCH_SIZE - 1) // self.RECORD_BATCH_SIZE
+        self.logger.info(f"Processing {len(items)} entities in {total_batches} batches")
+
+        permid_data = {}
+        for batch_start in range(0, len(items), self.RECORD_BATCH_SIZE):
+            batch_items = items[batch_start : batch_start + self.RECORD_BATCH_SIZE]
+            batch_entities = [(item, entities_to_process[item]) for item in batch_items]
+
+            self.logger.info(f"[{batch_start +1}/{total_batches}] Processing: {len(batch_items)} entities")
+            batch_permid_data = self._retrieve_record_match(batch_entities, batch_stats)
+            if batch_permid_data:
+                permid_data.update(batch_permid_data)
+            else:
+                batch_stats.total_permid_failed += 1
+
+        batch_stats.total_permids += sum(len(permid_list) for permid_list in permid_data.values())
+        return permid_data
+
+    def _retrieve_record_match(self, batch_entities: list[tuple[str, list[str]]], batch_stats: "BatchStats") -> dict[str, Any]:
+        """Retrieve the PermID for the records.
+
+        Args:
+            batch_entities: The batch entities to process.
+        """
+        records = []
+        for entity_name, identifier_list in batch_entities:
+            for identifier in identifier_list:
+                records.append({
+                    "LocalID": identifier,
+                    "Standard Identifier": identifier if self._context.identifier_type == "cusip" else f"Cik:{identifier}",
+                    "Name": entity_name
+                })
+
+        # Create CSV string
+        df = pd.DataFrame(records)
+        csv_data = df.to_csv(index=False)
+
+        parsed_response = None
+        try:
+            response = self._context.api_clients.record_match.query_endpoint(csv_data)
+            if response["status_code"] == 200:
+                filtered_response = self._filter_record_match_response(response)
+
+                removed_records = len(records) - len(filtered_response)
+                self.logger.info(f"Removed %d records with score less than %d", removed_records, self._match_score_threshold)
+                if removed_records > 0:
+                    batch_stats.total_permid_failed += removed_records
+
+                parsed_response = self._parse_record_match_response(filtered_response)
+                self.logger.info(f"Parsed %d records", len(parsed_response))
+            else:
+                record_list = [(record["Name"], record["Standard Identifier"]) for record in records]
+                self.logger.error(f"Error retrieving PermIDs for %d records: %s", len(records), record_list)
+
+        except Exception as e:
+            self.logger.error(f"Error retrieving PermIDs for %d records: %s", len(records), e)
+
+        return parsed_response
+
+    def _filter_record_match_response(self, response: dict) -> dict[str, Any]:
+        """Filter the response.
+
+        Args:
+            response: The response to filter.
+        """
+        matched_data = [
+            match for match in response.get("data", {}).get("outputContentResponse", [])
+            if self._parse_score(match) >= self._match_score_threshold
+        ]
+        return matched_data
+
+    @staticmethod
+    def _parse_score(match: dict) -> float:
+        """Parse the score.
+
+        Args:
+            match: The match to parse.
+
+        Returns:
+            The score.
+        """
+        s = match.get("Match Score")
+        return float(str(s).rstrip("%")) / 100 if s else 0
+
+    def _parse_record_match_response(self, response: dict) -> dict[str, Any]:
+        """Parse the response.
+
+        Args:
+            response: The response to parse.
+        """
+        permid_data = {}
+        for record in response:
+            permid_data[record["Input_Name"]] = [(record["Input_LocalID"], [record["Match OpenPermID"]])]
+        return permid_data

@@ -87,7 +87,7 @@ class QueryType(StrEnum):
 class Identifier(ABC):
     """Base class for identifier types."""
 
-    def __init__(self, file_paths: FilePaths, batch_config: BatchConfig, api_credentials: ApiCredentials, query_type: QueryType = QueryType.ENTITY_SEARCH):
+    def __init__(self, file_paths: FilePaths, batch_config: BatchConfig, api_credentials: ApiCredentials, query_type: QueryType = QueryType.ENTITY_SEARCH, match_score_threshold: int = 1):
         """Initialize the Identifier.
 
         Args:
@@ -96,6 +96,7 @@ class Identifier(ABC):
             api_credentials: The API credentials.
             identifier_type: The identifier type.
             query_type: The query type.
+            match_score_threshold: The match score threshold.
         """
         self.file_paths = file_paths
         self.batch_config = batch_config
@@ -107,20 +108,20 @@ class Identifier(ABC):
             geonames_api=GeonamesApi(api_key=api_credentials.api_key, geonames_user=api_credentials.geonames_user)
         )
         self.logger = get_logger(__name__)
-        self.permid_retriever: PermidRetriever = self._create_permid_retriever(query_type)  # Strategy pattern
+        self.permid_retriever: PermidRetriever = self._create_permid_retriever(query_type, match_score_threshold)  # Strategy pattern
 
-    def _create_permid_retriever(self, query_type: QueryType) -> PermidRetriever:
+    def _create_permid_retriever(self, query_type: QueryType, match_score_threshold: int = 1) -> PermidRetriever:
         """Create the PermID retriever.
 
         Args:
             query_type: The query type.
-
+            match_score_threshold: The match score threshold.
         Returns:
             The PermID retriever.
         """
         return {
             QueryType.ENTITY_SEARCH: EntitySearchRetriever(context=self),
-            QueryType.RECORD_MATCH: RecordMatchRetriever(context=self),
+            QueryType.RECORD_MATCH: RecordMatchRetriever(context=self, match_score_threshold=match_score_threshold),
         }[query_type]
 
     @property
