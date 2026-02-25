@@ -6,6 +6,7 @@ from typing import Any, TYPE_CHECKING
 
 # Application imports
 from ftm2j.common.storage import load_json, save_json
+from ftm2j.common.logs import get_logger
 if TYPE_CHECKING:
     from ftm2j.common.batch import BatchProcessing
     from ftm2j.processors.idi_company_info.identifier import BatchStats
@@ -16,6 +17,7 @@ class Buffer(ABC):
     def __init__(self, file_path: str, buffer_size: int = 500):
         self.file_path = file_path
         self.buffer_size = buffer_size
+        self.logger = get_logger(__name__)
 
     @abstractmethod
     def add(self, data: Any) -> None:
@@ -60,11 +62,11 @@ class PermidBuffer(Buffer):
             The merged data.
         """
         existing = load_json(self.file_path, return_type="dict") or {}
-
-        for entity, data in self._buffer.items():
-            existing.setdefault(entity, {}).update(data)
+        existing.update(self._buffer)
 
         save_json(self.file_path, existing)
+        self.logger.info("Saved %s permid data to %s", len(self._buffer), self.file_path)
+
         self._buffer.clear()
 
     def load_all(self) -> dict:
@@ -109,8 +111,13 @@ class CompanyInfoBuffer(Buffer):
         """Write buffer to file and clear."""
         if not self._buffer:
             return
+
         save_json(self.file_path, self._company_info)
+        self.logger.info("Saved %s company info data to %s", len(self._buffer), self.file_path)
+
         self._batch_processing.update_batch_tracking(self._buffer, self._batch_stats)
+        self.logger.info("Updated batch tracking for %s entities", len(self._buffer))
+
         self._buffer.clear()
 
     def finalize(self) -> int:

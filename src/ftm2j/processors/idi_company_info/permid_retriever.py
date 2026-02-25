@@ -8,6 +8,7 @@ from typing import Any, Callable, Protocol, TYPE_CHECKING
 
 # Application imports
 from ftm2j.common.logs import get_logger
+from ftm2j.common.buffer import PermidBuffer
 if TYPE_CHECKING:
     from ftm2j.processors.idi_company_info.identifier import BatchStats, ApiClients
 
@@ -78,11 +79,18 @@ class EntitySearchRetriever(PermidRetriever):
         batch = list(entities_to_process.keys())[:batch_size]
         self.logger.info(f"Retrieving PermIDs for {len(batch)} entities")
 
+        buffer = PermidBuffer(
+            file_path=self._context.file_paths.permid_file,
+            buffer_size=self._context.batch_config.buffer_size
+        )
+
         permid_data = {}
         for idx, entity_name in enumerate(batch, 1):
             identifier_list = entities_to_process[entity_name]
             self.logger.info(f"[{idx}/{len(batch)}] Processing: {entity_name} ({len(identifier_list)})")
             permid_data[entity_name] = self._retrieve_permid_search(entity_name, identifier_list, batch_stats)
+            buffer.add({entity_name: permid_data[entity_name]})
+
         return permid_data
 
     def _retrieve_permid_search(self, entity_name: str, identifier_list: list[str], batch_stats: "BatchStats") -> dict[str, Any]:
@@ -113,7 +121,7 @@ class EntitySearchRetriever(PermidRetriever):
                 parse_fn=self._context._parse_permid_entities,
             )
 
-            permid_data.append((identifier, permids or []))
+            permid_data.append({identifier: permids or []})
             if success:
                 batch_stats.total_permids += 1
             else:
@@ -140,6 +148,11 @@ class RecordMatchRetriever(PermidRetriever):
         total_batches = (len(items) + self.RECORD_BATCH_SIZE - 1) // self.RECORD_BATCH_SIZE
         self.logger.info(f"Processing {len(items)} entities in {total_batches} batches")
 
+        buffer = PermidBuffer(
+            file_path=self._context.file_paths.permid_file,
+            buffer_size=self._context.batch_config.buffer_size
+        )
+
         permid_data = {}
         for batch_start in range(0, len(items), self.RECORD_BATCH_SIZE):
             batch_items = items[batch_start : batch_start + self.RECORD_BATCH_SIZE]
@@ -149,6 +162,7 @@ class RecordMatchRetriever(PermidRetriever):
             batch_permid_data = self._retrieve_record_match(batch_entities, batch_stats)
             if batch_permid_data:
                 permid_data.update(batch_permid_data)
+                buffer.add(batch_permid_data)
             else:
                 batch_stats.total_permid_failed += 1
 
@@ -187,6 +201,7 @@ class RecordMatchRetriever(PermidRetriever):
 
                 parsed_response = self._parse_record_match_response(filtered_response)
                 self.logger.info(f"Parsed %d records", len(parsed_response))
+
             else:
                 record_list = [(record["Name"], record["Standard Identifier"]) for record in records]
                 self.logger.error(f"Error retrieving PermIDs for %d records: %s", len(records), record_list)
@@ -229,5 +244,5 @@ class RecordMatchRetriever(PermidRetriever):
         """
         permid_data = {}
         for record in response:
-            permid_data[record["Input_Name"]] = [(record["Input_LocalID"], [record["Match OpenPermID"]])]
+            permid_data[record["Input_Name"]] = [{record["Input_LocalID"]: [record["Match OpenPermID"]]}]
         return permid_data

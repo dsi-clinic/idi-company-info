@@ -237,22 +237,23 @@ class Identifier(ABC):
             A list of company information.
         """
         company_info = []
-        for identifier, permid_list in permid_data:
-            for permid in permid_list:
-                response = self.api_clients.entity_lookup.query_endpoint(permid_url=permid)
-                success, company_data = self._handle_api_response(
-                    response,
-                    entity_name,
-                    permid,
-                    parse_fn=self._parse_company_data(entity_name, identifier, permid),
-                    error_msg="Company info query error for entity %s with PermID %s: %s",
-                    no_match_msg="No company data found for entity %s with PermID %s",
-                )
-                if success:
-                    company_info.append(company_data)
-                    batch_stats.total_company_info += 1
-                else:
-                    batch_stats.total_company_info_failed += 1
+        for list_item in permid_data:
+            for identifier, permid_list in list_item.items():
+                for permid in permid_list:
+                    response = self.api_clients.entity_lookup.query_endpoint(permid_url=permid)
+                    success, company_data = self._handle_api_response(
+                        response,
+                        entity_name,
+                        permid,
+                        parse_fn=self._parse_company_data(entity_name, identifier, permid),
+                        error_msg="Company info query error for entity %s with PermID %s: %s",
+                        no_match_msg="No company data found for entity %s with PermID %s",
+                    )
+                    if success:
+                        company_info.append(company_data)
+                        batch_stats.total_company_info += 1
+                    else:
+                        batch_stats.total_company_info_failed += 1
 
         return company_info
 
