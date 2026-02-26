@@ -12,27 +12,18 @@ from ftm2j.common.storage import load_json, save_json
 
 class BatchProcessing:
 
-    def __init__(self, batch_file: pathlib.Path, threshold_days: int = 30):
-        self.batch_file = pathlib.Path(batch_file)
-        self.logger = get_logger(__name__)
-        self.batch_tracking = self.load_batch_tracking()
+    def __init__(self, result_data: list[dict[str, Any]], threshold_days: int = 30):
+        """Initialize the BatchProcessing.
+
+        Args:
+            result_data: The result data.
+            threshold_days: The threshold days.
+        """
+        self.result_data = result_data
         self.threshold_days = threshold_days
+        self.logger = get_logger(__name__)
 
-    def load_batch_tracking(self) -> dict:
-        """
-        Load batch tracking data or create new tracking dict.
-
-        Returns:
-            Dictionary with batch tracking data
-        """
-        if self.batch_file.exists():
-            self.logger.info(f"Loading existing batch tracking from: {self.batch_file}")
-            return load_json(self.batch_file)
-        else:
-            self.logger.info("Creating new batch tracking file")
-            return {}
-
-    def get_unprocessed_entities(self, entity_data: list[dict[str, Any]]) -> list[str]:
+    def get_unprocessed_entities(self, entity_data: list[dict[str, list[str]]]) -> dict[str, Any]:
         """
         Get list of entities that haven't been processed yet.
 
@@ -42,135 +33,114 @@ class BatchProcessing:
         Returns:
             List of unprocessed entity names
         """
-        processed_entities: set[str] = set()
+        processed_entities = set([ (entity["original_entity_name"], entity["identifier"]) for entity in self.result_data ])
+        new_entities = [
+            (entity_name, identifier)
+            for entity_name, identifiers in entity_data.items()
+            for identifier in identifiers
+        ]
+        unprocessed_entities = [ entity for entity in new_entities if entity not in processed_entities ]
+        self.logger.info("Total new entities: %s", len(new_entities))
+        self.logger.info("Already processed entities: %s", len(processed_entities))
+        self.logger.info("Remaining to process: %s", len(unprocessed_entities))
 
-        for batch_info in self.batch_tracking.values():
-            entities = batch_info.get("processed_entities", [])
-            processed_entities.update(e for e in entities if e is not None)
+        unprocessed_identifiers = self._get_identifier_dict(unprocessed_entities)
+        return unprocessed_identifiers
 
-        all_entities: set[str] = set(entity_data.keys())
-        unprocessed: list[str] = list(all_entities - processed_entities)
-
-        self.logger.info("Total entities: %s", len(all_entities))
-        self.logger.info("Already processed: %s", len(processed_entities))
-        self.logger.info("Remaining to process: %s", len(unprocessed))
-
-        unprocesed_identifier_data = {entity: entity_data[entity] for entity in unprocessed}
-        return unprocesed_identifier_data
-
-    def filter_stale_entities(self, existing_results: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], set[str]]:
+    def _get_identifier_dict(self, entities: list[tuple[str, str]]) -> dict[str, list[str]]:
         """
-        Identify and process stale entities based on threshold.
+        Get identifier dictionary from entities.
 
         Args:
-            existing_results: List of existing results
+            entities: List of entity names and identifiers tuples
+
+        Returns:
+            Identifier dictionary
+        """
+        identifiers: dict[str, list[str]] = {}
+        for entity_name, identifier in entities:
+            identifiers.setdefault(entity_name, []).append(identifier)
+        return identifiers
+
+    def filter_stale_entities(self) -> tuple[list[dict[str, Any]], set[str]]:
+        """
+        Identify and process stale entities based on threshold.
 
         Returns:
             Tuple of (filtered_results, stale_entities_set)
         """
         if self.threshold_days is None:
-            return existing_results, set()
+            return self.result_data, set()
 
         self.logger.info(f"Checking for entities not updated in last {self.threshold_days} days")
-        stale_entities, stale_dates = self._get_stale_entities(existing_results)
+        stale_entities, stale_dates = self._get_stale_entities()
 
         if not stale_entities:
-            return existing_results, set()
+            return self.result_data, set()
 
         self.logger.info(f"Found {len(stale_entities)} stale entity(ies) to re-process")
 
         # Remove stale entity records so they can be re-processed
-        filtered_results = self._remove_stale_records(existing_results, stale_entities)
+        filtered_results = self._remove_stale_records(stale_entities)
 
-        # Remove stale entities from batch tracking
-        self._remove_stale_from_batch_tracking(stale_dates)
+        # Parse back to identifiers dictionary
+        filtered_identifiers = {}
+        for record in filtered_results:
+            filtered_identifiers.setdefault(record["original_entity_name"], []).append(record["identifier"])
+        stale_identifiers = self._get_identifier_dict(stale_entities)
 
-        return filtered_results, stale_entities
+        return filtered_identifiers, stale_identifiers
 
-    def _get_stale_entities(self, existing_results: list[dict[str, Any]]) -> tuple[set[str], list[datetime]]:
+    def _get_stale_entities(self) -> tuple[set[tuple[str, str]], list[datetime]]:
         """
         Get stale entities based on threshold.
 
-        Args:
-            existing_results: List of company info records
-
         Returns:
-            Tuple of (set of stale entity names, list of stale dates)
+            Tuple of (set of stale entity names and identifiers tuples, list of stale dates)
         """
         if self.threshold_days is None:
             return set(), []
 
         threshold_date = datetime.now() - timedelta(days=self.threshold_days)
-        old_entities: set[str] = set()
-        new_entities: set[str] = set()
+        old_entities: set[tuple[str, str]] = set()
+        new_entities: set[tuple[str, str]] = set()
         stale_dates: list[str] = []
 
-        for batch_key, batch_info in self.batch_tracking.items():
+        for company_info in self.result_data:
             try:
-                batch_dt = datetime.strptime(batch_key, "%Y%m%dT%H%M%S")
+                time_str = company_info.get("last_processed")
+                time_dt = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
             except ValueError:
                 continue
-            entities = batch_info.get("processed_entities", [])
-            if batch_dt < threshold_date:
-                old_entities.update(entities)
-                stale_dates.append(batch_key)
+            if time_dt < threshold_date:
+                old_entities.add((company_info["original_entity_name"], company_info["identifier"]))
+                stale_dates.append(time_dt)
             else:
-                new_entities.update(entities)
+                new_entities.add((company_info["original_entity_name"], company_info["identifier"]))
 
         stale_entries = old_entities - new_entities
-        stale_entries_data = {entity: {"identifiers": existing_results[entity]["identifiers"]} for entity in stale_entries}
         self.logger.info("Located %s stale entities", len(stale_entries))
-        return stale_entries_data, stale_dates
+        return stale_entries, stale_dates
 
-    def _remove_stale_records(self, existing_results: list[dict[str, Any]], stale_entities: set[str]) -> list[dict[str, Any]]:
+    def _remove_stale_records(self, stale_entities: set[str]) -> list[dict[str, Any]]:
         """
         Remove records for stale entities so they can be re-processed.
 
         Args:
-            existing_results: List of company info records
             stale_entities: Set of entity names to remove
 
         Returns:
             Filtered list without stale entity records
         """
         if not stale_entities:
-            return existing_results
+            return self.result_data
 
-        stale_keys = stale_entities.keys()
         filtered_results = [
-            record for record in existing_results
-            if record and record.get("original_entity_name") not in stale_keys
+            record for record in self.result_data
+            if record and (record["original_entity_name"], record["identifier"]) not in stale_entities
         ]
 
-        removed_count = len(existing_results) - len(filtered_results)
+        removed_count = len(self.result_data) - len(filtered_results)
         self.logger.info(f"Removed {removed_count} stale record(s) for re-processing")
 
         return filtered_results
-
-    def _remove_stale_from_batch_tracking(self, stale_dates: list[datetime]) -> None:
-        """
-        Remove stale entities from batch tracking so they're treated as unprocessed.
-
-        Args:
-            stale_dates: List of stale dates to remove
-        """
-        for key in stale_dates:
-            del self.batch_tracking[key]
-
-    def update_batch_tracking(self, processed_entities: list[str], batch_stats: dict):
-        """Update batch tracking with processed entities.
-
-        Writes results to the batch tracking file.
-        """
-        batch_timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
-        self.batch_tracking[batch_timestamp] = {
-            "processed_entities": processed_entities,
-            "batch_size": len(processed_entities),
-            "stats": asdict(batch_stats)
-        }
-        self.save_batch_tracking()
-
-    def save_batch_tracking(self):
-        """Save batch tracking data to file."""
-        save_json(str(self.batch_file), self.batch_tracking)
-        self.logger.info(f"Saved batch tracking to: {self.batch_file}")

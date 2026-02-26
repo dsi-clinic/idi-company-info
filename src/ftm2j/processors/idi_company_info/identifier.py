@@ -14,7 +14,7 @@ import pandas as pd
 from ftm2j.common.api import LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup, GeonamesApi
 from ftm2j.common.logs import get_logger
 from ftm2j.common.batch import BatchProcessing
-from ftm2j.common.buffer import CompanyInfoBuffer
+from ftm2j.common.buffer import Buffer
 from ftm2j.common.storage import load_json, save_json
 from ftm2j.processors.idi_company_info.permid_retriever import PermidRetriever, EntitySearchRetriever, RecordMatchRetriever
 
@@ -23,7 +23,6 @@ from ftm2j.processors.idi_company_info.permid_retriever import PermidRetriever, 
 class FilePaths:
     input_file: str
     result_file: str
-    batch_file: str
     permid_file: str
 
 
@@ -175,11 +174,10 @@ class Identifier(ABC):
         """
         ...
 
-    def process_entities(self, batch_processing: BatchProcessing, entities_to_process: dict[str, Any], existing_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def process_entities(self, entities_to_process: dict[str, Any], existing_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Process the entities.
 
         Args:
-            batch_processing: The batch processing.
             entities_to_process: The entities to process.
             existing_results: The existing results.
 
@@ -192,41 +190,38 @@ class Identifier(ABC):
         # Retrieve the PermID data from file
         permid_data = load_json(self.file_paths.permid_file, return_type="dict")
 
-        self.generate_company_info(permid_data, existing_results, batch_processing, batch_stats)
+        self.generate_company_info(permid_data, existing_results, batch_stats)
         return batch_stats
 
-    def generate_company_info(self, permid_data: dict[str, Any], existing_results: list[dict[str, Any]], batch_processing: BatchProcessing, batch_stats: BatchStats) -> None:
+    def generate_company_info(self, permid_data: dict[str, Any], existing_results: list[dict[str, Any]], batch_stats: BatchStats) -> None:
         """Generate the company information.
 
         Args:
             permid_data: The PermID data.
             existing_results: The existing results.
-            batch_processing: The batch processing.
             batch_stats: The batch stats.
         """
         batch = list(permid_data.keys())[:self.batch_config.batch_size]
         self.logger.info(f"Generating company info for {len(batch)} entities")
 
         existing_length = len(existing_results)
-        company_info = existing_results
+        # company_info = existing_results
 
-        buffer = CompanyInfoBuffer(
+        buffer = Buffer(
             file_path=self.file_paths.result_file,
             buffer_size=self.batch_config.buffer_size,
-            batch_processing=batch_processing,
-            batch_stats=batch_stats,
-            existing_results=existing_results
+            mode="list"
         )
 
         for idx, entity_name in enumerate(batch, 1):
             self.logger.info(f"[{idx}/{len(batch)}] Processing: {entity_name} ({len(permid_data[entity_name])})")
             company = self.retrieve_company_info(entity_name, permid_data[entity_name], batch_stats)
 
-            company_info.extend(company)
-            buffer.add(company, [c["original_entity_name"] for c in company])
+            # company_info.extend(company)
+            buffer.add(data=company)    # LO troubleshooting this line
             batch_stats.total_entities += 1
 
-        batch_stats.total_records = buffer.finalize() - existing_length
+        batch_stats.total_records = len(buffer.load_all()) - existing_length
 
     def retrieve_company_info(self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStats) -> list[dict[str, Any]]:
         """Retrieve the company information.
@@ -425,14 +420,14 @@ class Identifier(ABC):
         existing_results = load_json(self.file_paths.result_file, return_type="list")
 
         # Load previous batch processing data
-        batch_processing = BatchProcessing(self.file_paths.batch_file, self.batch_config.threshold_days)
+        batch_processing = BatchProcessing(existing_results, self.batch_config.threshold_days)
         unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
-        filtered_results, stale_entities = batch_processing.filter_stale_entities(existing_results)
+        filtered_results, stale_entities = batch_processing.filter_stale_entities()
         self.logger.info(f"To process: %d | Not to process: %d", len(unprocessed_entities) + len(stale_entities), len(filtered_results))
 
         # Process entities
         unprocessed_entities.update(stale_entities)
-        batch_stats = self.process_entities(batch_processing, unprocessed_entities, existing_results)
+        batch_stats = self.process_entities(unprocessed_entities, filtered_results)
 
         # Print stats
         self.print_stats(batch_stats)

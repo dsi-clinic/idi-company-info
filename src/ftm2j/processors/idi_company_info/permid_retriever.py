@@ -8,7 +8,7 @@ from typing import Any, Callable, Protocol, TYPE_CHECKING
 
 # Application imports
 from ftm2j.common.logs import get_logger
-from ftm2j.common.buffer import PermidBuffer
+from ftm2j.common.buffer import Buffer
 if TYPE_CHECKING:
     from ftm2j.processors.idi_company_info.identifier import BatchStats, ApiClients
 
@@ -79,9 +79,10 @@ class EntitySearchRetriever(PermidRetriever):
         batch = list(entities_to_process.keys())[:batch_size]
         self.logger.info(f"Retrieving PermIDs for {len(batch)} entities")
 
-        buffer = PermidBuffer(
+        buffer = Buffer(
             file_path=self._context.file_paths.permid_file,
-            buffer_size=self._context.batch_config.buffer_size
+            buffer_size=self._context.batch_config.buffer_size,
+            mode="dict"
         )
 
         permid_data = {}
@@ -89,7 +90,7 @@ class EntitySearchRetriever(PermidRetriever):
             identifier_list = entities_to_process[entity_name]
             self.logger.info(f"[{idx}/{len(batch)}] Processing: {entity_name} ({len(identifier_list)})")
             permid_data[entity_name] = self._retrieve_permid_search(entity_name, identifier_list, batch_stats)
-            buffer.add({entity_name: permid_data[entity_name]})
+            buffer.add(data={entity_name: permid_data[entity_name]})
 
         buffer.flush()
 
@@ -148,9 +149,10 @@ class RecordMatchRetriever(PermidRetriever):
         total_batches = (len(items) + self.RECORD_BATCH_SIZE - 1) // self.RECORD_BATCH_SIZE
         self.logger.info(f"Processing {len(items)} entities in {total_batches} batches")
 
-        buffer = PermidBuffer(
+        buffer = Buffer(
             file_path=self._context.file_paths.permid_file,
-            buffer_size=self._context.batch_config.buffer_size
+            buffer_size=self._context.batch_config.buffer_size,
+            mode="dict"
         )
 
         permid_data = {}
@@ -162,7 +164,7 @@ class RecordMatchRetriever(PermidRetriever):
             batch_permid_data = self._retrieve_record_match(batch_entities, batch_stats)
             if batch_permid_data:
                 permid_data.update(batch_permid_data)
-                buffer.add(batch_permid_data)
+                buffer.add(data=batch_permid_data)
             else:
                 batch_stats.total_permid_failed += 1
 
