@@ -180,9 +180,15 @@ class RecordMatchRetriever(PermidRetriever):
         records = []
         for entity_name, identifier_list in batch_entities:
             for identifier in identifier_list:
+                if self._context.identifier_type == "ticker":
+                    standard_identifier = identifier
+                elif self._context.identifier_type == "cik":
+                    standard_identifier = f"Cik:{identifier}"
+                else:
+                    raise ValueError(f"Invalid identifier type: {self._context.identifier_type}")
                 records.append({
                     "LocalID": identifier,
-                    "Standard Identifier": identifier if self._context.identifier_type == "cusip" else f"Cik:{identifier}",
+                    "Standard Identifier": standard_identifier,
                     "Name": entity_name
                 })
 

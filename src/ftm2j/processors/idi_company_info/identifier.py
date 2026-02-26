@@ -102,6 +102,7 @@ class Identifier(ABC):
         self.file_paths = file_paths
         self.batch_config = batch_config
         self.api_credentials = api_credentials
+        self.query_type = query_type
         self.api_clients = ApiClients(
             entity_search=LsegEntitySearch(api_key=api_credentials.api_key),
             record_match=LsegRecordMatch(api_key=api_credentials.api_key),
