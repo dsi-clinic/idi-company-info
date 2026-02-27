@@ -15,6 +15,7 @@ class FailureType(StrEnum):
     """Failure type for classification."""
 
     NO_PERMID = "no_permid"  # Empty response, identifier not in DB
+    LOW_MATCH_SCORE = "low_match_score"  # Match score less than threshold
     NO_COMPANY_INFO = "no_company_info"  # Entity lookup empty/404
     API_ERROR = "api_error"  # 5xx, timeout, network
     RATE_LIMIT = "rate_limit"  # 429
@@ -23,7 +24,7 @@ class FailureType(StrEnum):
 class FailureClassifier:
     """Classifies failures as retryable or permanent."""
 
-    DO_NOT_RETRY = frozenset({FailureType.NO_PERMID, FailureType.NO_COMPANY_INFO})
+    DO_NOT_RETRY = frozenset({FailureType.NO_PERMID, FailureType.NO_COMPANY_INFO, FailureType.LOW_MATCH_SCORE})
 
     @classmethod
     def is_retryable(cls, failure_type: FailureType) -> bool:

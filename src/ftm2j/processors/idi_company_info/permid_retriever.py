@@ -42,6 +42,10 @@ class EntitySearchContext(Protocol):
         """Handle the API response."""
         ...
 
+    def _handle_failures(self, response: dict, entity_name: str, identifier: str, permids: list[str]) -> None:
+        """Handle the failures."""
+        ...
+
 
 class PermidRetriever(ABC):
     """Strategy for retrieving PermIDs. Produces unified {identifier: [permid, ...]} format."""
@@ -271,7 +275,8 @@ class RecordMatchRetriever(PermidRetriever):
         try:
             response = self._context.api_clients.record_match.query_endpoint(csv_data)
             if response["status_code"] == 200:
-                filtered_response = self._filter_record_match_response(response)
+                full_response = response.get("data", {}).get("outputContentResponse", [])
+                filtered_response = self._filter_record_match_response(full_response)
 
                 removed_records = len(records) - len(filtered_response)
                 self.logger.info(f"Removed %d records with score less than %d", removed_records, self._match_score_threshold)
@@ -280,7 +285,7 @@ class RecordMatchRetriever(PermidRetriever):
 
                 # Add permanent failures (no permid) to do-not-retry registry
                 if self._context.failure_registry:
-                    self._handle_failures(filtered_response, records)
+                    self._handle_failures(filtered_response, full_response, records)
 
                 parsed_response = self._parse_record_match_response(filtered_response)
                 self.logger.info(f"Parsed %d records", len(parsed_response))
@@ -294,14 +299,14 @@ class RecordMatchRetriever(PermidRetriever):
 
         return parsed_response
 
-    def _filter_record_match_response(self, response: dict) -> dict[str, Any]:
+    def _filter_record_match_response(self, response: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Filter the response.
 
         Args:
             response: The response to filter.
         """
         matched_data = [
-            match for match in response.get("data", {}).get("outputContentResponse", [])
+            match for match in response
             if self._parse_score(match) >= self._match_score_threshold
         ]
         return matched_data
@@ -319,25 +324,39 @@ class RecordMatchRetriever(PermidRetriever):
         s = match.get("Match Score")
         return float(str(s).rstrip("%")) / 100 if s else 0
 
-    def _handle_failures(self, filtered_response: dict, records: list[dict[str, Any]]) -> None:
+    def _handle_failures(self, filtered_response: list[dict[str, Any]], full_response: list[dict[str, Any]], records: list[dict[str, Any]]) -> None:
         """Handle the failures.
 
         Args:
             filtered_response: The filtered response.
+            full_response: The full response.
             records: The records.
         """
-        if self._context.failure_registry:
-            matched_set = {
-                (r["Input_Name"], r["Input_LocalID"]) for r in filtered_response
-            }
-            for record in records:
-                key = (record["Name"], record["LocalID"])
-                if key not in matched_set:
-                    self._context.failure_registry.add(
-                        record["Name"],
-                        record["LocalID"],
-                        reason=str(FailureType.NO_PERMID),
-                    )
+        matched_set = {
+            (r["Input_Name"], r["Input_LocalID"]) for r in filtered_response
+        }
+
+        score_map = {
+            (r["Input_Name"], r["Input_LocalID"]): self._parse_score(r) for r in full_response
+        }
+
+        for record in records:
+            key = (record["Name"], record["LocalID"])
+
+            reason = ""
+
+            if key in matched_set:
+                continue
+
+            elif key in score_map:
+                score = score_map[key]
+                reason=f"{FailureType.LOW_MATCH_SCORE}:{score:.2f}"
+
+            else:
+                reason=str(FailureType.NO_PERMID)
+
+            if reason:
+                self._context.failure_registry.add(record["Name"], record["LocalID"], reason=reason)
 
     def _parse_record_match_response(self, response: dict) -> dict[str, Any]:
         """Parse the response.
