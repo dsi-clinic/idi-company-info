@@ -1,6 +1,7 @@
 """Processes identifiers for company information."""
 
 # Standard library imports
+import os
 from abc import ABC, abstractmethod
 from dataclasses import asdict,dataclass
 from datetime import datetime, timezone
@@ -102,20 +103,32 @@ class Identifier(ABC):
             match_score_threshold: The match score threshold.
         """
         self.file_paths = file_paths
+        self._init_dirs()
+
         self.batch_config = batch_config
-        self.api_credentials = api_credentials
-        self.query_type = query_type
+
         self.failure_registry: FailureRegistry | None = (
             FailureRegistry(file_paths.failure_file) if file_paths.failure_file else None
         )
+
+        self.api_credentials = api_credentials
         self.api_clients = ApiClients(
             entity_search=LsegEntitySearch(api_key=api_credentials.api_key),
             record_match=LsegRecordMatch(api_key=api_credentials.api_key),
             entity_lookup=LSEGEntityLookup(api_key=api_credentials.api_key),
             geonames_api=GeonamesApi(api_key=api_credentials.api_key, geonames_user=api_credentials.geonames_user)
         )
-        self.logger = get_logger(__name__)
+
+        self.query_type = query_type
         self.permid_retriever: PermidRetriever = self._create_permid_retriever(query_type, match_score_threshold)  # Strategy pattern
+
+        self.logger = get_logger(__name__)
+
+    def _init_dirs(self) -> None:
+        """Initialize the directories."""
+        os.makedirs(os.path.dirname(self.file_paths.result_file), exist_ok=True)
+        os.makedirs(os.path.dirname(self.file_paths.permid_file), exist_ok=True)
+        os.makedirs(os.path.dirname(self.file_paths.failure_file), exist_ok=True)
 
     def _create_permid_retriever(self, query_type: QueryType, match_score_threshold: int = 1) -> PermidRetriever:
         """Create the PermID retriever.
