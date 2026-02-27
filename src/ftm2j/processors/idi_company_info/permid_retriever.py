@@ -87,7 +87,7 @@ class EntitySearchRetriever(PermidRetriever):
             batch_stats: The batch stats.
         """
         batch = list(entities_to_process.keys())[:batch_size]
-        self.logger.info(f"Retrieving PermIDs for {len(batch)} entities")
+        self.logger.info("Retrieving PermIDs for %d entities", len(batch))
 
         buffer = Buffer(
             file_path=self._context.file_paths.permid_file,
@@ -98,7 +98,7 @@ class EntitySearchRetriever(PermidRetriever):
         permid_data = {}
         for idx, entity_name in enumerate(batch, 1):
             identifier_list = entities_to_process[entity_name]
-            self.logger.info(f"[{idx}/{len(batch)}] Processing: {entity_name} ({len(identifier_list)})")
+            self.logger.info("[%d/%d] Processing: %s (%d)", idx, len(batch), entity_name, len(identifier_list))
             permid_data[entity_name] = self._retrieve_permid_search(entity_name, identifier_list, batch_stats)
             buffer.add(data={entity_name: permid_data[entity_name]})
 
@@ -190,10 +190,10 @@ class RecordMatchRetriever(PermidRetriever):
             batch_stats: The batch stats.
         """
         items = list(entities_to_process.keys())[:batch_size]
-        self.logger.info(f"Retrieving PermIDs for {len(items)} entities")
+        self.logger.info("Retrieving PermIDs for %d entities", len(items))
 
         total_batches = (len(items) + self.RECORD_BATCH_SIZE - 1) // self.RECORD_BATCH_SIZE
-        self.logger.info(f"Processing {len(items)} entities in {total_batches} batches")
+        self.logger.info("Processing %d entities in %d batches", len(items), total_batches)
 
         buffer = Buffer(
             file_path=self._context.file_paths.permid_file,
@@ -206,7 +206,7 @@ class RecordMatchRetriever(PermidRetriever):
             batch_items = items[batch_start : batch_start + self.RECORD_BATCH_SIZE]
             batch_entities = [(item, entities_to_process[item]) for item in batch_items]
 
-            self.logger.info(f"[{batch_start +1}/{total_batches}] Processing: {len(batch_items)} entities")
+            self.logger.info("[%d/%d] Processing: %d entities", batch_start + 1, total_batches, len(batch_items))
             batch_permid_data = self._retrieve_record_match(batch_entities, batch_stats)
             if batch_permid_data:
                 permid_data.update(batch_permid_data)
@@ -279,7 +279,7 @@ class RecordMatchRetriever(PermidRetriever):
                 filtered_response = self._filter_record_match_response(full_response)
 
                 removed_records = len(records) - len(filtered_response)
-                self.logger.info(f"Removed %d records with score less than %d", removed_records, self._match_score_threshold)
+                self.logger.info("Removed %d records with score less than %d", removed_records, self._match_score_threshold)
                 if removed_records > 0:
                     batch_stats.total_permid_failed += removed_records
 
@@ -288,14 +288,14 @@ class RecordMatchRetriever(PermidRetriever):
                     self._handle_failures(filtered_response, full_response, records)
 
                 parsed_response = self._parse_record_match_response(filtered_response)
-                self.logger.info(f"Parsed %d records", len(parsed_response))
+                self.logger.info("Parsed %d records", len(parsed_response))
 
             else:
                 record_list = [(record["Name"], record["Standard Identifier"]) for record in records]
-                self.logger.error(f"Error retrieving PermIDs for %d records: %s", len(records), record_list)
+                self.logger.error("Error retrieving PermIDs for %d records: %s", len(records), record_list)
 
         except Exception as e:
-            self.logger.error(f"Error retrieving PermIDs for %d records: %s", len(records), e)
+            self.logger.error("Error retrieving PermIDs for %d records: %s", len(records), e)
 
         return parsed_response
 

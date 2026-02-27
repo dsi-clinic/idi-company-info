@@ -227,7 +227,7 @@ class Identifier(ABC):
                 permids for item in permid_data[e] for permids in item.values() if permids
             )
         ]
-        self.logger.info(f"Generating company info for {len(batch)} entities")
+        self.logger.info("Generating company info for %d entities", len(batch))
 
         buffer = Buffer(
             file_path=self.file_paths.result_file,
@@ -236,7 +236,7 @@ class Identifier(ABC):
         )
 
         for idx, entity_name in enumerate(batch, 1):
-            self.logger.info(f"[{idx}/{len(batch)}] Processing: {entity_name} ({len(permid_data[entity_name])})")
+            self.logger.info("[%d/%d] Processing: %s (%d)", idx, len(batch), entity_name, len(permid_data[entity_name]))
             company = self.retrieve_company_info(entity_name, permid_data[entity_name], batch_stats)
 
             buffer.add(data=company)    # LO troubleshooting this line
@@ -472,7 +472,7 @@ class Identifier(ABC):
         filtered_results, stale_identifiers = batch_processing.filter_stale_entities()
         unprocessed_entities.update(stale_identifiers)
         to_process = sum(len(v) for v in unprocessed_entities.values())
-        self.logger.info(f"To process: %d | Not to process: %d", to_process, len(filtered_results))
+        self.logger.info("To process: %d | Not to process: %d", to_process, len(filtered_results))
 
         # Process entities
         batch_stats = self.process_entities(unprocessed_entities, len(filtered_results))

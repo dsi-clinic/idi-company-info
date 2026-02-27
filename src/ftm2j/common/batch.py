@@ -119,13 +119,13 @@ class BatchProcessing:
         if self.threshold_days is None:
             return self.result_data, set()
 
-        self.logger.info(f"Checking for entities not updated in last {self.threshold_days} days")
+        self.logger.info("Checking for entities not updated in last %d days", self.threshold_days)
         stale_entities, stale_dates = self._get_stale_entities()
 
         if not stale_entities:
             return self.result_data, set()
 
-        self.logger.info(f"Found {len(stale_entities)} stale entity(ies) to re-process")
+        self.logger.info("Found %d stale entity(ies) to re-process", len(stale_entities))
 
         # Remove stale entity records so they can be re-processed
         filtered_results = self._remove_stale_records(stale_entities)
@@ -188,6 +188,6 @@ class BatchProcessing:
         ]
 
         removed_count = len(self.result_data) - len(filtered_results)
-        self.logger.info(f"Removed {removed_count} stale record(s) for re-processing")
+        self.logger.info("Removed %d stale record(s) for re-processing", removed_count)
 
         return filtered_results
