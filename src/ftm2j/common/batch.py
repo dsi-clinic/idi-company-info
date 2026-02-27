@@ -29,7 +29,7 @@ class BatchProcessing:
         self.result_data = result_data
         self.threshold_days = threshold_days
         self.failure_registry = failure_registry
-        self.logger = get_logger(__name__)
+        self.logger = get_logger("BatchProcessing")
 
     def get_unprocessed_entities(self, entity_data: dict[str, list[Any]]) -> dict[str, Any]:
         """

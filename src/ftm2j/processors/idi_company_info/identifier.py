@@ -122,7 +122,7 @@ class Identifier(ABC):
         self.query_type = query_type
         self.permid_retriever: PermidRetriever = self._create_permid_retriever(query_type, match_score_threshold)  # Strategy pattern
 
-        self.logger = get_logger(__name__)
+        self.logger = get_logger("Identifier")
 
     def _init_dirs(self) -> None:
         """Initialize the directories."""

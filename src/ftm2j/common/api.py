@@ -35,7 +35,7 @@ class ApiClient(ABC):
         """
         self.api_key: str = api_key
         self.max_retries: int = max_retries if max_retries is not None else self.DEFAULT_MAX_RETRIES
-        self.logger: logging.Logger = get_logger(__name__)
+        self.logger: logging.Logger = get_logger("ApiClient")
 
     @cached_property
     def session(self) -> requests.Session:

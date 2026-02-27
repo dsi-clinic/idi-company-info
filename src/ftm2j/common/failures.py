@@ -84,7 +84,7 @@ class FailureRegistry:
         self.file_path = file_path
         self._entries: set[tuple[str, str]] = set()
         self._reasons: dict[tuple[str, str], str] = {}
-        self.logger = get_logger(__name__)
+        self.logger = get_logger("FailureRegistry")
         self.load()
 
     def load(self) -> None:

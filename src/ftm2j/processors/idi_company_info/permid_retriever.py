@@ -58,7 +58,7 @@ class PermidRetriever(ABC):
     @cached_property
     def logger(self) -> logging.Logger:
         """Get the logger."""
-        return get_logger(__name__)
+        return get_logger("PermidRetriever")
 
     @abstractmethod
     def retrieve(self, entities_to_process: dict[str, Any], batch_size: int, batch_stats: "BatchStats") -> dict[str, Any]:

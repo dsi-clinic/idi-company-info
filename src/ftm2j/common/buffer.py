@@ -21,7 +21,7 @@ class Buffer:
         """
         self.file_path = file_path
         self.buffer_size = buffer_size
-        self.logger = get_logger(__name__)
+        self.logger = get_logger("Buffer")
         self.mode = mode
         if mode == "dict":
             self._buffer: dict = {}
