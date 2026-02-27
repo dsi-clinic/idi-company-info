@@ -7,6 +7,7 @@ from functools import cached_property
 from typing import Any, Callable, Protocol, TYPE_CHECKING
 
 # Application imports
+from ftm2j.common.failures import FailureClassifier, FailureType
 from ftm2j.common.logs import get_logger
 from ftm2j.common.buffer import Buffer
 if TYPE_CHECKING:
@@ -22,6 +23,11 @@ class EntitySearchContext(Protocol):
     @property
     def api_clients(self) -> "ApiClients":
         """Get the API clients."""
+        ...
+
+    @property
+    def failure_registry(self):
+        """Optional failure registry for do-not-retry list."""
         ...
 
     def _build_query_params(self, identifier: str) -> dict[str, Any]:
@@ -93,6 +99,7 @@ class EntitySearchRetriever(PermidRetriever):
             buffer.add(data={entity_name: permid_data[entity_name]})
 
         buffer.flush()
+        return batch
 
     def _retrieve_permid_search(self, entity_name: str, identifier_list: list[str], batch_stats: "BatchStats") -> dict[str, Any]:
         """Retrieve the PermID for the entity.
@@ -112,22 +119,57 @@ class EntitySearchRetriever(PermidRetriever):
 
         permid_data = []
         for identifier in identifier_list:
-            query_params = self._context._build_query_params(identifier)
-            response = self._context.api_clients.entity_search.query_endpoint(params=query_params)
+            self._parse_api_response(entity_name, identifier, permid_data, batch_stats)
 
-            success, permids = self._context._handle_api_response(
-                response,
-                entity_name,
-                identifier,
-                parse_fn=self._context._parse_permid_entities,
-            )
-
-            permid_data.append({identifier: permids or []})
-            if success:
-                batch_stats.total_permids += 1
-            else:
-                batch_stats.total_permid_failed += 1
         return permid_data
+
+    def _parse_api_response(self, entity_name: str, identifier: str, permid_data: dict[str, Any], batch_stats: "BatchStats") -> None:
+        """Parse the API response.
+
+        Modifies permid_data and batch_stats.
+
+        Args:
+            entity_name: The entity name.
+            identifier: The identifier.
+            permid_data: The PermID data.
+            batch_stats: The batch stats.
+        """
+        query_params = self._context._build_query_params(identifier)
+        response = self._context.api_clients.entity_search.query_endpoint(params=query_params)
+
+        success, permids = self._context._handle_api_response(
+            response,
+            entity_name,
+            identifier,
+            parse_fn=self._context._parse_permid_entities,
+        )
+
+        permid_data.append({identifier: permids or []})
+        if success:
+            batch_stats.total_permids += 1
+        else:
+            batch_stats.total_permid_failed += 1
+            if self._context.failure_registry:
+                self._handle_failures(response, entity_name, identifier, permids)
+
+    def _handle_failures(self, response: dict, entity_name: str, identifier: str, permids: list[str]) -> None:
+        """Handle the failures.
+
+        Args:
+            response: The response.
+            entity_name: The entity name.
+            identifier: The identifier.
+            permids: The PermIDs.
+        """
+        if self._context.failure_registry:
+            empty_data = not permids
+            failure_type = FailureClassifier.classify_from_response(
+                response, empty_data=empty_data, category="permid"
+            )
+            if not FailureClassifier.is_retryable(failure_type):
+                self._context.failure_registry.add(
+                    entity_name, identifier, reason=str(failure_type)
+                )
 
 
 class RecordMatchRetriever(PermidRetriever):
@@ -170,12 +212,32 @@ class RecordMatchRetriever(PermidRetriever):
 
         buffer.flush()
         batch_stats.total_permids += sum(len(permid_list) for permid_list in permid_data.values())
+        return items
 
     def _retrieve_record_match(self, batch_entities: list[tuple[str, list[str]]], batch_stats: "BatchStats") -> dict[str, Any]:
         """Retrieve the PermID for the records.
 
         Args:
             batch_entities: The batch entities to process.
+        """
+        records = self._build_records(batch_entities)
+
+        # Create CSV string
+        df = pd.DataFrame(records)
+        csv_data = df.to_csv(index=False)
+
+        parsed_response = self._parse_response(csv_data, records, batch_stats)
+
+        return parsed_response
+
+    def _build_records(self, batch_entities: list[tuple[str, list[str]]]) -> list[dict[str, Any]]:
+        """Build the records.
+
+        Args:
+            batch_entities: The batch entities to process.
+
+        Returns:
+            The records.
         """
         records = []
         for entity_name, identifier_list in batch_entities:
@@ -191,11 +253,20 @@ class RecordMatchRetriever(PermidRetriever):
                     "Standard Identifier": standard_identifier,
                     "Name": entity_name
                 })
+        return records
 
-        # Create CSV string
-        df = pd.DataFrame(records)
-        csv_data = df.to_csv(index=False)
 
+    def _parse_response(self, csv_data: str, records: list[dict[str, Any]], batch_stats: "BatchStats") -> dict[str, Any]:
+        """Parse the Record Match response.
+
+        Args:
+            csv_data: The CSV data.
+            batch_stats: The batch stats.
+            records: The records.
+
+        Returns:
+            The parsed response.
+        """
         parsed_response = None
         try:
             response = self._context.api_clients.record_match.query_endpoint(csv_data)
@@ -206,6 +277,10 @@ class RecordMatchRetriever(PermidRetriever):
                 self.logger.info(f"Removed %d records with score less than %d", removed_records, self._match_score_threshold)
                 if removed_records > 0:
                     batch_stats.total_permid_failed += removed_records
+
+                # Add permanent failures (no permid) to do-not-retry registry
+                if self._context.failure_registry:
+                    self._handle_failures(filtered_response, records)
 
                 parsed_response = self._parse_record_match_response(filtered_response)
                 self.logger.info(f"Parsed %d records", len(parsed_response))
@@ -243,6 +318,26 @@ class RecordMatchRetriever(PermidRetriever):
         """
         s = match.get("Match Score")
         return float(str(s).rstrip("%")) / 100 if s else 0
+
+    def _handle_failures(self, filtered_response: dict, records: list[dict[str, Any]]) -> None:
+        """Handle the failures.
+
+        Args:
+            filtered_response: The filtered response.
+            records: The records.
+        """
+        if self._context.failure_registry:
+            matched_set = {
+                (r["Input_Name"], r["Input_LocalID"]) for r in filtered_response
+            }
+            for record in records:
+                key = (record["Name"], record["LocalID"])
+                if key not in matched_set:
+                    self._context.failure_registry.add(
+                        record["Name"],
+                        record["LocalID"],
+                        reason=str(FailureType.NO_PERMID),
+                    )
 
     def _parse_record_match_response(self, response: dict) -> dict[str, Any]:
         """Parse the response.
