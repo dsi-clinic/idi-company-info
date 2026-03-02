@@ -81,11 +81,11 @@ class Buffer:
     def _should_flush(self, current_size: int) -> bool:
         return current_size >= self.buffer_size
 
-    def load_all(self) -> dict:
+    def load_all(self) -> dict | list:
         """Load full merged data from file + remaining sync buffer.
 
         Returns:
             The merged data.
         """
         self.flush()
-        return load_json(self.file_path, return_type="dict") or ({} if self.mode == "dict" else [])
+        return load_json(self.file_path, return_type=self.mode) or ({} if self.mode == "dict" else [])
