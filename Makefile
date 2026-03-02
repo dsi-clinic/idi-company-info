@@ -1,158 +1,136 @@
-.PHONY: help install install-dev test clean clean-all stage1 stage2 stage3 pipeline resume-stage2 resume-stage3
-.PHONY: docker-orchestrator docker-up docker-down docker-build
+.PHONY: help install install-dev test test-verbose test-coverage clean clean-all
+.PHONY: run-cik run-cusip run-ticker
+.PHONY: docker-build docker-up docker-down docker-run-cik docker-run-cusip docker-run-ticker
 
-# Configuration variables
-# Use uv run to execute Python (manages venv automatically)
+# ── Python runner ────────────────────────────────────────────────────────────
 RUN := uv run
-INPUT_PARQUET ?= data/input.parquet
-OUTPUT_DIR ?= output
-BATCH_SIZE ?= 5000
 
-# API credentials (set via environment variables)
+# ── Local run defaults (override on the command line) ────────────────────────
+INPUT_PARQUET  ?= data/input/data.parquet
+OUTPUT_DIR     ?= data/output
+BATCH_SIZE     ?= 2450
+BUFFER_SIZE    ?= 500
+THRESHOLD_DAYS ?=
+MATCH_SCORE    ?= 1
+
+# ── API credentials (resolved from env) ──────────────────────────────────────
 PERMID_API_KEY ?= $(shell echo $$PERMID_API_KEY)
-GEONAMES_USER ?= $(shell echo $$GEONAMES_USER)
+GEONAMES_USER  ?= $(shell echo $$GEONAMES_USER)
 
-# Docker Compose variables (for orchestrator)
-INPUT_FILE_PATH ?= $(shell echo $$INPUT_FILE_PATH)
-LOG_DIR ?= ./logs
+# ── Docker variables ──────────────────────────────────────────────────────────
+LOG_DIR        ?= ./logs
 
-# Output files (can be overridden individually)
-CIK_DATA ?= $(OUTPUT_DIR)/cik_data.json
-PERMID_DATA ?= $(OUTPUT_DIR)/permid_data.json
-COMPANY_INFO ?= $(OUTPUT_DIR)/company_info.json
-PERMID_BATCH_TRACKING ?= $(OUTPUT_DIR)/permid_batch_tracking.json
-COMPANY_BATCH_TRACKING ?= $(OUTPUT_DIR)/company_batch_tracking.json
+# ── Helpers ───────────────────────────────────────────────────────────────────
+define check-creds
+	@if [ -z "$(PERMID_API_KEY)" ]; then \
+		echo "Error: PERMID_API_KEY not set. Run: export PERMID_API_KEY='your-key'"; \
+		exit 1; \
+	fi
+	@if [ -z "$(GEONAMES_USER)" ]; then \
+		echo "Error: GEONAMES_USER not set. Run: export GEONAMES_USER='your-username'"; \
+		exit 1; \
+	fi
+endef
 
+define check-input
+	@if [ ! -f "$(INPUT_PARQUET)" ]; then \
+		echo "Error: input file not found: $(INPUT_PARQUET)"; \
+		echo "Set INPUT_PARQUET=path/to/file.parquet"; \
+		exit 1; \
+	fi
+endef
+
+# ── Help ──────────────────────────────────────────────────────────────────────
 help:
 	@echo "IDI Company Information Pipeline"
-	@echo "================================"
+	@echo "================================="
 	@echo ""
-	@echo "Setup targets:"
+	@echo "Setup:"
 	@echo "  make install          Install production dependencies"
-	@echo "  make install-dev      Install development dependencies (includes tests)"
+	@echo "  make install-dev      Install dev dependencies (includes tests)"
 	@echo ""
-	@echo "Pipeline targets:"
-	@echo "  make stage1           Extract CIKs from parquet file"
-	@echo "  make stage2           Query PermID API by CIK"
-	@echo "  make stage3           Retrieve detailed company information"
-	@echo "  make pipeline         Run complete pipeline (all 3 stages)"
+	@echo "Local pipeline runs:"
+	@echo "  make run-cik          CIK track   (Entity Search)"
+	@echo "  make run-cusip        CUSIP track  (Entity Search)"
+	@echo "  make run-ticker       Ticker track (Record Match)"
 	@echo ""
-	@echo "Test targets:"
+	@echo "  Common options (pass as make args):"
+	@echo "    INPUT_PARQUET=path/to/file.parquet  (default: $(INPUT_PARQUET))"
+	@echo "    OUTPUT_DIR=data/output              (default: $(OUTPUT_DIR))"
+	@echo "    BATCH_SIZE=2450                     (default: $(BATCH_SIZE))"
+	@echo "    BUFFER_SIZE=500                     (default: $(BUFFER_SIZE))"
+	@echo "    THRESHOLD_DAYS=30                   (default: unset)"
+	@echo "    MATCH_SCORE=1                       (ticker only, default: $(MATCH_SCORE))"
+	@echo ""
+	@echo "  Credentials (env vars or make args):"
+	@echo "    PERMID_API_KEY=$${PERMID_API_KEY:-<not set>}"
+	@echo "    GEONAMES_USER=$${GEONAMES_USER:-<not set>}"
+	@echo ""
+	@echo "Tests:"
 	@echo "  make test             Run all tests"
-	@echo "  make test-verbose     Run tests with verbose output"
-	@echo "  make test-coverage    Run tests with coverage report"
+	@echo "  make test-verbose     Verbose output"
+	@echo "  make test-coverage    HTML + terminal coverage report"
 	@echo ""
-	@echo "Docker Compose targets:"
-	@echo "  make docker-build       Build orchestrator image"
-	@echo "  make docker-orchestrator  Run orchestrator via Docker (requires INPUT_FILE_PATH)"
-	@echo "  make docker-up          Start scheduler + autoheal stack"
-	@echo "  make docker-down        Stop Docker Compose stack"
+	@echo "Docker:"
+	@echo "  make docker-build     Build orchestrator image"
+	@echo "  make docker-up        Start scheduler stack (runs on schedule)"
+	@echo "  make docker-down      Stop Docker Compose stack"
+	@echo "  make docker-run-cik   Manual CIK run via Docker"
+	@echo "  make docker-run-cusip Manual CUSIP run via Docker"
+	@echo "  make docker-run-ticker Manual Ticker run via Docker"
 	@echo ""
-	@echo "Utility targets:"
-	@echo "  make clean            Remove output files"
-	@echo "  make clean-all        Remove output files and test artifacts"
+	@echo "Utility:"
+	@echo "  make clean            Remove output and log files"
+	@echo "  make clean-all        Remove output, logs, and test artifacts"
 	@echo ""
-	@echo "Configuration (set via environment variables or make arguments):"
-	@echo "  INPUT_PARQUET=$(INPUT_PARQUET)"
-	@echo "  OUTPUT_DIR=$(OUTPUT_DIR)"
-	@echo "  BATCH_SIZE=$(BATCH_SIZE)"
-	@echo "  CIK_DATA=$(CIK_DATA)"
-	@echo "  PERMID_DATA=$(PERMID_DATA)"
-	@echo "  COMPANY_INFO=$(COMPANY_INFO)"
-	@echo "  PERMID_BATCH_TRACKING=$(PERMID_BATCH_TRACKING)"
-	@echo "  COMPANY_BATCH_TRACKING=$(COMPANY_BATCH_TRACKING)"
-	@echo "  PERMID_API_KEY=$${PERMID_API_KEY:-'<not set>'}"
-	@echo "  GEONAMES_USER=$${GEONAMES_USER:-'<not set>'}"
-	@echo "  INPUT_FILE_PATH=$${INPUT_FILE_PATH:-'<not set> (required for docker-orchestrator)'}"
-	@echo ""
-	@echo "Example usage:"
-	@echo "  make install"
+	@echo "Example:"
 	@echo "  export PERMID_API_KEY='your-api-key'"
 	@echo "  export GEONAMES_USER='your-username'"
-	@echo "  make pipeline INPUT_PARQUET=data/myfile.parquet OUTPUT_DIR=results"
-	@echo "  # Or specify individual files:"
-	@echo "  make stage2 PERMID_DATA=results/permids.json PERMID_BATCH_TRACKING=results/batch.json"
-	@echo "  # Docker: run orchestrator (ensure .env or env vars are set):"
-	@echo "  make docker-orchestrator INPUT_FILE_PATH=data/input.parquet"
+	@echo "  make run-cik INPUT_PARQUET=data/input/investors.parquet OUTPUT_DIR=data/output"
 
-# Installation targets
+# ── Installation ──────────────────────────────────────────────────────────────
 install:
 	uv pip install -e .
 
 install-dev:
 	uv pip install -e ".[dev]"
 
-# Pipeline stage targets
-stage1:
-	@echo "Running Stage 1: Extract CIKs from parquet"
-	@if [ ! -f "$(INPUT_PARQUET)" ]; then \
-		echo "Error: Input file not found: $(INPUT_PARQUET)"; \
-		exit 1; \
-	fi
+# ── Local pipeline runs ───────────────────────────────────────────────────────
+_orchestrator_args = \
+	--input-file $(INPUT_PARQUET) \
+	--output-directory $(OUTPUT_DIR) \
+	--permid-api-key $(PERMID_API_KEY) \
+	--geonames-user $(GEONAMES_USER) \
+	--batch-size $(BATCH_SIZE) \
+	--buffer-size $(BUFFER_SIZE) \
+	$(if $(THRESHOLD_DAYS),--threshold-days $(THRESHOLD_DAYS),)
+
+run-cik:
+	$(call check-creds)
+	$(call check-input)
 	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m idi_company_info.retrieve_cik \
-		--input-file $(INPUT_PARQUET) \
-		--output-file $(CIK_DATA)
-	@echo "Stage 1 complete: $(CIK_DATA)"
+	$(RUN) -m ftm2j.processors.idi_company_info.orchestrator \
+		$(_orchestrator_args) \
+		--type cik
 
-stage2:
-	@echo "Running Stage 2: Query PermID API by CIK"
-	@if [ ! -f "$(CIK_DATA)" ]; then \
-		echo "Error: CIK data file not found: $(CIK_DATA)"; \
-		echo "Run 'make stage1' first to generate it."; \
-		exit 1; \
-	fi
-	@if [ -z "$(PERMID_API_KEY)" ]; then \
-		echo "Error: PERMID_API_KEY not set. Set it with: export PERMID_API_KEY='your-key'"; \
-		exit 1; \
-	fi
+run-cusip:
+	$(call check-creds)
+	$(call check-input)
 	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m idi_company_info.query_permid \
-		--api-key $(PERMID_API_KEY) \
-		--input-file $(CIK_DATA) \
-		--output-file $(PERMID_DATA) \
-		--batch-file $(PERMID_BATCH_TRACKING) \
-		--batch-size $(BATCH_SIZE)
-	@echo "Stage 2 complete: $(PERMID_DATA)"
+	$(RUN) -m ftm2j.processors.idi_company_info.orchestrator \
+		$(_orchestrator_args) \
+		--type cusip
 
-stage3:
-	@echo "Running Stage 3: Retrieve detailed company information"
-	@if [ ! -f "$(PERMID_DATA)" ]; then \
-		echo "Error: PermID data file not found: $(PERMID_DATA)"; \
-		echo "Run 'make stage2' first to generate it."; \
-		exit 1; \
-	fi
-	@if [ -z "$(PERMID_API_KEY)" ]; then \
-		echo "Error: PERMID_API_KEY not set. Set it with: export PERMID_API_KEY='your-key'"; \
-		exit 1; \
-	fi
-	@if [ -z "$(GEONAMES_USER)" ]; then \
-		echo "Error: GEONAMES_USER not set. Set it with: export GEONAMES_USER='your-username'"; \
-		exit 1; \
-	fi
+run-ticker:
+	$(call check-creds)
+	$(call check-input)
 	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m idi_company_info.query_company_info \
-		--api-key $(PERMID_API_KEY) \
-		--geonames-user $(GEONAMES_USER) \
-		--input-file $(PERMID_DATA) \
-		--output-file $(COMPANY_INFO) \
-		--batch-file $(COMPANY_BATCH_TRACKING) \
-		--batch-size $(BATCH_SIZE)
-	@echo "Stage 3 complete: $(COMPANY_INFO)"
+	$(RUN) -m ftm2j.processors.idi_company_info.orchestrator \
+		$(_orchestrator_args) \
+		--type ticker \
+		--match-score-threshold $(MATCH_SCORE)
 
-# Run complete pipeline
-pipeline: stage1 stage2 stage3
-	@echo ""
-	@echo "=========================================="
-	@echo "Pipeline complete!"
-	@echo "=========================================="
-	@echo "Output files:"
-	@echo "  CIK data:        $(CIK_DATA)"
-	@echo "  PermID data:     $(PERMID_DATA)"
-	@echo "  Company info:    $(COMPANY_INFO)"
-	@echo "=========================================="
-
-# Test targets
+# ── Tests ─────────────────────────────────────────────────────────────────────
 test:
 	$(RUN) pytest
 
@@ -160,90 +138,45 @@ test-verbose:
 	$(RUN) pytest -vv
 
 test-coverage:
-	$(RUN) pytest --cov=idi_company_info --cov-report=html --cov-report=term
+	$(RUN) pytest --cov=ftm2j --cov-report=html --cov-report=term
 	@echo ""
-	@echo "Coverage report generated in htmlcov/index.html"
+	@echo "Coverage report: htmlcov/index.html"
 
-# Clean targets
+# ── Cleanup ───────────────────────────────────────────────────────────────────
 clean:
-	@echo "Removing output files..."
-	rm -f $(CIK_DATA) $(PERMID_DATA) $(COMPANY_INFO)
-	rm -f $(PERMID_BATCH_TRACKING) $(COMPANY_BATCH_TRACKING)
-	@echo "Output files removed"
+	@echo "Removing output and log files..."
+	rm -rf $(OUTPUT_DIR)/company_info $(OUTPUT_DIR)/permid_data $(OUTPUT_DIR)/failures
+	rm -f $(LOG_DIR)/orchestrator_*.log
+	@echo "Done"
 
 clean-all: clean
 	@echo "Removing test artifacts..."
-	rm -rf .pytest_cache
-	rm -rf htmlcov
-	rm -rf .coverage
-	rm -rf __pycache__
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete
+	rm -rf .pytest_cache htmlcov .coverage
+	find . -type d -name "__pycache__" -not -path "./.venv/*" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -not -path "./.venv/*" -delete
 	@echo "Clean complete"
 
-# Resume targets for interrupted runs
-resume-stage2:
-	@echo "Resuming Stage 2: Query PermID API by CIK"
-	@if [ -z "$(PERMID_API_KEY)" ]; then \
-		echo "Error: PERMID_API_KEY not set. Set it with: export PERMID_API_KEY='your-key'"; \
-		exit 1; \
-	fi
-	$(RUN) -m idi_company_info.query_permid \
-		--api-key $(PERMID_API_KEY) \
-		--input-file $(CIK_DATA) \
-		--output-file $(PERMID_DATA) \
-		--batch-file $(PERMID_BATCH_TRACKING) \
-		--batch-size $(BATCH_SIZE)
-
-resume-stage3:
-	@echo "Resuming Stage 3: Retrieve detailed company information"
-	@if [ -z "$(PERMID_API_KEY)" ]; then \
-		echo "Error: PERMID_API_KEY not set. Set it with: export PERMID_API_KEY='your-key'"; \
-		exit 1; \
-	fi
-	@if [ -z "$(GEONAMES_USER)" ]; then \
-		echo "Error: GEONAMES_USER not set. Set it with: export GEONAMES_USER='your-username'"; \
-		exit 1; \
-	fi
-	$(RUN) -m idi_company_info.query_company_info \
-		--api-key $(PERMID_API_KEY) \
-		--geonames-user $(GEONAMES_USER) \
-		--input-file $(PERMID_DATA) \
-		--output-file $(COMPANY_INFO) \
-		--batch-file $(COMPANY_BATCH_TRACKING) \
-		--batch-size $(BATCH_SIZE)
-
-# Docker Compose targets
+# ── Docker ────────────────────────────────────────────────────────────────────
 docker-build:
 	@echo "Building orchestrator image..."
-	docker compose build orchestrator
-
-docker-orchestrator:
-	@echo "Running orchestrator via Docker Compose..."
-	@if [ -z "$(INPUT_FILE_PATH)" ]; then \
-		echo "Error: INPUT_FILE_PATH not set. Set it with: export INPUT_FILE_PATH=path/to/input.parquet"; \
-		echo "Or: make docker-orchestrator INPUT_FILE_PATH=data/input.parquet"; \
-		exit 1; \
-	fi
-	@if [ -z "$(PERMID_API_KEY)" ]; then \
-		echo "Error: PERMID_API_KEY not set. Set it with: export PERMID_API_KEY='your-key'"; \
-		exit 1; \
-	fi
-	@if [ -z "$(GEONAMES_USER)" ]; then \
-		echo "Error: GEONAMES_USER not set. Set it with: export GEONAMES_USER='your-username'"; \
-		exit 1; \
-	fi
-	@mkdir -p $(OUTPUT_DIR) $(LOG_DIR)
-	INPUT_FILE_PATH="$(INPUT_FILE_PATH)" OUTPUT_DIR="$(OUTPUT_DIR)" LOG_DIR="$(LOG_DIR)" \
-	PERMID_API_KEY="$(PERMID_API_KEY)" GEONAMES_USER="$(GEONAMES_USER)" \
-	BATCH_SIZE="$(BATCH_SIZE)" \
-	$(if $(THRESHOLD_DAYS),THRESHOLD_DAYS="$(THRESHOLD_DAYS)",) \
-	docker compose run --build --rm orchestrator
+	docker compose build orchestrator-cik
 
 docker-up:
-	@echo "Starting Docker Compose stack (scheduler + autoheal)..."
+	@echo "Starting scheduler stack..."
 	docker compose up -d
 
 docker-down:
 	@echo "Stopping Docker Compose stack..."
 	docker compose down
+
+docker-run-cik:
+	@echo "Running CIK pipeline via Docker..."
+	docker compose run --rm orchestrator-cik
+
+docker-run-cusip:
+	@echo "Running CUSIP pipeline via Docker..."
+	docker compose run --rm orchestrator-cusip
+
+docker-run-ticker:
+	@echo "Running Ticker pipeline via Docker..."
+	docker compose run --rm orchestrator-ticker
