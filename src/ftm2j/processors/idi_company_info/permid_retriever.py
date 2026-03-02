@@ -209,8 +209,14 @@ class RecordMatchRetriever(PermidRetriever):
         items = list(entities_to_process.keys())[:batch_size]
         self.logger.info("Retrieving PermIDs for %d entities", len(items))
 
-        total_batches = (len(items) + self.RECORD_BATCH_SIZE - 1) // self.RECORD_BATCH_SIZE
-        self.logger.info("Processing %d entities in %d batches", len(items), total_batches)
+        # Build the flat record list first — each entity may have multiple identifiers,
+        # so the total row count can exceed the entity count. Batch by rows, not entities.
+        all_entities = [(item, entities_to_process[item]) for item in items]
+        all_records = self._build_records(all_entities)
+
+        total_records = len(all_records)
+        total_batches = (total_records + self.RECORD_BATCH_SIZE - 1) // self.RECORD_BATCH_SIZE
+        self.logger.info("Processing %d records in %d API batches of up to %d rows each", total_records, total_batches, self.RECORD_BATCH_SIZE)
 
         buffer = Buffer(
             file_path=self._context.file_paths.permid_file,
@@ -219,41 +225,36 @@ class RecordMatchRetriever(PermidRetriever):
         )
 
         permid_data = {}
-        for batch_start in range(0, len(items), self.RECORD_BATCH_SIZE):
-            batch_items = items[batch_start : batch_start + self.RECORD_BATCH_SIZE]
-            batch_entities = [(item, entities_to_process[item]) for item in batch_items]
+        for batch_start in range(0, total_records, self.RECORD_BATCH_SIZE):
+            batch_records = all_records[batch_start : batch_start + self.RECORD_BATCH_SIZE]
+            batch_num = batch_start // self.RECORD_BATCH_SIZE + 1
 
-            self.logger.info("[%d/%d] Processing: %d entities", batch_start + 1, total_batches, len(batch_items))
-            batch_permid_data = self._retrieve_record_match(batch_entities, batch_stats)
+            self.logger.info("[%d/%d] Sending %d records to Record Match API", batch_num, total_batches, len(batch_records))
+            batch_permid_data = self._retrieve_record_match(batch_records, batch_stats)
             if batch_permid_data:
                 permid_data.update(batch_permid_data)
                 buffer.add(data=batch_permid_data)
             else:
-                batch_stats.total_permid_failed += 1
+                batch_stats.total_permid_failed += len(batch_records)
 
         if buffer._buffer:
             buffer.flush()
         batch_stats.total_permids += sum(len(permid_list) for permid_list in permid_data.values())
         return items
 
-    def _retrieve_record_match(self, batch_entities: list[tuple[str, list[str]]], batch_stats: "BatchStats") -> dict[str, Any]:
-        """Retrieve the PermID for the records.
+    def _retrieve_record_match(self, records: list[dict[str, Any]], batch_stats: "BatchStats") -> dict[str, Any]:
+        """Send a pre-built flat list of records to the Record Match API.
 
         Args:
-            batch_entities: The batch entities to process.
+            records: The records to send (already built via _build_records).
+            batch_stats: The batch stats.
 
         Returns:
             A dictionary of {entity_name: [permid, ...]}.
         """
-        records = self._build_records(batch_entities)
-
-        # Create CSV string
         df = pd.DataFrame(records)
         csv_data = df.to_csv(index=False)
-
-        parsed_response = self._parse_response(csv_data, records, batch_stats)
-
-        return parsed_response
+        return self._parse_response(csv_data, records, batch_stats)
 
     def _build_records(self, batch_entities: list[tuple[str, list[str]]]) -> list[dict[str, Any]]:
         """Build the records.
@@ -294,7 +295,7 @@ class RecordMatchRetriever(PermidRetriever):
         """
         parsed_response = None
         try:
-            self.logger.info("Submitted %d ticker record(s) to Record Match API", len(records))
+            self.logger.info("Submitted %d record(s) to Record Match API", len(records))
             response = self._context.api_clients.record_match.query_endpoint(csv_data)
             if response["status_code"] == 200:
                 full_response = response.get("data", {}).get("outputContentResponse", [])

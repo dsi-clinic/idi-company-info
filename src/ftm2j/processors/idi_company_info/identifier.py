@@ -222,13 +222,15 @@ class Identifier(ABC):
             num_existing_entities: The number of existing entities.
             batch_stats: The batch stats.
         """
-        batch = [
-            e for e in entities_to_process[:self.batch_config.batch_size]
-            if e in permid_data and any(
-                permids for item in permid_data[e] for permids in item.values() if permids
-            )
-        ]
-        self.logger.info("Generating company info for %d entities", len(batch))
+        batch = self._build_company_info_batch(entities_to_process, permid_data)
+        total_lookups = sum(
+            len(permids)
+            for e in batch
+            for item in permid_data[e]
+            for permids in item.values()
+            if permids
+        )
+        self.logger.info("Generating company info for %d entities (%d entity-lookup requests)", len(batch), total_lookups)
 
         buffer = Buffer(
             file_path=self.file_paths.result_file,
@@ -244,6 +246,44 @@ class Identifier(ABC):
             batch_stats.total_entities += 1
 
         batch_stats.total_records = len(buffer.load_all()) - num_existing_entities
+
+    def _build_company_info_batch(self, entities_to_process: list[str], permid_data: dict[str, Any]) -> list[str]:
+        """Select entities to process, capped at batch_size total entity-lookup API calls.
+
+        Each entity can have multiple PermIDs; every PermID costs one API request.
+        We stop adding entities as soon as the next entity would push the total over
+        batch_size, ensuring we never exceed the API request budget.
+
+        Args:
+            entities_to_process: Ordered list of entity names to consider.
+            permid_data: Mapping of entity name → list of {identifier: [permid, ...]} items.
+
+        Returns:
+            The subset of entities that fits within the request budget.
+        """
+        batch: list[str] = []
+        remaining = self.batch_config.batch_size
+        for entity in entities_to_process:
+            if entity not in permid_data:
+                continue
+            permid_count = sum(
+                len(permids)
+                for item in permid_data[entity]
+                for permids in item.values()
+                if permids
+            )
+            if permid_count == 0:
+                continue
+            if permid_count > remaining:
+                self.logger.info(
+                    "Stopping company info batch: adding '%s' (%d PermID(s)) would exceed the "
+                    "%d-request limit (%d remaining)",
+                    entity, permid_count, self.batch_config.batch_size, remaining,
+                )
+                break
+            batch.append(entity)
+            remaining -= permid_count
+        return batch
 
     def retrieve_company_info(self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStats) -> list[dict[str, Any]]:
         """Retrieve the company information.
