@@ -10,6 +10,6 @@ from pathlib import Path
 src_dir = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_dir))
 
-# Add ftm2j repo root so archive.processing.orchestrator is importable
-ftm2j_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(ftm2j_root))
+# Add idi_company_info repo root so archive.processing.orchestrator is importable
+idi_company_info_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(idi_company_info_root))

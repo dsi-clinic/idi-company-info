@@ -12,13 +12,13 @@ from typing import Any, Callable
 import pandas as pd
 
 # Application imports
-from ftm2j.common.api import LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup, GeonamesApi
-from ftm2j.common.failures import FailureClassifier, FailureRegistry
-from ftm2j.common.logs import get_logger
-from ftm2j.common.batch import BatchProcessing
-from ftm2j.common.buffer import Buffer
-from ftm2j.common.storage import load_json, save_json
-from ftm2j.processors.idi_company_info.permid_retriever import PermidRetriever, EntitySearchRetriever, RecordMatchRetriever
+from idi_company_info.common.api import LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup, GeonamesApi
+from idi_company_info.common.failures import FailureClassifier, FailureRegistry
+from idi_company_info.common.logs import get_logger
+from idi_company_info.common.batch import BatchProcessing
+from idi_company_info.common.buffer import Buffer
+from idi_company_info.common.storage import load_json, save_json
+from idi_company_info.processors.permid_retriever import PermidRetriever, EntitySearchRetriever, RecordMatchRetriever
 
 
 @dataclass

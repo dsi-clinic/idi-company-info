@@ -14,17 +14,17 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from ftm2j.processors.idi_company_info.orchestrator import (
+from idi_company_info.processors.orchestrator import (
     IDENTIFIER_REGISTRY,
     IdentifierFactory,
     IdentifierType,
     OrchestratorConfig,
     PipelineOrchestrator,
 )
-from ftm2j.common.api import GeonamesApi, LSEGEntityLookup, LsegEntitySearch, LsegRecordMatch
-from ftm2j.processors.idi_company_info.IdentifierCik import IdentifierCik
-from ftm2j.processors.idi_company_info.IdentifierCusip import IdentifierCusip
-from ftm2j.processors.idi_company_info.identifier import QueryType
+from idi_company_info.common.api import GeonamesApi, LSEGEntityLookup, LsegEntitySearch, LsegRecordMatch
+from idi_company_info.processors.IdentifierCik import IdentifierCik
+from idi_company_info.processors.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.identifier import QueryType
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +225,7 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch("ftm2j.processors.idi_company_info.orchestrator.IdentifierFactory.build") as mock_build:
+        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
             mock_build.return_value.run.return_value = None
 
             result = PipelineOrchestrator(config).run()
@@ -238,7 +238,7 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch("ftm2j.processors.idi_company_info.orchestrator.IdentifierFactory.build") as mock_build:
+        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
             mock_build.return_value.run.side_effect = RuntimeError("simulated API failure")
 
             result = PipelineOrchestrator(config).run()
@@ -250,7 +250,7 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch("ftm2j.processors.idi_company_info.orchestrator.IdentifierFactory.build") as mock_build:
+        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
             mock_build.return_value.run.side_effect = KeyboardInterrupt
 
             result = PipelineOrchestrator(config).run()

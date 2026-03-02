@@ -65,21 +65,21 @@ export GEONAMES_USER='your-username'
 
 ```bash
 # CIK mode (investors, Entity Search)
-python -m ftm2j.processors.idi_company_info.orchestrator \
+python -m idi_company_info.processors.orchestrator \
   --input-file /path/to/investors.parquet \
   --output-directory data/output \
   --type cik \
   --batch-size 2450
 
 # CUSIP mode (securities, Entity Search)
-python -m ftm2j.processors.idi_company_info.orchestrator \
+python -m idi_company_info.processors.orchestrator \
   --input-file /path/to/securities.parquet \
   --output-directory data/output \
   --type cusip \
   --batch-size 2450
 
 # Ticker mode (securities, Record Match) — manual only
-python -m ftm2j.processors.idi_company_info.orchestrator \
+python -m idi_company_info.processors.orchestrator \
   --input-file /path/to/securities.parquet \
   --output-directory data/output \
   --type ticker \
@@ -87,7 +87,7 @@ python -m ftm2j.processors.idi_company_info.orchestrator \
   --match-score-threshold 1
 
 # Re-query records older than 30 days
-python -m ftm2j.processors.idi_company_info.orchestrator \
+python -m idi_company_info.processors.orchestrator \
   --input-file /path/to/investors.parquet \
   --output-directory data/output \
   --type cik \

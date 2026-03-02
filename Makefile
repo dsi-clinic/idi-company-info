@@ -109,7 +109,7 @@ run-cik:
 	$(call check-creds)
 	$(call check-input)
 	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m ftm2j.processors.idi_company_info.orchestrator \
+	$(RUN) -m idi_company_info.processors.orchestrator \
 		$(_orchestrator_args) \
 		--type cik
 
@@ -117,7 +117,7 @@ run-cusip:
 	$(call check-creds)
 	$(call check-input)
 	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m ftm2j.processors.idi_company_info.orchestrator \
+	$(RUN) -m idi_company_info.processors.orchestrator \
 		$(_orchestrator_args) \
 		--type cusip
 
@@ -125,7 +125,7 @@ run-ticker:
 	$(call check-creds)
 	$(call check-input)
 	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m ftm2j.processors.idi_company_info.orchestrator \
+	$(RUN) -m idi_company_info.processors.orchestrator \
 		$(_orchestrator_args) \
 		--type ticker \
 		--match-score-threshold $(MATCH_SCORE)
@@ -138,7 +138,7 @@ test-verbose:
 	$(RUN) pytest -vv
 
 test-coverage:
-	$(RUN) pytest --cov=ftm2j --cov-report=html --cov-report=term
+	$(RUN) pytest --cov=idi_company_info --cov-report=html --cov-report=term
 	@echo ""
 	@echo "Coverage report: htmlcov/index.html"
 

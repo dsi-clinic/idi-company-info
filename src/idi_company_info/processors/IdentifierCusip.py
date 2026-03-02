@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 # Application imports
-from ftm2j.processors.idi_company_info.identifier import Identifier, QueryType
+from idi_company_info.processors.identifier import Identifier, QueryType
 
 
 class IdentifierCusip(Identifier):

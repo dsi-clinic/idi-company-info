@@ -7,11 +7,11 @@ from functools import cached_property
 from typing import Any, Callable, Protocol, TYPE_CHECKING
 
 # Application imports
-from ftm2j.common.failures import FailureClassifier, FailureType
-from ftm2j.common.logs import get_logger
-from ftm2j.common.buffer import Buffer
+from idi_company_info.common.failures import FailureClassifier, FailureType
+from idi_company_info.common.logs import get_logger
+from idi_company_info.common.buffer import Buffer
 if TYPE_CHECKING:
-    from ftm2j.processors.idi_company_info.identifier import BatchStats, ApiClients, FilePaths, BatchConfig
+    from idi_company_info.processors.identifier import BatchStats, ApiClients, FilePaths, BatchConfig
 
 # Third party imports
 import pandas as pd

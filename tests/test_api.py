@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for ftm2j.common.api
+Unit tests for idi_company_info.common.api
 """
 
 from unittest.mock import MagicMock, patch
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from ftm2j.common.api import (
+from idi_company_info.common.api import (
     ApiClient,
     GeonamesApi,
     LSEGEntityLookup,
@@ -31,20 +31,20 @@ class TestApiClient:
 
     def test_init_stores_api_key_and_max_retries(self):
         """Test that __init__ stores api_key and max_retries."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = ConcreteApiClient(api_key="test-key", max_retries=5)
             assert client.api_key == "test-key"
             assert client.max_retries == 5
 
     def test_init_uses_default_max_retries_when_none(self):
         """Test that max_retries defaults when None."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = ConcreteApiClient(api_key="test-key", max_retries=None)
             assert client.max_retries == ApiClient.DEFAULT_MAX_RETRIES
 
     def test_init_creates_logger_when_none_provided(self):
         """Test that get_logger is called when logger is None."""
-        with patch("ftm2j.common.api.get_logger") as mock_get_logger:
+        with patch("idi_company_info.common.api.get_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
             client = ConcreteApiClient(api_key="key")
@@ -53,7 +53,7 @@ class TestApiClient:
 
     def test_session_is_cached(self):
         """Test that session is created once and cached."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = ConcreteApiClient(api_key="key")
             session1 = client.session
             session2 = client.session
@@ -61,7 +61,7 @@ class TestApiClient:
 
     def test_session_has_retry_adapter_mounted(self):
         """Test that session has HTTPAdapter with retry strategy mounted."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = ConcreteApiClient(api_key="key")
             session = client.session
             assert "https://" in session.adapters
@@ -73,7 +73,7 @@ class TestApiClient:
         mock_response.raise_for_status = MagicMock()
         mock_response.status_code = 200
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = ConcreteApiClient(api_key="key")
             with patch.object(client, "session") as mock_session:
                 mock_session.get.return_value = mock_response
@@ -92,7 +92,7 @@ class TestApiClient:
 
     def test_get_raises_on_http_error(self):
         """Test that get() raises when response has error status."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = ConcreteApiClient(api_key="key")
             with patch.object(client, "session") as mock_session:
                 mock_response = MagicMock()
@@ -108,7 +108,7 @@ class TestApiClient:
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = ConcreteApiClient(api_key="key")
             with patch.object(client, "session") as mock_session:
                 mock_session.post.return_value = mock_response
@@ -136,7 +136,7 @@ class TestLsegEntitySearch:
         mock_response.status_code = 200
         mock_response.url = "https://api-eit.refinitiv.com/permid/search?q=test"
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LsegEntitySearch(api_key="test-key")
             with patch.object(client, "get", return_value=mock_response):
                 result = client.query_endpoint(params={"q": "cik:0001234567"})
@@ -152,7 +152,7 @@ class TestLsegEntitySearch:
         mock_response.status_code = 200
         mock_response.url = "https://example.com"
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LsegEntitySearch(api_key="api-key-123")
             with patch.object(client, "get", return_value=mock_response) as mock_get:
                 client.query_endpoint(params={"q": "cik:0001234567", "format": "json"})
@@ -168,7 +168,7 @@ class TestLsegEntitySearch:
 
     def test_query_endpoint_failure_returns_error_dict(self):
         """Test that query_endpoint returns error dict on failure."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LsegEntitySearch(api_key="key")
             with patch.object(
                 client,
@@ -191,7 +191,7 @@ class TestLsegRecordMatch:
         mock_response.status_code = 200
         mock_response.url = "https://api-eit.refinitiv.com/permid/match"
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LsegRecordMatch(api_key="test-key")
             with patch.object(client, "post", return_value=mock_response):
                 result = client.query_endpoint(
@@ -209,7 +209,7 @@ class TestLsegRecordMatch:
         mock_response.url = "https://example.com"
 
         csv_data = "LocalID,Name,Ticker\n100001,S&P Global,SPGI"
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LsegRecordMatch(api_key="api-key-456")
             with patch.object(client, "post", return_value=mock_response) as mock_post:
                 client.query_endpoint(csv_data=csv_data)
@@ -228,7 +228,7 @@ class TestLsegRecordMatch:
 
     def test_query_endpoint_failure_returns_error_dict(self):
         """Test that query_endpoint returns error dict on failure."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LsegRecordMatch(api_key="key")
             with patch.object(
                 client,
@@ -251,7 +251,7 @@ class TestLSEGEntityLookup:
         mock_response.status_code = 200
         mock_response.url = "https://permid.org/1-123"
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LSEGEntityLookup(api_key="test-key")
             with patch.object(client, "get", return_value=mock_response):
                 result = client.query_endpoint(permid_url="https://permid.org/1-123")
@@ -267,7 +267,7 @@ class TestLSEGEntityLookup:
         mock_response.url = "https://permid.org/1-123"
 
         permid_url = "https://permid.org/1-4295904495"
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LSEGEntityLookup(api_key="api-key-789")
             with patch.object(client, "get", return_value=mock_response) as mock_get:
                 client.query_endpoint(permid_url=permid_url)
@@ -282,7 +282,7 @@ class TestLSEGEntityLookup:
 
     def test_query_endpoint_failure_returns_error_dict(self):
         """Test that query_endpoint returns error dict on failure."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = LSEGEntityLookup(api_key="key")
             with patch.object(
                 client,
@@ -309,7 +309,7 @@ class TestGeonamesApi:
         mock_response.status_code = 200
         mock_response.url = "http://api.geonames.org/getJSON"
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = GeonamesApi(api_key="dummy", geonames_user="test-user")
             with patch.object(client, "get", return_value=mock_response):
                 result = client.query_endpoint(
@@ -330,7 +330,7 @@ class TestGeonamesApi:
         mock_response.status_code = 200
         mock_response.url = "http://api.geonames.org/getJSON"
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = GeonamesApi(api_key="dummy", geonames_user="my-geonames-user")
             with patch.object(client, "get", return_value=mock_response) as mock_get:
                 client.query_endpoint(
@@ -352,7 +352,7 @@ class TestGeonamesApi:
         mock_response.status_code = 200
         mock_response.url = "http://api.geonames.org/getJSON"
 
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = GeonamesApi(api_key="dummy", geonames_user="user")
             with patch.object(client, "get", return_value=mock_response) as mock_get:
                 client.query_endpoint(
@@ -363,7 +363,7 @@ class TestGeonamesApi:
 
     def test_query_endpoint_failure_returns_error_dict(self):
         """Test that query_endpoint returns error dict on failure."""
-        with patch("ftm2j.common.api.get_logger"):
+        with patch("idi_company_info.common.api.get_logger"):
             client = GeonamesApi(api_key="dummy", geonames_user="invalid-user")
             with patch.object(
                 client,

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Unit tests for ftm2j.common.storage
+Unit tests for idi_company_info.common.storage
 """
 
 import io
 import json
 from unittest.mock import MagicMock, patch
 
-from ftm2j.common.storage import load_json, save_json
+from idi_company_info.common.storage import load_json, save_json
 
 
 class TestLoadJson:
@@ -20,8 +20,8 @@ class TestLoadJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("ftm2j.common.storage.pathlib.Path.exists", return_value=True):
-            with patch("ftm2j.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=True):
+            with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
                 result = load_json("/fake/path/data.json")
                 assert result == data
                 mock_open.assert_called_once_with("/fake/path/data.json", mode="r")
@@ -33,8 +33,8 @@ class TestLoadJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("ftm2j.common.storage.pathlib.Path.exists", return_value=True):
-            with patch("ftm2j.common.storage.smart_open.open", return_value=mock_stream):
+        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=True):
+            with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream):
                 result = load_json("/fake/path/list.json")
                 assert result == data
 
@@ -44,20 +44,20 @@ class TestLoadJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("ftm2j.common.storage.pathlib.Path.exists", return_value=True):
-            with patch("ftm2j.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=True):
+            with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
                 load_json("/my/custom/path.json")
                 mock_open.assert_called_once_with("/my/custom/path.json", mode="r")
 
     def test_returns_empty_dict_when_file_does_not_exist(self):
         """Test that load_json returns empty dict when file does not exist."""
-        with patch("ftm2j.common.storage.pathlib.Path.exists", return_value=False):
+        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=False):
             result = load_json("/nonexistent/path.json", return_type="dict")
             assert result == {}
 
     def test_returns_empty_list_when_file_does_not_exist(self):
         """Test that load_json returns empty list when file does not exist."""
-        with patch("ftm2j.common.storage.pathlib.Path.exists", return_value=False):
+        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=False):
             result = load_json("/nonexistent/path.json", return_type="list")
             assert result == []
 
@@ -78,7 +78,7 @@ class TestSaveJson:
             def __exit__(self, *args):
                 return False
 
-        with patch("ftm2j.common.storage.smart_open.open", return_value=CaptureWriter()) as mock_open:
+        with patch("idi_company_info.common.storage.smart_open.open", return_value=CaptureWriter()) as mock_open:
             save_json("/fake/local/path.json", data)
             mock_open.assert_called_once_with("/fake/local/path.json", "w")
             assert json.loads("".join(written)) == data
@@ -96,7 +96,7 @@ class TestSaveJson:
             def __exit__(self, *args):
                 return False
 
-        with patch("ftm2j.common.storage.smart_open.open", return_value=CaptureWriter()):
+        with patch("idi_company_info.common.storage.smart_open.open", return_value=CaptureWriter()):
             save_json("/fake/local/array.json", data)
             assert json.loads("".join(written)) == data
 
@@ -107,8 +107,8 @@ class TestSaveJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("ftm2j.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
-            with patch("ftm2j.common.storage.json.dump") as mock_dump:
+        with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+            with patch("idi_company_info.common.storage.json.dump") as mock_dump:
                 save_json("/local/path.json", data)
                 mock_open.assert_called_once_with("/local/path.json", "w")
                 mock_dump.assert_called_once_with(data, mock_stream, indent=2)
@@ -120,12 +120,12 @@ class TestSaveJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("ftm2j.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
-            with patch("ftm2j.common.storage.tempfile.NamedTemporaryFile") as mock_tmp:
+        with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+            with patch("idi_company_info.common.storage.tempfile.NamedTemporaryFile") as mock_tmp:
                 mock_tmp_file = MagicMock()
                 mock_tmp.return_value.__enter__ = MagicMock(return_value=mock_tmp_file)
                 mock_tmp.return_value.__exit__ = MagicMock(return_value=False)
-                with patch("ftm2j.common.storage.json.dump"):
+                with patch("idi_company_info.common.storage.json.dump"):
                     save_json("s3://bucket/key.json", data)
                     mock_open.assert_called_once()
                     call_kwargs = mock_open.call_args[1]

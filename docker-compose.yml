@@ -79,7 +79,7 @@ services:
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "python -m ftm2j.processors.idi_company_info.orchestrator
+      "python -m idi_company_info.processors.orchestrator
       --input-file /data/input/data.parquet
       --output-directory /data/output
       --type cik
@@ -126,7 +126,7 @@ services:
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "python -m ftm2j.processors.idi_company_info.orchestrator
+      "python -m idi_company_info.processors.orchestrator
       --input-file /data/input/data.parquet
       --output-directory /data/output
       --type cusip
@@ -174,7 +174,7 @@ services:
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "python -m ftm2j.processors.idi_company_info.orchestrator
+      "python -m idi_company_info.processors.orchestrator
       --input-file /data/input/data.parquet
       --output-directory /data/output
       --type ticker

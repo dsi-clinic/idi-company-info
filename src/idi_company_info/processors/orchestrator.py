@@ -19,16 +19,16 @@ from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any
 
-from ftm2j.common.logs import get_logger
-from ftm2j.processors.idi_company_info.identifier import (
+from idi_company_info.common.logs import get_logger
+from idi_company_info.processors.identifier import (
     Identifier,
     FilePaths,
     BatchConfig,
     ApiCredentials,
     QueryType,
 )
-from ftm2j.processors.idi_company_info.IdentifierCik import IdentifierCik
-from ftm2j.processors.idi_company_info.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.IdentifierCik import IdentifierCik
+from idi_company_info.processors.IdentifierCusip import IdentifierCusip
 
 
 # ---------------------------------------------------------------------------

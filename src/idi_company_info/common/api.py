@@ -22,7 +22,7 @@ class ApiClient(ABC):
     REQUEST_TIMEOUT: tuple[int, int] = (10, 30)
     RETRY_BACKOFF_FACTOR: int = 2  # Wait 1, 2, 4 seconds between retries
     RETRY_STATUS_FORCELIST: list[int] = [429, 500, 502, 503, 504]
-    USER_AGENT: str = "idi-ftm2j"
+    USER_AGENT: str = "idi-company-info"
 
     def __init__(self, api_key: str, max_retries: int = DEFAULT_MAX_RETRIES):
         """

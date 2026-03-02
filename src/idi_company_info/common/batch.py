@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 # Application imports
-from ftm2j.common.logs import get_logger
+from idi_company_info.common.logs import get_logger
 
 if TYPE_CHECKING:
-    from ftm2j.common.failures import FailureRegistry
+    from idi_company_info.common.failures import FailureRegistry
 
 
 class BatchProcessing:

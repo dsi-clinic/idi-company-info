@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Unit tests for ftm2j.processors.idi_company_info.IdentifierCik
+Unit tests for idi_company_info.processors.IdentifierCik
 """
 
 import pandas as pd
 import pytest
 from unittest.mock import MagicMock, patch
 
-from ftm2j.processors.idi_company_info.IdentifierCik import IdentifierCik
+from idi_company_info.processors.IdentifierCik import IdentifierCik
 
 
 def make_cik_instance():
     """Create an IdentifierCik with mocked dependencies."""
-    with patch("ftm2j.processors.idi_company_info.identifier.os.makedirs"):
-        with patch("ftm2j.processors.idi_company_info.identifier.FailureRegistry"):
+    with patch("idi_company_info.processors.identifier.os.makedirs"):
+        with patch("idi_company_info.processors.identifier.FailureRegistry"):
             instance = IdentifierCik.__new__(IdentifierCik)
             instance.logger = MagicMock()
             return instance

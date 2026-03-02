@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Unit tests for ftm2j.processors.idi_company_info.IdentifierCusip
+Unit tests for idi_company_info.processors.IdentifierCusip
 """
 
 import pandas as pd
 import pytest
 from unittest.mock import MagicMock, patch
 
-from ftm2j.processors.idi_company_info.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.IdentifierCusip import IdentifierCusip
 
 
 def make_cusip_instance():

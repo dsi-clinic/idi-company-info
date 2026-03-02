@@ -5,8 +5,8 @@ from abc import ABC, abstractmethod
 from typing import Any, TYPE_CHECKING
 
 # Application imports
-from ftm2j.common.storage import load_json, save_json
-from ftm2j.common.logs import get_logger
+from idi_company_info.common.storage import load_json, save_json
+from idi_company_info.common.logs import get_logger
 
 class Buffer:
     """PermidBuffer for storing permid data in a sync buffer."""

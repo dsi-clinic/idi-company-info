@@ -9,7 +9,7 @@ import watchtower
 
 
 EC2_METADATA_ENDPOINT = "http://169.254.169.254/latest/meta-data/instance-id"
-HEADERS = { "User-Agent": "ftm2j/1.0" }
+HEADERS = { "User-Agent": "idi-company-info/1.0" }
 
 _configured_loggers: set[str] = set()
 
@@ -72,5 +72,5 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None :
         is_ec2 = False
 
     if is_ec2:
-        handler = watchtower.CloudWatchLogHandler(log_group=f"idi-ftm2j-{name}")
+        handler = watchtower.CloudWatchLogHandler(log_group=f"idi-company-info-{name}")
         logger.addHandler(handler)

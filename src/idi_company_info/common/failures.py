@@ -7,8 +7,8 @@ from enum import StrEnum
 from typing import Literal
 
 # Application imports
-from ftm2j.common.logs import get_logger
-from ftm2j.common.storage import load_json, save_json
+from idi_company_info.common.logs import get_logger
+from idi_company_info.common.storage import load_json, save_json
 
 
 class FailureType(StrEnum):

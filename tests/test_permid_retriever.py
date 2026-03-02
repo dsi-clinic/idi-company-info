@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Unit tests for ftm2j.processors.idi_company_info.permid_retriever
+Unit tests for idi_company_info.processors.permid_retriever
 """
 
 from unittest.mock import MagicMock
 
 import pytest
 
-from ftm2j.processors.idi_company_info.permid_retriever import RecordMatchRetriever
+from idi_company_info.processors.permid_retriever import RecordMatchRetriever
 
 
 def make_retriever(match_score_threshold=1, identifier_type="ticker"):
