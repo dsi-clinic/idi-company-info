@@ -51,6 +51,7 @@ class StageStatus(Enum):
 class IdentifierType(StrEnum):
     """Supported identifier types."""
     CIK = "cik"
+    CIK_MATCH = "cik-match"
     CUSIP = "cusip"
     TICKER = "ticker"
 
@@ -83,6 +84,13 @@ IDENTIFIER_REGISTRY: dict[IdentifierType, IdentifierSpec] = {
         permid_filename="permid_tracking_cusip.json",
         result_filename="company_info_cusip.json",
         failure_filename="failures_cusip.json",
+    ),
+    IdentifierType.CIK_MATCH: IdentifierSpec(
+        cls=IdentifierCik,
+        query_type=QueryType.RECORD_MATCH,
+        permid_filename="permid_tracking_cik_match.json",
+        result_filename="company_info_cik_match.json",
+        failure_filename="failures_cik_match.json",
     ),
     IdentifierType.TICKER: IdentifierSpec(
         cls=IdentifierCusip,
@@ -266,7 +274,7 @@ def get_args() -> argparse.Namespace:
         type=IdentifierType,
         choices=list(IdentifierType),
         required=True,
-        help="Identifier type: cik (CIK Entity Search), cusip (CUSIP Entity Search), ticker (Record Match)",
+        help="Identifier type: cik (CIK Entity Search), cik-match (CIK Record Match), cusip (CUSIP Entity Search), ticker (Ticker Record Match)",
     )
     parser.add_argument(
         "--permid-api-key",
