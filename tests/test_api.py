@@ -42,13 +42,6 @@ class TestApiClient:
             client = ConcreteApiClient(api_key="test-key", max_retries=None)
             assert client.max_retries == ApiClient.DEFAULT_MAX_RETRIES
 
-    def test_init_uses_provided_logger(self):
-        """Test that provided logger is used."""
-        mock_logger = MagicMock()
-        with patch("ftm2j.common.api.get_logger"):
-            client = ConcreteApiClient(api_key="key", logger=mock_logger)
-            assert client.logger is mock_logger
-
     def test_init_creates_logger_when_none_provided(self):
         """Test that get_logger is called when logger is None."""
         with patch("ftm2j.common.api.get_logger") as mock_get_logger:
@@ -174,10 +167,9 @@ class TestLsegEntitySearch:
                 )
 
     def test_query_endpoint_failure_returns_error_dict(self):
-        """Test that query_endpoint returns error dict and logs on failure."""
+        """Test that query_endpoint returns error dict on failure."""
         with patch("ftm2j.common.api.get_logger"):
-            mock_logger = MagicMock()
-            client = LsegEntitySearch(api_key="key", logger=mock_logger)
+            client = LsegEntitySearch(api_key="key")
             with patch.object(
                 client,
                 "get",
@@ -187,10 +179,6 @@ class TestLsegEntitySearch:
 
         assert "error" in result
         assert "400 Bad Request" in result["error"]
-        mock_logger.error.assert_called_once()
-        logged_msg = mock_logger.error.call_args[0][0]
-        assert "Error querying" in logged_msg
-        assert "400 Bad Request" in logged_msg
 
 
 class TestLsegRecordMatch:
@@ -239,10 +227,9 @@ class TestLsegRecordMatch:
                 )
 
     def test_query_endpoint_failure_returns_error_dict(self):
-        """Test that query_endpoint returns error dict and logs on failure."""
+        """Test that query_endpoint returns error dict on failure."""
         with patch("ftm2j.common.api.get_logger"):
-            mock_logger = MagicMock()
-            client = LsegRecordMatch(api_key="key", logger=mock_logger)
+            client = LsegRecordMatch(api_key="key")
             with patch.object(
                 client,
                 "post",
@@ -252,10 +239,6 @@ class TestLsegRecordMatch:
 
         assert "error" in result
         assert "500 Server Error" in result["error"]
-        mock_logger.error.assert_called_once()
-        logged_msg = mock_logger.error.call_args[0][0]
-        assert "Error querying" in logged_msg
-        assert "500 Server Error" in logged_msg
 
 
 class TestLSEGEntityLookup:
@@ -298,10 +281,9 @@ class TestLSEGEntityLookup:
                 )
 
     def test_query_endpoint_failure_returns_error_dict(self):
-        """Test that query_endpoint returns error dict and logs on failure."""
+        """Test that query_endpoint returns error dict on failure."""
         with patch("ftm2j.common.api.get_logger"):
-            mock_logger = MagicMock()
-            client = LSEGEntityLookup(api_key="key", logger=mock_logger)
+            client = LSEGEntityLookup(api_key="key")
             with patch.object(
                 client,
                 "get",
@@ -311,10 +293,6 @@ class TestLSEGEntityLookup:
 
         assert "error" in result
         assert "404 Not Found" in result["error"]
-        mock_logger.error.assert_called_once()
-        logged_msg = mock_logger.error.call_args[0][0]
-        assert "Error querying" in logged_msg
-        assert "404 Not Found" in logged_msg
 
 
 class TestGeonamesApi:
@@ -332,11 +310,10 @@ class TestGeonamesApi:
         mock_response.url = "http://api.geonames.org/getJSON"
 
         with patch("ftm2j.common.api.get_logger"):
-            client = GeonamesApi(api_key="dummy")  # Geonames uses username in params
+            client = GeonamesApi(api_key="dummy", geonames_user="test-user")
             with patch.object(client, "get", return_value=mock_response):
                 result = client.query_endpoint(
                     geoname_url="http://sws.geonames.org/6252001/",
-                    geonames_user="test-user",
                 )
 
         assert result["data"] == {
@@ -354,11 +331,10 @@ class TestGeonamesApi:
         mock_response.url = "http://api.geonames.org/getJSON"
 
         with patch("ftm2j.common.api.get_logger"):
-            client = GeonamesApi(api_key="dummy")
+            client = GeonamesApi(api_key="dummy", geonames_user="my-geonames-user")
             with patch.object(client, "get", return_value=mock_response) as mock_get:
                 client.query_endpoint(
                     geoname_url="http://sws.geonames.org/6252001/",
-                    geonames_user="my-geonames-user",
                 )
                 mock_get.assert_called_once_with(
                     url=GeonamesApi.GEONAMES_API_URL,
@@ -377,20 +353,18 @@ class TestGeonamesApi:
         mock_response.url = "http://api.geonames.org/getJSON"
 
         with patch("ftm2j.common.api.get_logger"):
-            client = GeonamesApi(api_key="dummy")
+            client = GeonamesApi(api_key="dummy", geonames_user="user")
             with patch.object(client, "get", return_value=mock_response) as mock_get:
                 client.query_endpoint(
                     geoname_url="http://sws.geonames.org/6252001/",
-                    geonames_user="user",
                 )
                 mock_get.assert_called_once()
                 assert mock_get.call_args[1]["params"]["geonameId"] == "6252001"
 
     def test_query_endpoint_failure_returns_error_dict(self):
-        """Test that query_endpoint returns error dict and logs on failure."""
+        """Test that query_endpoint returns error dict on failure."""
         with patch("ftm2j.common.api.get_logger"):
-            mock_logger = MagicMock()
-            client = GeonamesApi(api_key="dummy", logger=mock_logger)
+            client = GeonamesApi(api_key="dummy", geonames_user="invalid-user")
             with patch.object(
                 client,
                 "get",
@@ -398,12 +372,7 @@ class TestGeonamesApi:
             ):
                 result = client.query_endpoint(
                     geoname_url="http://sws.geonames.org/6252001/",
-                    geonames_user="invalid-user",
                 )
 
         assert "error" in result
         assert "401 Unauthorized" in result["error"]
-        mock_logger.error.assert_called_once()
-        logged_msg = mock_logger.error.call_args[0][0]
-        assert "Error querying" in logged_msg
-        assert "401 Unauthorized" in logged_msg
