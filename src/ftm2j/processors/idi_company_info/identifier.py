@@ -197,6 +197,11 @@ class Identifier(ABC):
     def process_entities(self, entities_to_process: dict[str, Any], num_existing_entities: int) -> list[dict[str, Any]]:
         """Process the entities.
 
+        For entities that already have PermIDs stored from a previous run, skip the
+        PermID retrieval step entirely and proceed directly to company info lookup.
+        This allows the company info stage to drain its backlog without burning
+        PermID API quota on identifiers that are already resolved.
+
         Args:
             entities_to_process: The entities to process.
             num_existing_entities: The number of existing entities.
@@ -205,12 +210,30 @@ class Identifier(ABC):
             The batch stats.
         """
         batch_stats = BatchStats()
-        processed_entities = self.permid_retriever.retrieve(entities_to_process, self.batch_config.batch_size, batch_stats)
 
-        # Retrieve the PermID data from file
+        # Partition: entities that already have PermIDs vs those that still need retrieval
+        existing_permid_data = load_json(self.file_paths.permid_file, return_type="dict")
+        needs_permid = {k: v for k, v in entities_to_process.items() if k not in existing_permid_data}
+        has_permid_count = len(entities_to_process) - len(needs_permid)
+
+        if needs_permid:
+            self.logger.info(
+                "PermID retrieval: %d entities need PermIDs, %d already resolved — skipping those",
+                len(needs_permid), has_permid_count,
+            )
+            self.permid_retriever.retrieve(needs_permid, self.batch_config.batch_size, batch_stats)
+        else:
+            self.logger.info(
+                "All %d entities already have PermIDs — skipping PermID retrieval",
+                has_permid_count,
+            )
+
+        # Reload after retrieval so newly resolved PermIDs are included
         permid_data = load_json(self.file_paths.permid_file, return_type="dict")
 
-        self.generate_company_info(permid_data, processed_entities, num_existing_entities, batch_stats)
+        # Pass all entities (both groups) — _build_company_info_batch will filter by budget
+        all_entities = list(entities_to_process.keys())
+        self.generate_company_info(permid_data, all_entities, num_existing_entities, batch_stats)
         return batch_stats
 
     def generate_company_info(self, permid_data: dict[str, Any], entities_to_process: list[dict[str, Any]], num_existing_entities: int, batch_stats: BatchStats) -> None:
