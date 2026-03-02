@@ -50,6 +50,9 @@ class Buffer:
         Returns:
             The merged data.
         """
+        if not self._buffer:
+            return
+
         existing = load_json(self.file_path, return_type=self.mode)
         if self.mode == "dict":
             self._merge_dict(existing)

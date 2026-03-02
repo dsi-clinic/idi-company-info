@@ -216,10 +216,12 @@ class Identifier(ABC):
         needs_permid = {k: v for k, v in entities_to_process.items() if k not in existing_permid_data}
         has_permid_count = len(entities_to_process) - len(needs_permid)
 
+        # Retrieve the PermIDs for the entities that need them
         if needs_permid:
+            retrieval_count = min(len(needs_permid), self.batch_config.batch_size)
             self.logger.info(
-                "PermID retrieval: %d entities need PermIDs, %d already resolved — skipping those",
-                len(needs_permid), has_permid_count,
+                "PermID retrieval: %d queued, %d will be retrieved this run, %d already resolved",
+                len(needs_permid), retrieval_count, has_permid_count,
             )
             self.permid_retriever.retrieve(needs_permid, self.batch_config.batch_size, batch_stats)
         else:
@@ -231,10 +233,31 @@ class Identifier(ABC):
         # Reload after retrieval so newly resolved PermIDs are included
         permid_data = load_json(self.file_paths.permid_file, return_type="dict")
 
-        # Pass all entities (both groups) — _build_company_info_batch will filter by budget
+        # Log how many of the queued entities were successfully resolved
+        if needs_permid:
+            self._log_permid_retrieval_stats(needs_permid, permid_data)
+
+        # Pass all entities (both groups) — _build_company_info_batch will filter by batch threshold
         all_entities = list(entities_to_process.keys())
         self.generate_company_info(permid_data, all_entities, num_existing_entities, batch_stats)
         return batch_stats
+
+    def _log_permid_retrieval_stats(self, needs_permid: dict[str, Any], permid_data: dict[str, Any]) -> None:
+        """Log the PermID retrieval stats.
+
+        Args:
+            needs_permid: The entities that need PermIDs.
+            permid_data: The PermID data.
+        """
+        retrieved_count = min(len(needs_permid), self.batch_config.batch_size)
+        resolved_this_run = sum(
+            1 for k in list(needs_permid.keys())[:retrieved_count]
+            if k in permid_data
+        )
+        self.logger.info(
+            "PermID retrieval complete: %d/%d entities resolved this run",
+            resolved_this_run, retrieved_count,
+        )
 
     def generate_company_info(self, permid_data: dict[str, Any], entities_to_process: list[dict[str, Any]], num_existing_entities: int, batch_stats: BatchStats) -> None:
         """Generate the company information.
