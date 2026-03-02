@@ -92,17 +92,17 @@ class TestParseRecordMatchResponse:
         assert "Corp A" in result
         assert result["Corp A"] == [{"AAPL": ["https://permid.org/1-4297529501"]}]
 
-    def test_multiple_records_for_same_entity_keeps_last(self):
-        """Multiple records for the same entity: last record wins (dict key overwrite)."""
+    def test_multiple_records_for_same_entity_accumulates_all(self):
+        """Multiple records for the same entity are all preserved."""
         retriever = make_retriever()
         response = [
             {"Input_Name": "Corp A", "Input_LocalID": "ID1", "Match OpenPermID": "permid_1"},
             {"Input_Name": "Corp A", "Input_LocalID": "ID2", "Match OpenPermID": "permid_2"},
         ]
         result = retriever._parse_record_match_response(response)
-        # The implementation uses dict assignment, so the last record for the same
-        # Input_Name overwrites the previous one.
-        assert result["Corp A"] == [{"ID2": ["permid_2"]}]
+        assert len(result["Corp A"]) == 2
+        assert {"ID1": ["permid_1"]} in result["Corp A"]
+        assert {"ID2": ["permid_2"]} in result["Corp A"]
 
     def test_multiple_different_entities(self):
         """Different entity names produce separate keys."""

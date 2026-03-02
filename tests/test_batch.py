@@ -81,11 +81,11 @@ class TestFilterStaleEntities:
     """Tests for BatchProcessing.filter_stale_entities."""
 
     def test_returns_all_results_and_empty_stale_when_no_stale(self):
-        """When no records are stale, returns original data and empty stale set."""
+        """When no records are stale, returns original data and empty stale dict."""
         records = [make_record("Firm A", "id1", days_ago=1)]
         bp = BatchProcessing(result_data=records, threshold_days=30)
         filtered, stale = bp.filter_stale_entities()
-        assert stale == set()
+        assert stale == {}
 
     def test_identifies_stale_records(self):
         """Records older than threshold_days are identified as stale."""
@@ -96,21 +96,21 @@ class TestFilterStaleEntities:
         assert "id1" in stale["Firm A"]
 
     def test_stale_records_removed_from_filtered_results(self):
-        """Stale records are removed from the filtered results dict."""
+        """Stale records are removed from the filtered results list."""
         stale_record = make_record("Firm A", "id1", days_ago=60)
         fresh_record = make_record("Firm B", "id2", days_ago=1)
         bp = BatchProcessing(result_data=[stale_record, fresh_record], threshold_days=30)
         filtered, stale = bp.filter_stale_entities()
-        # filtered is a dict {entity_name: [identifiers]} of the NON-stale records
-        assert "Firm B" in filtered
-        assert "Firm A" not in filtered
+        entity_names = [r["original_entity_name"] for r in filtered]
+        assert "Firm B" in entity_names
+        assert "Firm A" not in entity_names
 
     def test_returns_all_when_threshold_is_none(self):
         """When threshold_days is None, no staleness check is done."""
         records = [make_record("Firm A", "id1", days_ago=999)]
         bp = BatchProcessing(result_data=records, threshold_days=None)
         filtered, stale = bp.filter_stale_entities()
-        assert stale == set()
+        assert stale == {}
         assert filtered == records
 
     def test_entity_with_both_fresh_and_stale_records(self):
@@ -126,4 +126,4 @@ class TestFilterStaleEntities:
         """Empty result_data returns empty filtered and stale."""
         bp = BatchProcessing(result_data=[], threshold_days=30)
         filtered, stale = bp.filter_stale_entities()
-        assert stale == set()
+        assert stale == {}

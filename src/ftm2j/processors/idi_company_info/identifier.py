@@ -54,7 +54,7 @@ class ApiClients:
 class CompanyInfo:
     investor_name: str | None
     original_entity_name: str
-    identifier: list[str]
+    identifier: str
     identifier_type: str
     permid_id: str
     permid_url: str | None
@@ -128,7 +128,8 @@ class Identifier(ABC):
         """Initialize the directories."""
         os.makedirs(os.path.dirname(self.file_paths.result_file), exist_ok=True)
         os.makedirs(os.path.dirname(self.file_paths.permid_file), exist_ok=True)
-        os.makedirs(os.path.dirname(self.file_paths.failure_file), exist_ok=True)
+        if self.file_paths.failure_file:
+            os.makedirs(os.path.dirname(self.file_paths.failure_file), exist_ok=True)
 
     def _create_permid_retriever(self, query_type: QueryType, match_score_threshold: int = 1) -> PermidRetriever:
         """Create the PermID retriever.
@@ -346,7 +347,11 @@ class Identifier(ABC):
             return asdict(self._parse_company_info(entity_name, identifier, self.identifier_type, permid, data))
         return _parse
 
-    def _parse_company_info(self, entity_name: str, identifier: list[str], identifier_type: str, permid_id: dict[str, str], response: dict[str, Any]) -> dict[str, Any]:
+    def _parse_company_info(self, entity_name: str,
+                            identifier: list[str],
+                            identifier_type: str,
+                            permid_id: str,
+                            response: dict[str, Any]) -> dict[str, Any]:
         """Parse the company information.
 
         Args:
@@ -442,14 +447,11 @@ class Identifier(ABC):
                         stats["total_entities"], stats["total_records"], stats["duplicates_ids_removed"])
         self.logger.info("=" * 50)
 
-    def save_company_info(self, company_info: list[dict[str, Any]]) -> list[str]:
+    def save_company_info(self, company_info: list[dict[str, Any]]) -> None:
         """Save the company information.
 
         Args:
             company_info: The company information.
-
-        Returns:
-            The company information.
         """
         save_json(self.file_paths.result_file, company_info)
 
@@ -473,6 +475,12 @@ class Identifier(ABC):
         unprocessed_entities.update(stale_identifiers)
         to_process = sum(len(v) for v in unprocessed_entities.values())
         self.logger.info("To process: %d | Not to process: %d", to_process, len(filtered_results))
+
+        # If stale entities were removed, persist the pruned list so the buffer
+        # appends fresh results without duplicating the old stale records.
+        if stale_identifiers:
+            self.logger.info("Removing %d stale record(s) from result file", len(stale_identifiers))
+            save_json(self.file_paths.result_file, filtered_results)
 
         # Process entities
         batch_stats = self.process_entities(unprocessed_entities, len(filtered_results))

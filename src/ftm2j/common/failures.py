@@ -106,7 +106,7 @@ class FailureRegistry:
         self._entries = {tuple(e) for e in entries_data if len(e) >= 2}
         self._reasons = {}
         for entry in self._entries:
-            key = f"{entry[0]}|{entry[1]}"
+            key = f"{entry[0]} {entry[1]}"
             if key in reasons_data:
                 self._reasons[entry] = reasons_data[key]
 
@@ -116,7 +116,7 @@ class FailureRegistry:
             return
 
         entries_list = [list(e) for e in self._entries]
-        reasons_dict = {f"{e[0]}|{e[1]}": self._reasons.get(e, "") for e in self._entries}
+        reasons_dict = {f"{e[0]} {e[1]}": self._reasons.get(e, "") for e in self._entries}
         save_json(self.file_path, {"entries": entries_list, "reasons": reasons_dict})
 
     def add(self, entity_name: str, identifier: str, reason: str = "") -> None:

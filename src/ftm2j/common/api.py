@@ -131,11 +131,15 @@ class ApiClient(ABC):
 
         response_data = {}
         if response is not None:
-            response_data.update({
-                "status_code": response.status_code,
-                "url": response.url,
-                "data": response.json()
-            })
+            try:
+                response_data.update({
+                    "status_code": response.status_code,
+                    "url": response.url,
+                    "data": response.json()
+                })
+            except ValueError:
+                self.logger.error(f"Error parsing JSON response from {url}: {response.text}")
+
         if error is not None:
             response_data.update({"error": error})
 

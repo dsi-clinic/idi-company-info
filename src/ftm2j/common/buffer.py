@@ -52,7 +52,7 @@ class Buffer:
         """
         existing = load_json(self.file_path, return_type=self.mode)
         if self.mode == "dict":
-            self._merge_dict(existing, self._buffer)
+            self._merge_dict(existing)
         else:
             existing.extend(self._buffer)
 
@@ -61,26 +61,22 @@ class Buffer:
 
         self._buffer.clear()
 
-    def _merge_dict(self, existing: dict, new_data: dict) -> dict:
-        """Merge the new data into the existing data.
+    def _merge_dict(self, existing: dict) -> None:
+        """Merge the entity data into the existing data.
 
         Args:
             existing: The existing data.
-            new_data: The new data.
-
-        Returns:
-            The merged data.
         """
-        for entity_name, new_data in self._buffer.items():
+        for entity_name, entity_data in self._buffer.items():
             if entity_name in existing:
                 existing_ids = {k for item in existing[entity_name] for k in item}
-                for item in new_data:
+                for item in entity_data:
                     for identifier in item.keys():
                         if identifier not in existing_ids:
                             existing[entity_name].append(item)
                             existing_ids.add(identifier)
             else:
-                existing[entity_name] = new_data
+                existing[entity_name] = entity_data
 
     def _should_flush(self, current_size: int) -> bool:
         return current_size >= self.buffer_size
@@ -92,4 +88,4 @@ class Buffer:
             The merged data.
         """
         self.flush()
-        return load_json(self.file_path, return_type="dict") or {}
+        return load_json(self.file_path, return_type="dict") or ({} if self.mode == "dict" else [])

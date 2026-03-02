@@ -195,23 +195,3 @@ class IdentifierCusip(Identifier):
             The query parameters.
         """
         return {"q": identifier, "format": "json"}
-
-
-if __name__ == "__main__":
-    from ftm2j.processors.idi_company_info.identifier import FilePaths, BatchConfig, ApiCredentials, QueryType
-
-    identifier = IdentifierCusip(
-        file_paths=FilePaths(input_file="/Users/REMOVED/Documents/workspace/11hour/ftm2j/data/company-info/shareholder_tracker/shareholder_tracker_release_20251218.parquet",
-        result_file="/Users/REMOVED/Documents/workspace/11hour/ftm2j/data/company-info/company_info/company_info_cusip.json",
-        permid_file="/Users/REMOVED/Documents/workspace/11hour/ftm2j/data/company-info/permid_data/permid_tracking_cusip.json"),
-        batch_config=BatchConfig(
-            batch_size=10,
-            buffer_size=5,
-            threshold_days=30
-        ),
-        api_credentials=ApiCredentials(api_key="REMOVED",
-        geonames_user="REMOVED"),
-        # query_type=QueryType.ENTITY_SEARCH
-        query_type=QueryType.RECORD_MATCH
-    )
-    identifier.run()

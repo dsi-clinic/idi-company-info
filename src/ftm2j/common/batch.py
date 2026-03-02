@@ -109,34 +109,31 @@ class BatchProcessing:
             identifiers.setdefault(entity_name, []).append(identifier)
         return identifiers
 
-    def filter_stale_entities(self) -> tuple[list[dict[str, Any]], set[str]]:
+    def filter_stale_entities(self) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
         """
         Identify and process stale entities based on threshold.
 
         Returns:
-            Tuple of (filtered_results, stale_entities_set)
+            Tuple of (filtered_results, stale_identifiers) where:
+              - filtered_results: full company info records that are not stale
+              - stale_identifiers: dict mapping entity_name -> [identifier, ...] for re-processing
         """
         if self.threshold_days is None:
-            return self.result_data, set()
+            return self.result_data, {}
 
         self.logger.info("Checking for entities not updated in last %d days", self.threshold_days)
-        stale_entities, stale_dates = self._get_stale_entities()
+        stale_entities, _ = self._get_stale_entities()
 
         if not stale_entities:
-            return self.result_data, set()
+            return self.result_data, {}
 
         self.logger.info("Found %d stale entity(ies) to re-process", len(stale_entities))
 
         # Remove stale entity records so they can be re-processed
         filtered_results = self._remove_stale_records(stale_entities)
-
-        # Parse back to identifiers dictionary
-        filtered_identifiers = {}
-        for record in filtered_results:
-            filtered_identifiers.setdefault(record["original_entity_name"], []).append(record["identifier"])
         stale_identifiers = self._get_identifier_dict(stale_entities)
 
-        return filtered_identifiers, stale_identifiers
+        return filtered_results, stale_identifiers
 
     def _get_stale_entities(self) -> tuple[set[tuple[str, str]], list[datetime]]:
         """
@@ -169,12 +166,12 @@ class BatchProcessing:
         self.logger.info("Located %s stale entities", len(stale_entries))
         return stale_entries, stale_dates
 
-    def _remove_stale_records(self, stale_entities: set[str]) -> list[dict[str, Any]]:
+    def _remove_stale_records(self, stale_entities: set[tuple[str, str]]) -> list[dict[str, Any]]:
         """
         Remove records for stale entities so they can be re-processed.
 
         Args:
-            stale_entities: Set of entity names to remove
+            stale_entities: Set of (entity_name, identifier) tuples to remove
 
         Returns:
             Filtered list without stale entity records
