@@ -470,6 +470,47 @@ processor_bucket_encryption = aws.s3.BucketServerSideEncryptionConfigurationV2(
     ],
 )
 
+# Create ECR repository for processor container images
+ecr_repo = aws.ecr.Repository(
+    "idi-processor-ecr",
+    name=f"{project_name}-{stack_name}-processor",
+    image_tag_mutability="MUTABLE",
+    image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
+        scan_on_push=True,
+    ),
+    tags={
+        "project": project_name,
+        "environment": stack_name,
+        "managed_by": "Pulumi",
+    },
+)
+
+# ECR IAM policy for EC2 role to pull images
+ecr_policy = aws.iam.RolePolicy(
+    "idi-policy-ecr-pull",
+    role=ec2_role.id,
+    policy=pulumi.Output.all(ecr_repo.arn).apply(
+        lambda args: json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "ecr:GetAuthorizationToken",
+                    "Resource": "*",
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ecr:BatchGetImage",
+                        "ecr:GetDownloadUrlForLayer",
+                    ],
+                    "Resource": args[0],
+                },
+            ],
+        })
+    ),
+)
+
 # S3 IAM policy for smart_open (upload/download from processor bucket)
 # See: https://github.com/piskvorky/smart_open
 s3_policy = aws.iam.RolePolicy(
@@ -530,6 +571,10 @@ pulumi.export("processor_asg_arn", processor_asg.arn)
 # Export S3 bucket information
 pulumi.export("processor_bucket_name", processor_bucket.id)
 pulumi.export("processor_bucket_arn", processor_bucket.arn)
+
+# Export ECR repository information
+pulumi.export("ecr_repository_url", ecr_repo.repository_url)
+pulumi.export("ecr_repository_name", ecr_repo.name)
 
 # Export Launch Template information
 pulumi.export("launch_template_id", launch_template.id)
