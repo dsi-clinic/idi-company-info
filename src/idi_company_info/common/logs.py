@@ -72,5 +72,5 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None :
         is_ec2 = False
 
     if is_ec2:
-        handler = watchtower.CloudWatchLogHandler(log_group=f"idi-company-info-{name}")
+        handler = watchtower.CloudWatchLogHandler(log_group=f"idi-company-info-{name.lower()}")
         logger.addHandler(handler)

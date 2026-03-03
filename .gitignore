@@ -20,3 +20,4 @@ logs/
 # Pulumi
 pulumi/venv/
 pulumi/__pycache__/
+pulumi/.pulumi/

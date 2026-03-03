@@ -38,6 +38,14 @@ ssm_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 )
 
+# Attach CloudWatch Logs policy for watchtower (Python CloudWatch logging)
+# See: https://kislyuk.github.io/watchtower/#iam-permissions
+cloudwatch_logs_policy_attachment = aws.iam.RolePolicyAttachment(
+    "idi-policy-cloudwatch-logs",
+    role=ec2_role.name,
+    policy_arn="arn:aws:iam::aws:policy/AWSOpsWorksCloudWatchLogs"
+)
+
 # Get secrets from Pulumi config (optional - only create secrets if provided)
 permid_api_key = config.get_secret("permid_api_key")
 geonames_user = config.get("geonames_user")
@@ -401,7 +409,7 @@ processor_asg = aws.autoscaling.Group(
         "id": launch_template.id,
         "version": "1",
     },
-    vpc_zone_identifier=default_vpc_subnets.ids,
+    vpc_zone_identifiers=default_vpc_subnets.ids,
     min_size=1,
     max_size=1,
     desired_capacity=1,
@@ -460,6 +468,39 @@ processor_bucket_encryption = aws.s3.BucketServerSideEncryptionConfigurationV2(
             bucket_key_enabled=True,
         )
     ],
+)
+
+# S3 IAM policy for smart_open (upload/download from processor bucket)
+# See: https://github.com/piskvorky/smart_open
+s3_policy = aws.iam.RolePolicy(
+    "idi-policy-s3-processor",
+    role=ec2_role.id,
+    policy=processor_bucket.arn.apply(
+        lambda arn: json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:ListBucket"],
+                    "Resource": arn,
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject",
+                        "s3:AbortMultipartUpload",
+                        "s3:CreateMultipartUpload",
+                        "s3:UploadPart",
+                        "s3:CompleteMultipartUpload",
+                        "s3:ListMultipartUploadParts",
+                    ],
+                    "Resource": f"{arn}/*",
+                },
+            ],
+        })
+    ),
 )
 
 # Export the role ARN and instance profile name
