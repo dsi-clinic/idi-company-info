@@ -1,543 +1,477 @@
-#!/usr/bin/env python3
-"""
-Integration tests for orchestrator.py
+"""Integration tests for orchestrator.py.
 
-These tests run the full pipeline on a small test dataset with mocked API responses.
+These tests exercise the full pipeline for each identifier type (CIK, CUSIP, Ticker)
+using real temporary files and mocked API clients. They verify:
+  - IdentifierFactory creates the correct class with the correct configuration
+  - PipelineOrchestrator handles success, missing input, and failures correctly
+  - Each identifier type produces the expected company info output file
 """
 
 import json
 import pathlib
-import shutil
-import tempfile
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
-import requests
 
-from idi_company_info import orchestrator
-
-
-@pytest.fixture
-def test_data_dir():
-    """Create a temporary directory for test data."""
-    temp_dir = tempfile.mkdtemp()
-    yield pathlib.Path(temp_dir)
-    shutil.rmtree(temp_dir)
-
-
-@pytest.fixture
-def test_parquet_file():
-    """Path to the test parquet file with 10 rows."""
-    return pathlib.Path(__file__).parent / "fixtures" / "test_investors_10.parquet"
+from idi_company_info.processors.orchestrator import (
+    IDENTIFIER_REGISTRY,
+    IdentifierFactory,
+    IdentifierType,
+    OrchestratorConfig,
+    PipelineOrchestrator,
+)
+from idi_company_info.common.api import GeonamesApi, LSEGEntityLookup, LsegEntitySearch, LsegRecordMatch
+from idi_company_info.processors.IdentifierCik import IdentifierCik
+from idi_company_info.processors.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.identifier import QueryType
 
 
-@pytest.fixture
-def mock_permid_api():
-    """Mock PermID API responses."""
-    # Map CIKs to mock PermID URLs
-    cik_to_permid = {
-        "0000320193": "https://permid.org/1-4295905573",  # Apple
-        "0000789019": "https://permid.org/1-4295907168",  # Microsoft
-        "0001018724": "https://permid.org/1-4295912752",  # Amazon
-        "0001652044": "https://permid.org/1-5064095121",  # Alphabet
-        "0001326801": "https://permid.org/1-4295903232",  # Meta
-        "0001318605": "https://permid.org/1-4297057338",  # Tesla
-        "0001045810": "https://permid.org/1-4295905494",  # NVIDIA
-        "0001067983": "https://permid.org/1-4295904307",  # Berkshire
-        "0000019617": "https://permid.org/1-4295905573",  # JPMorgan
-        "0000200406": "https://permid.org/1-4295905494",  # J&J
-    }
+# ---------------------------------------------------------------------------
+# Shared mock API responses
+# ---------------------------------------------------------------------------
 
-    # Mock company info data
-    company_info = {
-        "https://permid.org/1-4295905573": {
-            "vcard:organization-name": "Apple Inc",
-            "tr-common:hasPermId": "1-4295905573",
-            "mdaas:HeadquartersAddress": "One Apple Park Way, Cupertino, CA 95014",
-            "tr-org:hasLEI": "HWUPKR0MPOU8FGXBT394",
-            "@id": "https://permid.org/1-4295905573"
-        },
-        "https://permid.org/1-4295907168": {
-            "vcard:organization-name": "Microsoft Corporation",
-            "tr-common:hasPermId": "1-4295907168",
-            "mdaas:HeadquartersAddress": "One Microsoft Way, Redmond, WA 98052",
-            "tr-org:hasLEI": "INR2EJN1ERAN0W5ZP974",
-            "@id": "https://permid.org/1-4295907168"
-        },
-        "https://permid.org/1-4295912752": {
-            "vcard:organization-name": "Amazon.com Inc",
-            "tr-common:hasPermId": "1-4295912752",
-            "mdaas:HeadquartersAddress": "410 Terry Avenue North, Seattle, WA 98109",
-            "tr-org:hasLEI": "ZXTILKJKG63JELOFO76",
-            "@id": "https://permid.org/1-4295912752"
-        },
-        "https://permid.org/1-5064095121": {
-            "vcard:organization-name": "Alphabet Inc",
-            "tr-common:hasPermId": "1-5064095121",
-            "mdaas:HeadquartersAddress": "1600 Amphitheatre Parkway, Mountain View, CA 94043",
-            "tr-org:hasLEI": "5493006MHB84DD0ZWV18",
-            "@id": "https://permid.org/1-5064095121"
-        },
-        "https://permid.org/1-4295903232": {
-            "vcard:organization-name": "Meta Platforms Inc",
-            "tr-common:hasPermId": "1-4295903232",
-            "mdaas:HeadquartersAddress": "1 Meta Way, Menlo Park, CA 94025",
-            "tr-org:hasLEI": "EMJ02EC15T18WFH49T",
-            "@id": "https://permid.org/1-4295903232"
-        },
-        "https://permid.org/1-4297057338": {
-            "vcard:organization-name": "Tesla Inc",
-            "tr-common:hasPermId": "1-4297057338",
-            "mdaas:HeadquartersAddress": "1 Tesla Road, Austin, TX 78725",
-            "tr-org:hasLEI": "54930084UKLVMY22DS16",
-            "@id": "https://permid.org/1-4297057338"
-        },
-        "https://permid.org/1-4295905494": {
-            "vcard:organization-name": "NVIDIA Corporation",
-            "tr-common:hasPermId": "1-4295905494",
-            "mdaas:HeadquartersAddress": "2788 San Tomas Expressway, Santa Clara, CA 95051",
-            "tr-org:hasLEI": "549300S3ET14JUS52031",
-            "@id": "https://permid.org/1-4295905494"
-        },
-        "https://permid.org/1-4295904307": {
-            "vcard:organization-name": "Berkshire Hathaway Inc",
-            "tr-common:hasPermId": "1-4295904307",
-            "mdaas:HeadquartersAddress": "3555 Farnam Street, Omaha, NE 68131",
-            "tr-org:hasLEI": "QMDDXHFCVN538DQFLL26",
-            "@id": "https://permid.org/1-4295904307"
+_PERMID_URL = "https://permid.org/1-4295904307"
+
+# Entity Search: returns one matching organization
+_ENTITY_SEARCH_HIT = {
+    "status_code": 200,
+    "data": {
+        "result": {
+            "organizations": {
+                "entities": [{"@id": _PERMID_URL}]
+            }
+        }
+    },
+}
+
+# Entity Search: returns no matches
+_ENTITY_SEARCH_MISS = {
+    "status_code": 200,
+    "data": {"result": {"organizations": {"entities": []}}},
+}
+
+# Entity Lookup: returns company detail
+_ENTITY_LOOKUP_HIT = {
+    "status_code": 200,
+    "data": {
+        "vcard:organization-name": "Test Corp Inc.",
+        "tr-common:hasPermId": "4295904307",
+        "@id": _PERMID_URL,
+        "hasActivityStatus": "Active",
+    },
+}
+
+# Geonames: not found (avoids a second API call in _parse_company_info)
+_GEONAMES_MISS = {"status_code": 404}
+
+
+def _record_match_hit(entity_name: str, local_id: str) -> dict:
+    """Build a Record Match response with a single 100% match."""
+    return {
+        "status_code": 200,
+        "data": {
+            "outputContentResponse": [
+                {
+                    "Input_Name": entity_name,
+                    "Input_LocalID": local_id,
+                    "Match OpenPermID": _PERMID_URL,
+                    "Match Score": "100%",
+                }
+            ]
         },
     }
 
-    def mock_get(*args, **kwargs):
-        """Mock requests.Session.get method."""
-        url = args[0] if args else kwargs.get('url')
-        mock_response = Mock()
-        mock_response.status_code = 200
 
-        # Check if this is a PermID search query
-        if 'api.permid.org/search' in url:
-            params = kwargs.get('params', {})
-            query = params.get('q', '')
-
-            # Extract CIK from query
-            if query.startswith('cik:'):
-                cik = query.replace('cik:', '')
-                permid_url = cik_to_permid.get(cik)
-
-                if permid_url:
-                    mock_response.json.return_value = {
-                        "result": {
-                            "organizations": {
-                                "entities": [{"@id": permid_url}]
-                            }
-                        }
-                    }
-                else:
-                    mock_response.json.return_value = {
-                        "result": {
-                            "organizations": {
-                                "entities": []
-                            }
-                        }
-                    }
-
-        # Check if this is a PermID entity query
-        elif 'permid.org/' in url and url.startswith('https://permid.org/'):
-            info = company_info.get(url)
-            if info:
-                mock_response.json.return_value = info
-            else:
-                mock_response.status_code = 404
-                mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("404")
-
-        return mock_response
-
-    return mock_get
+_RECORD_MATCH_MISS = {
+    "status_code": 200,
+    "data": {"outputContentResponse": []},
+}
 
 
-class TestOrchestratorIntegration:
-    """Integration tests for the pipeline orchestrator."""
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
 
-    def _setup_pipeline(self, test_data_dir, test_parquet_file):
-        """Setup pipeline configuration and orchestrator.
+def _make_config(
+    input_file: pathlib.Path,
+    output_dir: pathlib.Path,
+    identifier_type: IdentifierType,
+    **kwargs,
+) -> OrchestratorConfig:
+    """Build a minimal OrchestratorConfig for testing."""
+    defaults = {"batch_size": 10, "buffer_size": 5, "threshold_days": None}
+    defaults.update(kwargs)
+    return OrchestratorConfig(
+        input_file=input_file,
+        output_dir=output_dir,
+        identifier_type=identifier_type,
+        api_key="test-api-key",
+        geonames_user="test-geonames-user",
+        **defaults,
+    )
 
-        Args:
-            test_data_dir: Temporary directory for test outputs
-            test_parquet_file: Path to test parquet input file
 
-        Returns:
-            Tuple of (config, pipeline, output_paths_dict)
-        """
-        assert test_parquet_file.exists(), f"Test file not found: {test_parquet_file}"
+def _read_output(output_file: pathlib.Path) -> list:
+    """Read the company info output file, returning [] if it does not exist."""
+    return json.loads(output_file.read_text()) if output_file.exists() else []
 
-        # Configure pipeline (CIK mode for integration test)
-        config = orchestrator.PipelineConfig(
-            input_file=test_parquet_file,
-            output_directory=test_data_dir / "output",
-            pipeline_type="cik",
-            permid_batch_size=10,  # Process all 10 rows in one batch
-            company_info_batch_size=10,
-            permid_api_key="fake-api-key-for-testing",
-            geonames_user="fake-user-for-testing",
-            max_retries=1  # Reduce retries for faster tests
+
+# ---------------------------------------------------------------------------
+# TestIdentifierFactory
+# ---------------------------------------------------------------------------
+
+class TestIdentifierFactory:
+    """Verify the factory wires the correct Identifier subclass and configuration."""
+
+    def test_cik_creates_identifier_cik(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"investor_name": ["Firm A"], "investor_cik": ["123"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
+
+        identifier = IdentifierFactory.build(config)
+
+        assert isinstance(identifier, IdentifierCik)
+
+    def test_cusip_creates_identifier_cusip(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"issuer_name": ["Corp A"], "security_cusip": ["037833100"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
+
+        identifier = IdentifierFactory.build(config)
+
+        assert isinstance(identifier, IdentifierCusip)
+
+    def test_ticker_creates_identifier_cusip_with_record_match(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"issuer_name": ["Corp A"], "stock_ticker": ["AAPL"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
+
+        identifier = IdentifierFactory.build(config)
+
+        assert isinstance(identifier, IdentifierCusip)
+        assert identifier.query_type == QueryType.RECORD_MATCH
+
+    def test_cik_uses_entity_search(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"investor_name": ["Firm A"], "investor_cik": ["123"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
+
+        identifier = IdentifierFactory.build(config)
+
+        assert identifier.query_type == QueryType.ENTITY_SEARCH
+
+    def test_cusip_uses_entity_search(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"issuer_name": ["Corp A"], "security_cusip": ["037833100"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
+
+        identifier = IdentifierFactory.build(config)
+
+        assert identifier.query_type == QueryType.ENTITY_SEARCH
+
+    def test_file_paths_derived_from_output_dir(self, tmp_path):
+        out = tmp_path / "output"
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"investor_name": ["Firm A"], "investor_cik": ["123"]}).to_parquet(parquet)
+        config = _make_config(parquet, out, IdentifierType.CIK)
+        spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
+
+        identifier = IdentifierFactory.build(config)
+
+        assert identifier.file_paths.result_file == str(out / "company_info" / spec.result_filename)
+        assert identifier.file_paths.permid_file == str(out / "permid_data" / spec.permid_filename)
+        assert identifier.file_paths.failure_file == str(out / "failures" / spec.failure_filename)
+
+    def test_batch_config_passed_through(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"investor_name": ["Firm A"], "investor_cik": ["123"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK, batch_size=42, buffer_size=7)
+
+        identifier = IdentifierFactory.build(config)
+
+        assert identifier.batch_config.batch_size == 42
+        assert identifier.batch_config.buffer_size == 7
+
+    def test_each_type_has_distinct_output_filenames(self, tmp_path):
+        result_files = {
+            t: IDENTIFIER_REGISTRY[t].result_filename for t in IdentifierType
+        }
+        assert len(set(result_files.values())) == len(IdentifierType), (
+            "Each identifier type must write to a distinct result file"
         )
 
-        # Create output directory
-        config.output_directory.mkdir(parents=True, exist_ok=True)
 
-        # Create orchestrator
-        pipeline = orchestrator.PipelineOrchestrator(config)
+# ---------------------------------------------------------------------------
+# TestPipelineOrchestratorFlow
+# ---------------------------------------------------------------------------
 
-        # Prepare output paths (type-aware to keep CIK and record data separate)
-        is_cik = config.pipeline_type == "cik"
-        output_paths = {
-            "cik_file": config.output_directory
-            / (orchestrator.PipelineConfig.CIK_DATA_FILE if is_cik else orchestrator.PipelineConfig.RECORD_DATA_FILE),
-            "permid_file": config.output_directory
-            / (
-                orchestrator.PipelineConfig.PERMID_DATA_CIK_FILE
-                if is_cik
-                else orchestrator.PipelineConfig.PERMID_DATA_RECORD_FILE
-            ),
-            "permid_batch_file": config.output_directory
-            / (
-                orchestrator.PipelineConfig.PERMID_BATCH_TRACKING_CIK_FILE
-                if is_cik
-                else orchestrator.PipelineConfig.PERMID_BATCH_TRACKING_RECORD_FILE
-            ),
-            "company_file": config.output_directory
-            / (
-                orchestrator.PipelineConfig.COMPANY_INFO_CIK_FILE
-                if is_cik
-                else orchestrator.PipelineConfig.COMPANY_INFO_RECORD_FILE
-            ),
-            "company_batch_file": config.output_directory
-            / (
-                orchestrator.PipelineConfig.COMPANY_BATCH_TRACKING_CIK_FILE
-                if is_cik
-                else orchestrator.PipelineConfig.COMPANY_BATCH_TRACKING_RECORD_FILE
-            ),
+class TestPipelineOrchestratorFlow:
+    """Verify PipelineOrchestrator.run() flow control."""
+
+    def test_returns_false_when_input_file_missing(self, tmp_path):
+        config = _make_config(
+            input_file=tmp_path / "does_not_exist.parquet",
+            output_dir=tmp_path / "out",
+            identifier_type=IdentifierType.CIK,
+        )
+
+        result = PipelineOrchestrator(config).run()
+
+        assert result is False
+
+    def test_returns_true_when_identifier_run_succeeds(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
+
+        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
+            mock_build.return_value.run.return_value = None
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is True
+        mock_build.return_value.run.assert_called_once()
+
+    def test_returns_false_when_identifier_run_raises(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
+
+        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
+            mock_build.return_value.run.side_effect = RuntimeError("simulated API failure")
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is False
+
+    def test_returns_false_on_keyboard_interrupt(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
+
+        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
+            mock_build.return_value.run.side_effect = KeyboardInterrupt
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# TestCikPipelineIntegration
+# ---------------------------------------------------------------------------
+
+class TestCikPipelineIntegration:
+    """End-to-end integration tests for the CIK (Entity Search) pipeline."""
+
+    def test_writes_company_info_for_matched_cik(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({
+            "investor_name": ["Firm Alpha"],
+            "investor_cik": ["0001234567"],
+        }).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
+
+        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT), \
+             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
+             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is True
+        spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
+        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+
+        assert len(records) == 1
+        assert records[0]["original_entity_name"] == "Firm Alpha"
+        assert records[0]["identifier_type"] == "cik"
+        assert records[0]["identifier"] == "0001234567"
+        assert records[0]["permid_id"] == "4295904307"
+
+    def test_produces_empty_output_when_no_permid_match(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({
+            "investor_name": ["Unknown Corp"],
+            "investor_cik": ["0009999999"],
+        }).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
+
+        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_MISS), \
+             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
+             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is True
+        spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
+        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        assert records == []
+
+    def test_creates_separate_output_from_cusip_pipeline(self, tmp_path):
+        """CIK output files are distinct from CUSIP output files."""
+        cik_spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
+        cusip_spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
+        assert cik_spec.result_filename != cusip_spec.result_filename
+
+
+# ---------------------------------------------------------------------------
+# TestCusipPipelineIntegration
+# ---------------------------------------------------------------------------
+
+class TestCusipPipelineIntegration:
+    """End-to-end integration tests for the CUSIP (Entity Search) pipeline."""
+
+    def test_writes_company_info_for_matched_cusip(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({
+            "issuer_name": ["Corp Beta"],
+            "security_cusip": ["037833100"],
+        }).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
+
+        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT), \
+             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
+             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is True
+        spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
+        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+
+        assert len(records) == 1
+        assert records[0]["original_entity_name"] == "Corp Beta"
+        assert records[0]["identifier_type"] == "cusip"
+        assert records[0]["identifier"] == "037833100"
+        assert records[0]["permid_id"] == "4295904307"
+
+    def test_produces_empty_output_when_no_permid_match(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({
+            "issuer_name": ["Unknown Corp"],
+            "security_cusip": ["000000000"],
+        }).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
+
+        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_MISS), \
+             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
+             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is True
+        spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
+        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        assert records == []
+
+
+# ---------------------------------------------------------------------------
+# TestTickerPipelineIntegration
+# ---------------------------------------------------------------------------
+
+class TestTickerPipelineIntegration:
+    """End-to-end integration tests for the Ticker (Record Match) pipeline."""
+
+    def test_writes_company_info_for_matched_ticker(self, tmp_path):
+        entity_name = "Corp Gamma"
+        ticker = "AAPL"
+        expected_local_id = "ticker:AAPL"
+
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({
+            "issuer_name": [entity_name],
+            "stock_ticker": [ticker],
+        }).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
+
+        with patch.object(LsegRecordMatch, "query_endpoint",
+                          return_value=_record_match_hit(entity_name, expected_local_id)), \
+             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
+             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is True
+        spec = IDENTIFIER_REGISTRY[IdentifierType.TICKER]
+        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+
+        assert len(records) == 1
+        assert records[0]["original_entity_name"] == entity_name
+        assert records[0]["identifier_type"] == "ticker"
+        assert records[0]["identifier"] == expected_local_id
+        assert records[0]["permid_id"] == "4295904307"
+
+    def test_bond_securities_are_filtered_before_api_call(self, tmp_path):
+        """Bond tickers must be dropped before the Record Match API is called."""
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({
+            "issuer_name": ["Corp Delta"],
+            "stock_ticker": ["WEC 4.375 06/01/29"],  # bond — filtered by _is_bond_security
+        }).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
+
+        with patch.object(LsegRecordMatch, "query_endpoint") as mock_rm, \
+             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
+             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is True
+        mock_rm.assert_not_called()
+
+    def test_produces_empty_output_when_no_record_match(self, tmp_path):
+        entity_name = "Corp Epsilon"
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({
+            "issuer_name": [entity_name],
+            "stock_ticker": ["XYZ"],
+        }).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
+
+        with patch.object(LsegRecordMatch, "query_endpoint", return_value=_RECORD_MATCH_MISS), \
+             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
+             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
+
+            result = PipelineOrchestrator(config).run()
+
+        assert result is True
+        spec = IDENTIFIER_REGISTRY[IdentifierType.TICKER]
+        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        assert records == []
+
+    def test_low_score_match_is_excluded(self, tmp_path):
+        """A Record Match response below the score threshold should not produce output."""
+        entity_name = "Corp Zeta"
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({
+            "issuer_name": [entity_name],
+            "stock_ticker": ["ZYX"],
+        }).to_parquet(parquet)
+        # match_score_threshold=1 means 100% required; return 50% match
+        config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER, match_score_threshold=1)
+
+        low_score_response = {
+            "status_code": 200,
+            "data": {
+                "outputContentResponse": [
+                    {
+                        "Input_Name": entity_name,
+                        "Input_LocalID": "ticker:ZYX",
+                        "Match OpenPermID": _PERMID_URL,
+                        "Match Score": "50%",
+                    }
+                ]
+            },
         }
 
-        return config, pipeline, output_paths
+        with patch.object(LsegRecordMatch, "query_endpoint", return_value=low_score_response), \
+             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
+             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
 
-    def _run_stage1_extract_ciks(self, pipeline, config, cik_file):
-        """Execute and verify Stage 1: Extract CIKs.
+            result = PipelineOrchestrator(config).run()
 
-        Args:
-            pipeline: PipelineOrchestrator instance
-            config: PipelineConfig instance
-            cik_file: Path to output CIK data file
-
-        Returns:
-            Tuple of (status, cik_data_dict)
-        """
-        status, error = pipeline.stages[0].execute(
-            **{
-                "type": config.pipeline_type,
-                "input-file": str(config.input_file),
-                "output-file": str(cik_file)
-            }
-        )
-
-        # Verify stage succeeded
-        assert status == orchestrator.StageStatus.SUCCESS, f"Stage 1 should succeed: {error}"
-        assert cik_file.exists(), "CIK data file should exist after stage 1"
-
-        # Load and verify CIK extraction output
-        with open(cik_file) as f:
-            cik_data = json.load(f)
-
-        assert len(cik_data) == 10, "Should extract 10 unique investors"
-        assert "Apple Inc" in cik_data
-        assert "0000320193" in cik_data["Apple Inc"]
-
-        return status, cik_data
-
-    def _run_stage2_query_permids(self, pipeline, config, cik_file, permid_file, permid_batch_file):
-        """Execute and verify Stage 2: Query PermIDs.
-
-        Args:
-            pipeline: PipelineOrchestrator instance
-            config: PipelineConfig instance
-            cik_file: Path to input CIK data file
-            permid_file: Path to output PermID data file
-            permid_batch_file: Path to batch tracking file
-
-        Returns:
-            Tuple of (status, permid_data_dict, total_processed_count)
-        """
-        status, error = pipeline.stages[1].execute(
-            **{
-                "type": config.pipeline_type,
-                "api-key": config.permid_api_key,
-                "input-file": str(cik_file),
-                "output-file": str(permid_file),
-                "batch-file": str(permid_batch_file),
-                "batch-size": str(config.permid_batch_size)
-            }
-        )
-
-        # Verify stage completed
-        assert status == orchestrator.StageStatus.SUCCESS, f"Stage 2 should complete: {error}"
-        assert permid_file.exists(), "PermID data file should exist after stage 2"
-        assert permid_batch_file.exists(), "PermID batch tracking file should exist"
-
-        # Load and verify PermID output structure
-        with open(permid_file) as f:
-            permid_data = json.load(f)
-
-        assert isinstance(permid_data, dict), "PermID data should be a dictionary"
-
-        # Verify batch tracking
-        with open(permid_batch_file) as f:
-            permid_batch_data = json.load(f)
-
-        assert len(permid_batch_data) > 0, "Should have batch tracking data"
-
-        # Check that all investors were processed
-        # query_permid uses "processed_items" (CIK/record mode); query_company_info uses "processed_investors"
-        total_processed = sum(
-            len(batch_info.get("processed_investors") or batch_info.get("processed_items") or [])
-            for batch_info in permid_batch_data.values()
-        )
-        assert total_processed == 10, "All 10 investors should be processed"
-
-        return status, permid_data, total_processed
-
-    def _run_stage3_query_company_info(
-        self, pipeline, config, permid_file, company_file, company_batch_file
-    ):
-        """Execute and verify Stage 3: Query Company Info.
-
-        Args:
-            pipeline: PipelineOrchestrator instance
-            config: PipelineConfig instance
-            permid_file: Path to input PermID data file
-            company_file: Path to output company info file
-            company_batch_file: Path to batch tracking file
-
-        Returns:
-            Tuple of (status, company_records_list)
-        """
-        status, error = pipeline.stages[2].execute(
-            **{
-                "api-key": config.permid_api_key,
-                "geonames-user": config.geonames_user,
-                "input-file": str(permid_file),
-                "output-file": str(company_file),
-                "batch-file": str(company_batch_file),
-                "batch-size": str(config.company_info_batch_size)
-            }
-        )
-
-        # Verify stage completed
-        assert status == orchestrator.StageStatus.SUCCESS, f"Stage 3 should complete: {error}"
-
-        # Load company records if file exists
-        company_records = []
-        if company_file.exists():
-            with open(company_file) as f:
-                company_data = json.load(f)
-            assert isinstance(company_data, list), "Company data should be a list"
-            company_records = company_data
-
-        return status, company_records
-
-    def _print_summary(self, status1, cik_data, status2, total_processed, permid_data, status3, company_records):
-        """Print integration test summary.
-
-        Args:
-            status1: Stage 1 status
-            cik_data: CIK data dictionary
-            status2: Stage 2 status
-            total_processed: Number of investors processed in stage 2
-            permid_data: PermID data dictionary
-            status3: Stage 3 status
-            company_records: List of company records
-        """
-        print("\n" + "="*60)
-        print("INTEGRATION TEST SUMMARY")
-        print("="*60)
-        print(f"Stage 1 (Extract CIKs): {status1.value}")
-        print(f"  - Extracted {len(cik_data)} investors")
-        print(f"Stage 2 (Query PermIDs): {status2.value}")
-        print(f"  - Processed {total_processed} investors")
-        print(f"  - Found {len(permid_data)} investors with PermIDs")
-        print(f"Stage 3 (Query Company Info): {status3.value}")
-        if len(company_records) > 0:
-            print(f"  - Retrieved {len(company_records)} company records")
-        else:
-            print(f"  - No company records (expected with fake credentials)")
-        print("="*60)
-
-    def test_orchestrator_stages_1_2_3_integration(
-        self,
-        test_data_dir,
-        test_parquet_file
-    ):
-        """Test orchestrator runs stages 1, 2, and 3 together on 10-row dataset.
-
-        Note: Stages 2 and 3 will complete but may not find data due to fake API credentials.
-        This test validates the orchestration logic and data flow between stages.
-        """
-        # Setup pipeline
-        config, pipeline, paths = self._setup_pipeline(test_data_dir, test_parquet_file)
-
-        # Execute Stage 1: Extract CIKs
-        status1, cik_data = self._run_stage1_extract_ciks(
-            pipeline, config, paths["cik_file"]
-        )
-
-        # Execute Stage 2: Query PermIDs
-        status2, permid_data, total_processed = self._run_stage2_query_permids(
-            pipeline, config, paths["cik_file"], paths["permid_file"], paths["permid_batch_file"]
-        )
-
-        # Execute Stage 3: Query Company Info
-        status3, company_records = self._run_stage3_query_company_info(
-            pipeline, config, paths["permid_file"], paths["company_file"], paths["company_batch_file"]
-        )
-
-        # Print summary
-        self._print_summary(
-            status1, cik_data, status2, total_processed, permid_data, status3, company_records
-        )
-
-    def test_orchestrator_configuration(self, test_data_dir, test_parquet_file):
-        """Test orchestrator configuration and stage initialization."""
-        config = orchestrator.PipelineConfig(
-            input_file=test_parquet_file,
-            output_directory=test_data_dir / "output",
-            pipeline_type="cik",
-            permid_batch_size=5,
-            company_info_batch_size=5,
-            permid_api_key="test-key",
-            geonames_user="test-user",
-            threshold_days=30
-        )
-
-        pipeline = orchestrator.PipelineOrchestrator(config)
-
-        # Verify stages are initialized
-        assert len(pipeline.stages) == 4, "Should have 4 pipeline stages"
-
-        # Verify stage names
-        stage_names = [stage.config.name for stage in pipeline.stages]
-        assert "extract_ciks" in stage_names
-        assert "query_permids" in stage_names
-        assert "query_company_info" in stage_names
-        assert "save_results" in stage_names
-
-        # Verify batch sizes are passed through
-        assert config.permid_batch_size == 5
-        assert config.company_info_batch_size == 5
-
-    def test_orchestrator_missing_input_file(self, test_data_dir):
-        """Test orchestrator handles missing input file gracefully."""
-        config = orchestrator.PipelineConfig(
-            input_file=test_data_dir / "nonexistent.parquet",
-            output_directory=test_data_dir / "output",
-            pipeline_type="cik",
-            permid_batch_size=10,
-            company_info_batch_size=10,
-            permid_api_key="test-api-key",
-            geonames_user="test-user"
-        )
-
-        pipeline = orchestrator.PipelineOrchestrator(config)
-        success = pipeline.run_pipeline()
-
-        assert not success, "Pipeline should fail with missing input file"
-
-    def test_orchestrator_command_building(self, test_data_dir, test_parquet_file):
-        """Test that orchestrator builds correct commands for each stage."""
-        config = orchestrator.PipelineConfig(
-            input_file=test_parquet_file,
-            output_directory=test_data_dir / "output",
-            pipeline_type="cik",
-            permid_batch_size=10,
-            company_info_batch_size=10,
-            permid_api_key="my-api-key",
-            geonames_user="my-user"
-        )
-
-        pipeline = orchestrator.PipelineOrchestrator(config)
-
-        # Test Stage 1 command (extract_ciks)
-        stage1 = pipeline.stages[0]
-        cmd1 = stage1.build_command(
-            **{
-                "type": "cik",
-                "input-file": "test.parquet",
-                "output-file": "test_cik.json"
-            }
-        )
-        assert "-m" in cmd1
-        assert "idi_company_info.retrieve_identifiers" in cmd1
-        assert "--input-file" in cmd1
-        assert "test.parquet" in cmd1
-        assert "--type" in cmd1
-        assert "cik" in cmd1
-
-        # Test Stage 2 command (query_permids)
-        stage2 = pipeline.stages[1]
-        cmd2 = stage2.build_command(
-            **{
-                "type": "cik",
-                "api-key": "my-key",
-                "input-file": "cik.json",
-                "output-file": "permid.json",
-                "batch-file": "batch.json",
-                "batch-size": "10"
-            }
-        )
-        assert "idi_company_info.query_permid" in cmd2
-        assert "--api-key" in cmd2
-        assert "my-key" in cmd2
-        assert "--type" in cmd2
-        assert "cik" in cmd2
-        assert "--batch-size" in cmd2
-        assert "10" in cmd2
-
-    def test_orchestrator_record_mode_command_building(self, test_data_dir, test_parquet_file):
-        """Test that record mode builds correct commands with record_data.json."""
-        config = orchestrator.PipelineConfig(
-            input_file=test_parquet_file,
-            output_directory=test_data_dir / "output",
-            pipeline_type="record",
-            permid_batch_size=10,
-            company_info_batch_size=10,
-            permid_api_key="my-api-key",
-            geonames_user="my-user"
-        )
-
-        pipeline = orchestrator.PipelineOrchestrator(config)
-
-        # Stage 1 in record mode should output record_data.json and pass --type record
-        stage1 = pipeline.stages[0]
-        cmd1 = stage1.build_command(
-            **{
-                "type": "record",
-                "input-file": "test.parquet",
-                "output-file": str(config.output_directory / "record_data.json")
-            }
-        )
-        assert "--type" in cmd1
-        assert "record" in cmd1
-        assert "record_data.json" in " ".join(cmd1)
-
-        # Stage 2 in record mode should pass --type record
-        stage2 = pipeline.stages[1]
-        cmd2 = stage2.build_command(
-            **{
-                "type": "record",
-                "api-key": "my-key",
-                "input-file": "record.json",
-                "output-file": "permid.json",
-                "batch-file": "batch.json",
-                "batch-size": "10"
-            }
-        )
-        assert "--type" in cmd2
-        assert "record" in cmd2
+        assert result is True
+        spec = IDENTIFIER_REGISTRY[IdentifierType.TICKER]
+        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        assert records == []
