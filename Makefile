@@ -1,6 +1,6 @@
 .PHONY: help install install-dev test test-verbose test-coverage clean clean-all
 .PHONY: run-cik run-cusip run-ticker
-.PHONY: docker-build docker-up docker-down docker-run-cik docker-run-cusip docker-run-ticker
+.PHONY: docker-build docker-up docker-down docker-run-cik docker-run-cik-match docker-run-cusip docker-run-ticker
 
 # ── Python runner ────────────────────────────────────────────────────────────
 RUN := uv run
@@ -75,9 +75,10 @@ help:
 	@echo "  make docker-build     Build orchestrator image"
 	@echo "  make docker-up        Start scheduler stack (runs on schedule)"
 	@echo "  make docker-down      Stop Docker Compose stack"
-	@echo "  make docker-run-cik   Manual CIK run via Docker"
-	@echo "  make docker-run-cusip Manual CUSIP run via Docker"
-	@echo "  make docker-run-ticker Manual Ticker run via Docker"
+	@echo "  make docker-run-cik       Manual CIK run via Docker"
+	@echo "  make docker-run-cik-match Manual CIK Record Match run via Docker"
+	@echo "  make docker-run-cusip     Manual CUSIP run via Docker"
+	@echo "  make docker-run-ticker    Manual Ticker run via Docker"
 	@echo ""
 	@echo "Utility:"
 	@echo "  make clean            Remove output and log files"
@@ -176,6 +177,10 @@ docker-run-cik:
 docker-run-cusip:
 	@echo "Running CUSIP pipeline via Docker..."
 	docker compose run --rm orchestrator-cusip
+
+docker-run-cik-match:
+	@echo "Running CIK Match pipeline via Docker..."
+	docker compose run --rm orchestrator-cik-match
 
 docker-run-ticker:
 	@echo "Running Ticker pipeline via Docker..."

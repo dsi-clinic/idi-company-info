@@ -148,7 +148,55 @@ services:
         compress: "true"
 
   # ---------------------------------------------------------------------------
-  # Ticker pipeline — Record Match, manual only (no schedule)
+  # CIK Match pipeline — Record Match, manual only (no schedule)
+  # ---------------------------------------------------------------------------
+  orchestrator-cik-match:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.orchestrator
+    container_name: idi-company-info-orchestrator-cik-match
+
+    profiles:
+      - manual
+
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
+      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
+      - BATCH_SIZE_CIK_MATCH=${BATCH_SIZE_CIK_MATCH:-2450}
+      - BUFFER_SIZE=${BUFFER_SIZE:-500}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
+
+    volumes:
+      - ${INPUT_FILE_CIK:?INPUT_FILE_CIK is required}:/data/input/data.parquet:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.processors.orchestrator
+      --input-file /data/input/data.parquet
+      --output-directory /data/output
+      --type cik-match
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${BATCH_SIZE_CIK_MATCH:-2450}
+      --buffer-size ${BUFFER_SIZE:-500}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
+      2>&1 | tee /logs/orchestrator_cik_match_$(date +%Y%m%d_%H%M%S).log"
+
+    restart: "no"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+
+  # ---------------------------------------------------------------------------
+  # Ticker pipeline — Record Match, manual + CUSIP only (no schedule)
   # ---------------------------------------------------------------------------
   orchestrator-ticker:
     build:
