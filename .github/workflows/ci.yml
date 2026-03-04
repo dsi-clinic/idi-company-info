@@ -34,6 +34,7 @@ jobs:
     outputs:
       version: ${{ steps.output.outputs.version }}
       deploy_env: ${{ steps.output.outputs.deploy_env }}
+      pulumi_project: ${{ steps.output.outputs.pulumi_project }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -122,6 +123,8 @@ jobs:
           else
             echo "deploy_env=dev" >> $GITHUB_OUTPUT
           fi
+          PULUMI_PROJECT=$(grep '^name:' pulumi/Pulumi.yaml | awk '{print $2}')
+          echo "pulumi_project=$PULUMI_PROJECT" >> $GITHUB_OUTPUT
 
       - name: Commit version bump
         if: |
@@ -249,6 +252,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION || 'us-east-2' }}
 
+      - name: Login to Pulumi S3 backend
+        run: uv run pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
+
       - name: Pulumi deploy
         run: |
           uv run pulumi stack select ${{ needs.build.outputs.deploy_env }} 2>/dev/null || uv run pulumi stack init ${{ needs.build.outputs.deploy_env }}
@@ -289,7 +295,7 @@ jobs:
 
       - name: Re-tag and push orchestrator to ECR
         run: |
-          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || env.PROJECT_DIR }}-orchestrator"
+          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-company-info', needs.build.outputs.pulumi_project, needs.build.outputs.deploy_env) }}-orchestrator"
           ECR_URI="${{ steps.ecr-login.outputs.registry }}/$ECR_REPO"
           GHCR_IMG="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.PROJECT_DIR }}-orchestrator"
           docker pull ${GHCR_IMG}:${{ needs.build.outputs.version }}
@@ -300,7 +306,7 @@ jobs:
 
       - name: Re-tag and push scheduler to ECR
         run: |
-          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || env.PROJECT_DIR }}-scheduler"
+          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-company-info', needs.build.outputs.pulumi_project, needs.build.outputs.deploy_env) }}-scheduler"
           ECR_URI="${{ steps.ecr-login.outputs.registry }}/$ECR_REPO"
           GHCR_IMG="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.PROJECT_DIR }}-scheduler"
           docker pull ${GHCR_IMG}:${{ needs.build.outputs.version }}
