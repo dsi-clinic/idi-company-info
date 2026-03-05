@@ -31,6 +31,10 @@ cat > .env << ENVFILE_EOF
 PERMID_API_KEY=$PERMID_API_KEY
 GEONAMES_USER=$GEONAMES_USER
 
+# ECR image URIs (set by Pulumi)
+SCHEDULER_IMAGE={SCHEDULER_IMAGE}
+ORCHESTRATOR_IMAGE={ORCHESTRATOR_IMAGE}
+
 # Input files
 INPUT_FILE_CIK=/home/ec2-user/data/input/investors_cik.parquet
 INPUT_FILE_CUSIP=/home/ec2-user/data/input/securities_cusip.parquet
@@ -54,7 +58,7 @@ SCHEDULE_CIK=0 0 2 * * *
 SCHEDULE_CUSIP=0 30 2 * * *
 ENVFILE_EOF
 
-# Create docker-compose.yml with ECR image URIs
+# Create docker-compose.yml (uses SCHEDULER_IMAGE/ORCHESTRATOR_IMAGE from .env)
 cat > docker-compose.yml << '{COMPOSE_DELIM}'
 {COMPOSE_CONTENT}
 {COMPOSE_DELIM}

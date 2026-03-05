@@ -1,0 +1,116 @@
+"""Compute: AMI, launch template, Auto Scaling Group."""
+
+import pulumi
+import pulumi_aws as aws
+
+from . import config
+from . import iam
+from . import networking
+from . import secrets
+from . import user_data
+
+# -----------------------------------------------------------------------------
+# Config
+# -----------------------------------------------------------------------------
+instance_type = config.config.get("instance_type") or "t2.small"
+key_name = config.config.get("key_name") or "idi-acct-REMOVED"
+
+# -----------------------------------------------------------------------------
+# AMI
+# -----------------------------------------------------------------------------
+ami = aws.ec2.get_ami(
+    most_recent=True,
+    owners=["amazon"],
+    filters=[
+        aws.ec2.GetAmiFilterArgs(name="name", values=["al2023-ami-2023.*-x86_64"]),
+        aws.ec2.GetAmiFilterArgs(name="architecture", values=["x86_64"]),
+        aws.ec2.GetAmiFilterArgs(name="virtualization-type", values=["hvm"]),
+    ],
+)
+
+# -----------------------------------------------------------------------------
+# User Data
+# -----------------------------------------------------------------------------
+user_data_script = pulumi.Output.all(
+    networking.orchestrator_image,
+    networking.scheduler_image,
+).apply(
+    lambda args: user_data.build_user_data(
+        name_prefix=config.name_prefix,
+        has_secrets=bool(secrets.permid_api_key or secrets.geonames_user),
+        orch_img=args[0],
+        sched_img=args[1],
+    )
+)
+
+# -----------------------------------------------------------------------------
+# Launch Template
+# -----------------------------------------------------------------------------
+launch_template = aws.ec2.LaunchTemplate(
+    "idi-lt-processing",
+    name=f"{config.name_prefix}-lt-processing",
+    description=f"Launch template for {config.project_name} processing instances",
+    image_id=ami.id,
+    instance_type=instance_type,
+    key_name=key_name,
+    iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
+        arn=iam.instance_profile.arn
+    ),
+    vpc_security_group_ids=[networking.default_sg.id],
+    block_device_mappings=[
+        aws.ec2.LaunchTemplateBlockDeviceMappingArgs(
+            device_name="/dev/xvda",
+            ebs=aws.ec2.LaunchTemplateBlockDeviceMappingEbsArgs(
+                volume_size=30,
+                volume_type="gp3",
+                delete_on_termination=True,
+                encrypted=True,
+            ),
+        )
+    ],
+    user_data=user_data_script.apply(
+        lambda s: __import__("base64").b64encode(s.encode()).decode()
+    ),
+    tag_specifications=[
+        aws.ec2.LaunchTemplateTagSpecificationArgs(
+            resource_type="instance",
+            tags=config.tags({
+                "Name": f"{config.name_prefix}-processing-instance",
+                "purpose": "Data Processing Pipeline",
+            }),
+        ),
+        aws.ec2.LaunchTemplateTagSpecificationArgs(
+            resource_type="volume",
+            tags=config.tags({"Name": f"{config.name_prefix}-processing-volume"}),
+        ),
+    ],
+    tags=config.tags({"Name": f"{config.name_prefix}-lt-processing"}),
+)
+
+# -----------------------------------------------------------------------------
+# Auto Scaling Group
+# -----------------------------------------------------------------------------
+processor_asg = aws.autoscaling.Group(
+    "idi-processor-asg",
+    name=f"{config.name_prefix}-processor-asg",
+    launch_template={
+        "id": launch_template.id,
+        "version": "1",
+    },
+    vpc_zone_identifiers=networking.default_vpc_subnets.ids,
+    min_size=1,
+    max_size=1,
+    desired_capacity=1,
+    health_check_grace_period=300,
+    health_check_type="EC2",
+    force_delete=True,
+    capacity_reservation_specification={
+        "capacity_reservation_preference": "default",
+    },
+    tags=[
+        {"key": "Name", "value": f"{config.name_prefix}-processor-asg", "propagate_at_launch": True},
+        {"key": "project", "value": config.project_name, "propagate_at_launch": True},
+        {"key": "environment", "value": config.stack_name, "propagate_at_launch": True},
+        {"key": "managed_by", "value": "Pulumi", "propagate_at_launch": True},
+    ],
+)

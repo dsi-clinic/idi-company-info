@@ -265,6 +265,7 @@ dev = [
 pulumi = [
     { name = "pulumi" },
     { name = "pulumi-aws" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -285,6 +286,7 @@ provides-extras = ["dev"]
 pulumi = [
     { name = "pulumi", specifier = ">=3.220.0" },
     { name = "pulumi-aws", specifier = ">=7.19.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]

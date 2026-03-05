@@ -19,6 +19,7 @@ services:
   # Cron scheduler — triggers orchestrator containers on a schedule
   # ---------------------------------------------------------------------------
   scheduler:
+    image: ${SCHEDULER_IMAGE:-ghcr.io/dsi-clinic/idi-company-information-scheduler:latest}
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.scheduler
@@ -57,6 +58,7 @@ services:
   # CIK pipeline — Entity Search, scheduled
   # ---------------------------------------------------------------------------
   orchestrator-cik:
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-information-orchestrator:latest}
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.orchestrator
@@ -104,6 +106,7 @@ services:
   # CUSIP pipeline — Entity Search, scheduled
   # ---------------------------------------------------------------------------
   orchestrator-cusip:
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-information-orchestrator:latest}
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.orchestrator
@@ -151,6 +154,7 @@ services:
   # CIK Match pipeline — Record Match, manual only (no schedule)
   # ---------------------------------------------------------------------------
   orchestrator-cik-match:
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-information-orchestrator:latest}
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.orchestrator
@@ -199,6 +203,7 @@ services:
   # Ticker pipeline — Record Match, manual + CUSIP only (no schedule)
   # ---------------------------------------------------------------------------
   orchestrator-ticker:
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-information-orchestrator:latest}
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.orchestrator

@@ -37,4 +37,5 @@ addopts = "-v --tb=short"
 pulumi = [
     "pulumi>=3.220.0",
     "pulumi-aws>=7.19.0",
+    "pyyaml>=6.0",
 ]
