@@ -1,5 +1,6 @@
 """VPC, security groups, and VPC endpoints."""
 
+import pulumi
 import pulumi_aws as aws
 
 from . import config
@@ -44,7 +45,7 @@ vpc_endpoints_sg = aws.ec2.SecurityGroup(
 # -----------------------------------------------------------------------------
 # ECR Image URIs
 # -----------------------------------------------------------------------------
-ecr_registry = config.caller.account_id.apply(
+ecr_registry = pulumi.Output.from_input(config.caller.account_id).apply(
     lambda aid: f"{aid}.dkr.ecr.{config.aws_region}.amazonaws.com"
 )
 orchestrator_image = ecr_registry.apply(

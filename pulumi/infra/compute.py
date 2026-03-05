@@ -13,7 +13,9 @@ from . import user_data
 # Config
 # -----------------------------------------------------------------------------
 instance_type = config.config.get("instance_type") or "t2.small"
-key_name = config.config.get("key_name") or "idi-acct-REMOVED"
+_key_name = config.config.get("key_name") or "idi-acct-REMOVED"
+# Omit key_name if placeholder (use SSM Session Manager for access)
+key_name = None if _key_name == "idi-acct-REMOVED" else _key_name
 
 # -----------------------------------------------------------------------------
 # AMI
@@ -46,18 +48,14 @@ user_data_script = pulumi.Output.all(
 # -----------------------------------------------------------------------------
 # Launch Template
 # -----------------------------------------------------------------------------
-launch_template = aws.ec2.LaunchTemplate(
-    "idi-lt-processing",
-    name=f"{config.name_prefix}-lt-processing",
-    description=f"Launch template for {config.project_name} processing instances",
-    image_id=ami.id,
-    instance_type=instance_type,
-    key_name=key_name,
-    iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
+launch_template_args = {
+    "image_id": ami.id,
+    "instance_type": instance_type,
+    "iam_instance_profile": aws.ec2.LaunchTemplateIamInstanceProfileArgs(
         arn=iam.instance_profile.arn
     ),
-    vpc_security_group_ids=[networking.default_sg.id],
-    block_device_mappings=[
+    "vpc_security_group_ids": [networking.default_sg.id],
+    "block_device_mappings": [
         aws.ec2.LaunchTemplateBlockDeviceMappingArgs(
             device_name="/dev/xvda",
             ebs=aws.ec2.LaunchTemplateBlockDeviceMappingEbsArgs(
@@ -68,10 +66,10 @@ launch_template = aws.ec2.LaunchTemplate(
             ),
         )
     ],
-    user_data=user_data_script.apply(
+    "user_data": user_data_script.apply(
         lambda s: __import__("base64").b64encode(s.encode()).decode()
     ),
-    tag_specifications=[
+    "tag_specifications": [
         aws.ec2.LaunchTemplateTagSpecificationArgs(
             resource_type="instance",
             tags=config.tags({
@@ -84,7 +82,16 @@ launch_template = aws.ec2.LaunchTemplate(
             tags=config.tags({"Name": f"{config.name_prefix}-processing-volume"}),
         ),
     ],
-    tags=config.tags({"Name": f"{config.name_prefix}-lt-processing"}),
+    "tags": config.tags({"Name": f"{config.name_prefix}-lt-processing"}),
+}
+if key_name:
+    launch_template_args["key_name"] = key_name
+
+launch_template = aws.ec2.LaunchTemplate(
+    "idi-lt-processing",
+    name=f"{config.name_prefix}-lt-processing",
+    description=f"Launch template for {config.project_name} processing instances",
+    **launch_template_args,
 )
 
 # -----------------------------------------------------------------------------

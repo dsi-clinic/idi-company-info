@@ -10,7 +10,7 @@ config:
     description: EC2 instance type for processing instances
     default: t2.small
   idi:key_name:
-    description: SSH key pair name for EC2 instances
+    description: SSH key pair name for EC2 instances (omit or leave default to use SSM Session Manager only)
     default: idi-acct-REMOVED
   idi:permid_api_key:
     description: PermID API key (stored as secret in AWS Secrets Manager)

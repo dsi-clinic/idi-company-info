@@ -2,6 +2,7 @@
 
 import json
 
+import pulumi
 import pulumi_aws as aws
 
 from . import config
@@ -31,12 +32,28 @@ ssm_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
 )
 
-# Attach CloudWatch Logs policy for watchtower (Python CloudWatch logging)
+# Inline CloudWatch Logs policy for watchtower (least-privilege)
 # See: https://kislyuk.github.io/watchtower/#iam-permissions
-cloudwatch_logs_policy_attachment = aws.iam.RolePolicyAttachment(
+# Scoped to idi-company-info-* log groups (matches logs.py)
+cloudwatch_logs_policy = aws.iam.RolePolicy(
     "idi-policy-cloudwatch-logs",
-    role=ec2_role.name,
-    policy_arn="arn:aws:iam::aws:policy/AWSOpsWorksCloudWatchLogs",
+    role=ec2_role.id,
+    policy=json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:DescribeLogStreams",
+                "logs:PutLogEvents",
+            ],
+            "Resource": [
+                "arn:aws:logs:*:*:log-group:idi-company-info-*",
+                "arn:aws:logs:*:*:log-group:idi-company-info-*:*",
+            ],
+        }],
+    }),
 )
 
 # Instance profile
@@ -56,7 +73,7 @@ ecr_scheduler_repo = f"{config.name_prefix}-company-info-scheduler"
 ecr_policy = aws.iam.RolePolicy(
     "idi-policy-ecr-pull",
     role=ec2_role.id,
-    policy=config.caller.account_id.apply(
+    policy=pulumi.Output.from_input(config.caller.account_id).apply(
         lambda aid: json.dumps({
             "Version": "2012-10-17",
             "Statement": [

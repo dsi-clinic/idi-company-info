@@ -232,6 +232,7 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}/pulumi
     env:
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -255,10 +256,15 @@ jobs:
       - name: Login to Pulumi S3 backend
         run: uv run pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
 
-      - name: Pulumi deploy
+      - name: Configure Pulumi (EC2 SSH key)
         run: |
           uv run pulumi stack select ${{ needs.build.outputs.deploy_env }} 2>/dev/null || uv run pulumi stack init ${{ needs.build.outputs.deploy_env }}
-          uv run pulumi up --yes
+          if [ -n "$EC2_SSH_KEY" ]; then
+            uv run pulumi config set idi:key_name "$EC2_SSH_KEY"
+          fi
+
+      - name: Pulumi deploy
+        run: uv run pulumi up --yes
         continue-on-error: true  # Remove when Pulumi backend is configured
 
   sync-ecr:
