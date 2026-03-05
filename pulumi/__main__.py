@@ -1,18 +1,69 @@
 """Pulumi infrastructure for IDI Company Information Pipeline"""
 
 import json
+from pathlib import Path
+
 import pulumi
 import pulumi_aws as aws
 
-# Get configuration
+# -----------------------------------------------------------------------------
+# Constants
+# -----------------------------------------------------------------------------
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
 config = pulumi.Config()
 project_name = pulumi.get_project()
 stack_name = pulumi.get_stack()
+name_prefix = f"{project_name}-{stack_name}"
 
-# Create IAM role for EC2 instances with SSM access
+# -----------------------------------------------------------------------------
+# Functions (alphabetical)
+# -----------------------------------------------------------------------------
+
+
+def _load_template(name: str, **replacements: str) -> str:
+    """Load a template file and apply string replacements."""
+    path = _TEMPLATES_DIR / name
+    content = path.read_text()
+    for key, value in replacements.items():
+        content = content.replace("{" + key + "}", value)
+    return content
+
+
+def build_user_data(name_prefix, has_secrets, orch_img, sched_img):
+    """Build EC2 user data script from templates (matches .env.example structure)."""
+    if has_secrets:
+        secret_retrieval = _load_template(
+            "secret_retrieval_secrets_manager.sh",
+            name_prefix=name_prefix,
+        )
+    else:
+        secret_retrieval = _load_template("secret_retrieval_placeholders.sh")
+
+    compose_content = _load_template(
+        "docker-compose.yml.template",
+        ORCHESTRATOR_IMAGE=orch_img,
+        SCHEDULER_IMAGE=sched_img,
+    )
+
+    return _load_template(
+        "user_data.sh.template",
+        SECRET_RETRIEVAL=secret_retrieval,
+        COMPOSE_DELIM="COMPOSE_END",
+        COMPOSE_CONTENT=compose_content,
+        ORCHESTRATOR_IMAGE=orch_img,
+    )
+
+
+# -----------------------------------------------------------------------------
+# IAM
+# -----------------------------------------------------------------------------
 ec2_role = aws.iam.Role(
     "idi-role-ssm-agent",
-    name=f"{project_name}-{stack_name}-role-ssm-agent",
+    name=f"{name_prefix}-role-ssm-agent",
     description="IAM role for EC2 instances with ssm agent access",
     assume_role_policy=json.dumps({
         "Version": "2012-10-17",
@@ -46,7 +97,9 @@ cloudwatch_logs_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AWSOpsWorksCloudWatchLogs"
 )
 
-# Get secrets from Pulumi config (optional - only create secrets if provided)
+# -----------------------------------------------------------------------------
+# Secrets Manager (optional)
+# -----------------------------------------------------------------------------
 permid_api_key = config.get_secret("permid_api_key")
 geonames_user = config.get("geonames_user")
 
@@ -56,7 +109,7 @@ secrets_created = []
 if permid_api_key:
     permid_secret = aws.secretsmanager.Secret(
         "idi-secret-permid-api-key",
-        name=f"{project_name}/{stack_name}/permid-api-key",
+        name=f"{name_prefix}-permid-api-key",
         description="PermID API Key for company information queries",
         tags={
             "project": project_name,
@@ -79,7 +132,7 @@ if permid_api_key:
 if geonames_user:
     geonames_secret = aws.secretsmanager.Secret(
         "idi-secret-geonames-user",
-        name=f"{project_name}/{stack_name}/geonames-user",
+        name=f"{name_prefix}-geonames-user",
         description="GeoNames username for geocoding",
         tags={
             "project": project_name,
@@ -120,7 +173,7 @@ if secrets_created:
 # Create an instance profile for the role
 instance_profile = aws.iam.InstanceProfile(
     "idi-instance-profile-ssm",
-    name=f"{project_name}-{stack_name}-instance-profile-ssm",
+    name=f"{name_prefix}-instance-profile-ssm",
     role=ec2_role.name,
     tags={
         "project": project_name,
@@ -129,10 +182,10 @@ instance_profile = aws.iam.InstanceProfile(
     }
 )
 
-# Get the default VPC
+# -----------------------------------------------------------------------------
+# Networking (VPC, security groups, endpoints)
+# -----------------------------------------------------------------------------
 default_vpc = aws.ec2.get_vpc(default=True)
-
-# Get the default VPC's default security group
 default_sg = aws.ec2.get_security_group(
     vpc_id=default_vpc.id,
     filters=[aws.ec2.GetSecurityGroupFilterArgs(
@@ -152,7 +205,7 @@ default_vpc_subnets = aws.ec2.get_subnets(
 # Create security group for VPC endpoints
 vpc_endpoints_sg = aws.ec2.SecurityGroup(
     "idi-sg-vpc-endpoints",
-    name=f"{project_name}-{stack_name}-sg-vpc-endpoints",
+    name=f"{name_prefix}-sg-vpc-endpoints",
     description="Security group for VPC endpoints - allows HTTPS from default VPC",
     vpc_id=default_vpc.id,
     ingress=[aws.ec2.SecurityGroupIngressArgs(
@@ -177,9 +230,17 @@ vpc_endpoints_sg = aws.ec2.SecurityGroup(
     }
 )
 
-# Get AWS region
+# Get AWS region and account for ECR URLs
 aws_config = pulumi.Config("aws")
 aws_region = aws_config.require("region")
+caller = aws.get_caller_identity()
+ecr_registry = caller.account_id.apply(lambda aid: f"{aid}.dkr.ecr.{aws_region}.amazonaws.com")
+orchestrator_image = ecr_registry.apply(
+    lambda r: f"{r}/{name_prefix}-company-info-orchestrator:latest"
+)
+scheduler_image = ecr_registry.apply(
+    lambda r: f"{r}/{name_prefix}-company-info-scheduler:latest"
+)
 
 # Create VPC Endpoint for SSM
 ssm_endpoint = aws.ec2.VpcEndpoint(
@@ -191,7 +252,7 @@ ssm_endpoint = aws.ec2.VpcEndpoint(
     security_group_ids=[vpc_endpoints_sg.id, default_sg.id],
     private_dns_enabled=True,
     tags={
-        "Name": f"{project_name}-{stack_name}-endpoint-ssm",
+        "Name": f"{name_prefix}-endpoint-ssm",
         "project": project_name,
         "environment": stack_name,
         "managed_by": "Pulumi",
@@ -209,7 +270,7 @@ ssm_messages_endpoint = aws.ec2.VpcEndpoint(
     security_group_ids=[vpc_endpoints_sg.id, default_sg.id],
     private_dns_enabled=True,
     tags={
-        "Name": f"{project_name}-{stack_name}-endpoint-ssmmessages",
+        "Name": f"{name_prefix}-endpoint-ssmmessages",
         "project": project_name,
         "environment": stack_name,
         "managed_by": "Pulumi",
@@ -227,7 +288,7 @@ ec2_messages_endpoint = aws.ec2.VpcEndpoint(
     security_group_ids=[vpc_endpoints_sg.id, default_sg.id],
     private_dns_enabled=True,
     tags={
-        "Name": f"{project_name}-{stack_name}-endpoint-ec2messages",
+        "Name": f"{name_prefix}-endpoint-ec2messages",
         "project": project_name,
         "environment": stack_name,
         "managed_by": "Pulumi",
@@ -235,7 +296,9 @@ ec2_messages_endpoint = aws.ec2.VpcEndpoint(
     }
 )
 
-# Get configuration for Launch Template
+# -----------------------------------------------------------------------------
+# Compute (AMI, launch template, Auto Scaling Group)
+# -----------------------------------------------------------------------------
 instance_type = config.get("instance_type") or "t2.small"
 key_name = config.get("key_name") or "idi-acct-REMOVED"
 
@@ -250,106 +313,20 @@ ami = aws.ec2.get_ami(
     ]
 )
 
-# Build user data script dynamically
-def build_user_data(project, stack, has_secrets):
-    secret_retrieval = ""
-    if has_secrets:
-        secret_retrieval = f"""
-# Retrieve secrets from AWS Secrets Manager
-REGION=$(ec2-metadata --availability-zone | cut -d " " -f 2 | sed 's/[a-z]$//')
-PERMID_API_KEY=$(aws secretsmanager get-secret-value --secret-id {project}/{stack}/permid-api-key --region $REGION --query SecretString --output text 2>/dev/null || echo "your-permid-api-key-here")
-GEONAMES_USER=$(aws secretsmanager get-secret-value --secret-id {project}/{stack}/geonames-user --region $REGION --query SecretString --output text 2>/dev/null || echo "your-geonames-username-here")
-"""
-    else:
-        secret_retrieval = """
-# Secrets not configured in Pulumi - using placeholders
-PERMID_API_KEY="your-permid-api-key-here"
-GEONAMES_USER="your-geonames-username-here"
-"""
-
-    return f"""#!/bin/bash
-set -e
-
-# Update system
-yum update -y
-
-# Install Docker and AWS CLI v2
-yum install -y docker git
-systemctl enable docker
-systemctl start docker
-
-# Add ec2-user to docker group
-usermod -aG docker ec2-user
-
-# Install Docker Compose
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
-
-# Clone the repository
-cd /home/ec2-user
-git clone https://github.com/dsi-clinic/idi-company-info.git
-cd idi-company-info
-
-# Retrieve secret values
-{secret_retrieval}
-
-# Create .env file with retrieved secrets
-cat > .env << EOF
-# IDI Company Information Pipeline Configuration
-PERMID_API_KEY=$PERMID_API_KEY
-GEONAMES_USER=$GEONAMES_USER
-
-# Input Configuration
-INPUT_DIR=/home/ec2-user/data/shareholder_tracker
-INPUT_FILE_PATH=$INPUT_DIR/shareholder_tracker_release.parquet
-mkdir -p $INPUT_DIR
-
-# Output Configuration
-OUTPUT_DIR=/home/ec2-user/data/company_info
-mkdir -p $OUTPUT_DIR
-
-LOG_DIR=/home/ec2-user/data/logs
-mkdir -p $LOG_DIR
-
-# Processing Parameters - batch sizes per stage and run mode
-# CIK track (Entity Search)
-PERMID_BATCH_SIZE_CIK=5000
-COMPANY_INFO_BATCH_SIZE_CIK=5000
-# Record track (Record Match)
-PERMID_BATCH_SIZE_RECORD=100000
-COMPANY_INFO_BATCH_SIZE_RECORD=5000
-THRESHOLD_DAYS=30
-
-# Scheduler Configuration (cron format: second minute hour day month weekday)
-# CIK track: 2 AM daily
-SCHEDULE_CIK=0 0 2 * * *
-# Record track: 2:30 AM daily
-SCHEDULE_RECORD=0 30 2 * * *
-EOF
-
-# Create necessary directories
-mkdir -p data/watch data/output data/archive logs
-
-# Set ownership
-chown -R ec2-user:ec2-user /home/ec2-user/idi-company-info
-
-# Start docker-compose as ec2-user
-su - ec2-user -c "cd /home/ec2-user/idi-company-info && docker-compose up -d"
-
-echo "Setup complete!"
-"""
-
-# Generate user data based on whether secrets are configured
-user_data = build_user_data(
-    project_name,
-    stack_name,
-    has_secrets=bool(permid_api_key or geonames_user)
+# Generate user data with resolved ECR image URIs
+user_data = pulumi.Output.all(orchestrator_image, scheduler_image).apply(
+    lambda args: build_user_data(
+        name_prefix=name_prefix,
+        has_secrets=bool(permid_api_key or geonames_user),
+        orch_img=args[0],
+        sched_img=args[1],
+    )
 )
 
 # Create Launch Template
 launch_template = aws.ec2.LaunchTemplate(
     "idi-lt-processing",
-    name=f"{project_name}-{stack_name}-lt-processing",
+    name=f"{name_prefix}-lt-processing",
     description=f"Launch template for {project_name} processing instances",
     image_id=ami.id,
     instance_type=instance_type,
@@ -369,14 +346,14 @@ launch_template = aws.ec2.LaunchTemplate(
             )
         )
     ],
-    user_data=pulumi.Output.all().apply(lambda _:
-        __import__('base64').b64encode(user_data.encode()).decode()
+    user_data=user_data.apply(
+        lambda s: __import__('base64').b64encode(s.encode()).decode()
     ),
     tag_specifications=[
         aws.ec2.LaunchTemplateTagSpecificationArgs(
             resource_type="instance",
             tags={
-                "Name": f"{project_name}-{stack_name}-processing-instance",
+                "Name": f"{name_prefix}-processing-instance",
                 "project": project_name,
                 "environment": stack_name,
                 "managed_by": "Pulumi",
@@ -386,7 +363,7 @@ launch_template = aws.ec2.LaunchTemplate(
         aws.ec2.LaunchTemplateTagSpecificationArgs(
             resource_type="volume",
             tags={
-                "Name": f"{project_name}-{stack_name}-processing-volume",
+                "Name": f"{name_prefix}-processing-volume",
                 "project": project_name,
                 "environment": stack_name,
                 "managed_by": "Pulumi"
@@ -394,7 +371,7 @@ launch_template = aws.ec2.LaunchTemplate(
         )
     ],
     tags={
-        "Name": f"{project_name}-{stack_name}-lt-processing",
+        "Name": f"{name_prefix}-lt-processing",
         "project": project_name,
         "environment": stack_name,
         "managed_by": "Pulumi"
@@ -404,7 +381,7 @@ launch_template = aws.ec2.LaunchTemplate(
 # Create Auto Scaling Group
 processor_asg = aws.autoscaling.Group(
     "idi-processor-asg",
-    name=f"{project_name}-{stack_name}-processor-asg",
+    name=f"{name_prefix}-processor-asg",
     launch_template={
         "id": launch_template.id,
         "version": "1",
@@ -420,20 +397,22 @@ processor_asg = aws.autoscaling.Group(
         "capacity_reservation_preference": "default",
     },
     tags=[
-        {"key": "Name", "value": f"{project_name}-{stack_name}-processor-asg", "propagate_at_launch": True},
+        {"key": "Name", "value": f"{name_prefix}-processor-asg", "propagate_at_launch": True},
         {"key": "project", "value": project_name, "propagate_at_launch": True},
         {"key": "environment", "value": stack_name, "propagate_at_launch": True},
         {"key": "managed_by", "value": "Pulumi", "propagate_at_launch": True},
     ],
 )
 
-# Create S3 bucket for processor
+# -----------------------------------------------------------------------------
+# Storage (S3)
+# -----------------------------------------------------------------------------
 processor_bucket = aws.s3.BucketV2(
     "idi-processor-s3",
-    bucket=f"{project_name}-{stack_name}-processor-s3",
+    bucket=f"{name_prefix}-processor-s3",
     force_destroy=True,
     tags={
-        "Name": f"{project_name}-{stack_name}-processor-s3",
+        "Name": f"{name_prefix}-processor-s3",
         "project": project_name,
         "environment": stack_name,
         "managed_by": "Pulumi",
@@ -470,27 +449,18 @@ processor_bucket_encryption = aws.s3.BucketServerSideEncryptionConfigurationV2(
     ],
 )
 
-# Create ECR repository for processor container images
-ecr_repo = aws.ecr.Repository(
-    "idi-processor-ecr",
-    name=f"{project_name}-{stack_name}-processor",
-    image_tag_mutability="MUTABLE",
-    image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
-        scan_on_push=True,
-    ),
-    tags={
-        "project": project_name,
-        "environment": stack_name,
-        "managed_by": "Pulumi",
-    },
-)
+# -----------------------------------------------------------------------------
+# ECR (IAM policy for CI-pushed images)
+# -----------------------------------------------------------------------------
+# Repo names match CI workflow: {name_prefix}-company-info-orchestrator, -scheduler
+ecr_orchestrator_repo = f"{name_prefix}-company-info-orchestrator"
+ecr_scheduler_repo = f"{name_prefix}-company-info-scheduler"
 
-# ECR IAM policy for EC2 role to pull images
 ecr_policy = aws.iam.RolePolicy(
     "idi-policy-ecr-pull",
     role=ec2_role.id,
-    policy=pulumi.Output.all(ecr_repo.arn).apply(
-        lambda args: json.dumps({
+    policy=caller.account_id.apply(
+        lambda aid: json.dumps({
             "Version": "2012-10-17",
             "Statement": [
                 {
@@ -504,14 +474,17 @@ ecr_policy = aws.iam.RolePolicy(
                         "ecr:BatchGetImage",
                         "ecr:GetDownloadUrlForLayer",
                     ],
-                    "Resource": args[0],
+                    "Resource": [
+                        f"arn:aws:ecr:{aws_region}:{aid}:repository/{ecr_orchestrator_repo}",
+                        f"arn:aws:ecr:{aws_region}:{aid}:repository/{ecr_scheduler_repo}",
+                    ],
                 },
             ],
         })
     ),
 )
 
-# S3 IAM policy for smart_open (upload/download from processor bucket)
+# S3 IAM policy for processor bucket (smart_open)
 # See: https://github.com/piskvorky/smart_open
 s3_policy = aws.iam.RolePolicy(
     "idi-policy-s3-processor",
@@ -544,7 +517,9 @@ s3_policy = aws.iam.RolePolicy(
     ),
 )
 
-# Export the role ARN and instance profile name
+# -----------------------------------------------------------------------------
+# Exports
+# -----------------------------------------------------------------------------
 pulumi.export("role_arn", ec2_role.arn)
 pulumi.export("role_name", ec2_role.name)
 pulumi.export("instance_profile_name", instance_profile.name)
@@ -572,9 +547,9 @@ pulumi.export("processor_asg_arn", processor_asg.arn)
 pulumi.export("processor_bucket_name", processor_bucket.id)
 pulumi.export("processor_bucket_arn", processor_bucket.arn)
 
-# Export ECR repository information
-pulumi.export("ecr_repository_url", ecr_repo.repository_url)
-pulumi.export("ecr_repository_name", ecr_repo.name)
+# Export ECR repository information (repos created by CI, not Pulumi)
+pulumi.export("ecr_orchestrator_image", orchestrator_image)
+pulumi.export("ecr_scheduler_image", scheduler_image)
 
 # Export Launch Template information
 pulumi.export("launch_template_id", launch_template.id)

@@ -1,0 +1,76 @@
+#!/bin/bash
+set -e
+
+# Update system
+yum update -y
+
+# Install Docker and AWS CLI v2
+yum install -y docker
+systemctl enable docker
+systemctl start docker
+
+# Add ec2-user to docker group
+usermod -aG docker ec2-user
+
+# Install Docker Compose
+curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# Create app directory (no git clone - use ECR images)
+APP_DIR=/home/ec2-user/idi-company-info
+mkdir -p $APP_DIR
+cd $APP_DIR
+
+# Retrieve secret values
+{SECRET_RETRIEVAL}
+
+# Create .env from env.example structure
+mkdir -p /home/ec2-user/data/input
+cat > .env << ENVFILE_EOF
+# IDI Company Information Pipeline Configuration (matches .env.example)
+PERMID_API_KEY=$PERMID_API_KEY
+GEONAMES_USER=$GEONAMES_USER
+
+# Input files
+INPUT_FILE_CIK=/home/ec2-user/data/input/investors_cik.parquet
+INPUT_FILE_CUSIP=/home/ec2-user/data/input/securities_cusip.parquet
+INPUT_FILE_TICKER=/home/ec2-user/data/input/securities_ticker.parquet
+
+# Output Configuration
+OUTPUT_DIR=/home/ec2-user/data/output
+LOG_DIR=/home/ec2-user/data/logs
+
+# Processing Parameters
+BUFFER_SIZE=500
+THRESHOLD_DAYS=30
+BATCH_SIZE_CIK=2450
+BATCH_SIZE_CUSIP=2450
+BATCH_SIZE_CIK_MATCH=2450
+BATCH_SIZE_TICKER=2450
+MATCH_SCORE_THRESHOLD=1
+
+# Scheduler Configuration (cron format)
+SCHEDULE_CIK=0 0 2 * * *
+SCHEDULE_CUSIP=0 30 2 * * *
+ENVFILE_EOF
+
+# Create docker-compose.yml with ECR image URIs
+cat > docker-compose.yml << '{COMPOSE_DELIM}'
+{COMPOSE_CONTENT}
+{COMPOSE_DELIM}
+
+# Login to ECR and pull images
+REGION=$(ec2-metadata --availability-zone | cut -d " " -f 2 | sed 's/[a-z]$//')
+ECR_REGISTRY=$(echo {ORCHESTRATOR_IMAGE} | cut -d'/' -f1)
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+
+# Create output/log dirs
+mkdir -p /home/ec2-user/data/output /home/ec2-user/data/logs
+
+# Set ownership
+chown -R ec2-user:ec2-user /home/ec2-user/idi-company-info /home/ec2-user/data
+
+# Start docker-compose as ec2-user
+su - ec2-user -c "cd $APP_DIR && docker compose up -d"
+
+echo "Setup complete!"

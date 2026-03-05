@@ -1,0 +1,147 @@
+services:
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: idi-company-info-autoheal
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all
+      - AUTOHEAL_INTERVAL=10
+      - AUTOHEAL_START_PERIOD=60
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
+
+  scheduler:
+    image: {SCHEDULER_IMAGE}
+    container_name: idi-company-info-scheduler
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - .:/app
+    working_dir: /app
+    environment:
+      - SCHEDULE_CIK=${SCHEDULE_CIK:-0 0 2 * * *}
+      - SCHEDULE_CUSIP=${SCHEDULE_CUSIP:-0 30 2 * * *}
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-local.orchestrator-cik.schedule: "${SCHEDULE_CIK:-0 0 2 * * *}"
+      ofelia.job-local.orchestrator-cik.command: "docker compose run --rm orchestrator-cik"
+      ofelia.job-local.orchestrator-cusip.schedule: "${SCHEDULE_CUSIP:-0 30 2 * * *}"
+      ofelia.job-local.orchestrator-cusip.command: "docker compose run --rm orchestrator-cusip"
+    restart: unless-stopped
+
+  orchestrator-cik:
+    image: {ORCHESTRATOR_IMAGE}
+    container_name: idi-company-info-orchestrator-cik
+    profiles: [manual]
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY}
+      - GEONAMES_USER=${GEONAMES_USER}
+      - BATCH_SIZE_CIK=${BATCH_SIZE_CIK:-2450}
+      - BUFFER_SIZE=${BUFFER_SIZE:-500}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+    volumes:
+      - ${INPUT_FILE_CIK}:/data/input/data.parquet:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.processors.orchestrator
+      --input-file /data/input/data.parquet
+      --output-directory /data/output
+      --type cik
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${BATCH_SIZE_CIK:-2450}
+      --buffer-size ${BUFFER_SIZE:-500}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      2>&1 | tee /logs/orchestrator_cik_$(date +%Y%m%d_%H%m%S).log"
+    restart: on-failure
+
+  orchestrator-cusip:
+    image: {ORCHESTRATOR_IMAGE}
+    container_name: idi-company-info-orchestrator-cusip
+    profiles: [manual]
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY}
+      - GEONAMES_USER=${GEONAMES_USER}
+      - BATCH_SIZE_CUSIP=${{BATCH_SIZE_CUSIP:-2450}}
+      - BUFFER_SIZE=${BUFFER_SIZE:-500}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+    volumes:
+      - ${INPUT_FILE_CUSIP}:/data/input/data.parquet:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.processors.orchestrator
+      --input-file /data/input/data.parquet
+      --output-directory /data/output
+      --type cusip
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${{BATCH_SIZE_CUSIP:-2450}}
+      --buffer-size ${BUFFER_SIZE:-500}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      2>&1 | tee /logs/orchestrator_cusip_$(date +%Y%m%d_%H%m%S).log"
+    restart: on-failure
+
+  orchestrator-cik-match:
+    image: {ORCHESTRATOR_IMAGE}
+    container_name: idi-company-info-orchestrator-cik-match
+    profiles: [manual]
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY}
+      - GEONAMES_USER=${GEONAMES_USER}
+      - BATCH_SIZE_CIK_MATCH=${{BATCH_SIZE_CIK_MATCH:-2450}}
+      - BUFFER_SIZE=${BUFFER_SIZE:-500}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
+    volumes:
+      - ${INPUT_FILE_CIK}:/data/input/data.parquet:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.processors.orchestrator
+      --input-file /data/input/data.parquet
+      --output-directory /data/output
+      --type cik-match
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${{BATCH_SIZE_CIK_MATCH:-2450}}
+      --buffer-size ${BUFFER_SIZE:-500}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
+      2>&1 | tee /logs/orchestrator_cik_match_$(date +%Y%m%d_%H%m%S).log"
+    restart: "no"
+
+  orchestrator-ticker:
+    image: {ORCHESTRATOR_IMAGE}
+    container_name: idi-company-info-orchestrator-ticker
+    profiles: [manual]
+    environment:
+      - PERMID_API_KEY=${PERMID_API_KEY}
+      - GEONAMES_USER=${GEONAMES_USER}
+      - BATCH_SIZE_TICKER=${BATCH_SIZE_TICKER:-2450}
+      - BUFFER_SIZE=${BUFFER_SIZE:-500}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
+    volumes:
+      - ${INPUT_FILE_TICKER}:/data/input/data.parquet:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.processors.orchestrator
+      --input-file /data/input/data.parquet
+      --output-directory /data/output
+      --type ticker
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${BATCH_SIZE_TICKER:-2450}
+      --buffer-size ${BUFFER_SIZE:-500}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
+      2>&1 | tee /logs/orchestrator_ticker_$(date +%Y%m%d_%H%m%S).log"
+    restart: "no"
