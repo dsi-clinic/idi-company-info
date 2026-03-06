@@ -65,10 +65,9 @@ instance_profile = aws.iam.InstanceProfile(
 )
 
 # -----------------------------------------------------------------------------
-# ECR IAM Policy (CI-pushed images)
+# ECR IAM Policy (CI-pushed orchestrator image)
 # -----------------------------------------------------------------------------
 ecr_orchestrator_repo = f"{config.name_prefix}-company-info-orchestrator"
-ecr_scheduler_repo = f"{config.name_prefix}-company-info-scheduler"
 
 ecr_policy = aws.iam.RolePolicy(
     "idi-policy-ecr-pull",
@@ -90,7 +89,6 @@ ecr_policy = aws.iam.RolePolicy(
                     ],
                     "Resource": [
                         f"arn:aws:ecr:{config.aws_region}:{aid}:repository/{ecr_orchestrator_repo}",
-                        f"arn:aws:ecr:{config.aws_region}:{aid}:repository/{ecr_scheduler_repo}",
                     ],
                 },
             ],

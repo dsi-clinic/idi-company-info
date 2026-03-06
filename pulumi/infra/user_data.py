@@ -5,19 +5,21 @@ import yaml
 from . import config
 
 
+def _ofelia_to_cron(ofelia_schedule: str) -> str:
+    """Convert ofelia schedule (sec min hour day month wday) to cron (min hour day month wday).
+    Used by build_user_data() for CRON_CIK and CRON_CUSIP passed to user_data template."""
+    parts = ofelia_schedule.split()
+    if len(parts) >= 4:
+        return f"{parts[1]} {parts[2]} * * *"  # min hour day month wday
+    return "0 2 * * *"  # default 02:00
+
+
 def _load_compose_for_ec2() -> str:
-    """Load docker-compose.yml and remove build blocks (EC2 has no source, pulls from ECR)."""
+    """Load docker-compose.yml for EC2: remove build blocks (EC2 pulls from ECR)."""
     compose = yaml.safe_load(config.COMPOSE_PATH.read_text())
     services = compose.get("services", {})
-    ec2_services = (
-        "scheduler",
-        "orchestrator-cik",
-        "orchestrator-cusip",
-        "orchestrator-cik-match",
-        "orchestrator-ticker",
-    )
-    for svc in ec2_services:
-        if svc in services and "build" in services[svc]:
+    for svc in services:
+        if "build" in services[svc]:
             del services[svc]["build"]
     return yaml.dump(compose, default_flow_style=False, sort_keys=False)
 
@@ -31,7 +33,7 @@ def _load_template(name: str, **replacements: str) -> str:
     return content
 
 
-def build_user_data(name_prefix: str, has_secrets: bool, orch_img: str, sched_img: str) -> str:
+def build_user_data(name_prefix: str, has_secrets: bool, orch_img: str) -> str:
     """Build EC2 user data script from templates (matches .env.example structure)."""
     if has_secrets:
         secret_retrieval = _load_template(
@@ -43,11 +45,24 @@ def build_user_data(name_prefix: str, has_secrets: bool, orch_img: str, sched_im
 
     compose_content = _load_compose_for_ec2()
 
+    # ECR registry for pull-and-run script (host cron pulls before each run)
+    ecr_registry = orch_img.split("/")[0] if "/" in orch_img else ""
+    pull_and_run_script = _load_template(
+        "pull_and_run.sh.template",
+        ECR_REGISTRY=ecr_registry,
+        AWS_REGION=config.aws_region,
+    )
+
+    cron_cik = _ofelia_to_cron("0 0 2 * * *")
+    cron_cusip = _ofelia_to_cron("0 30 2 * * *")
+
     return _load_template(
         "user_data.sh.template",
         SECRET_RETRIEVAL=secret_retrieval,
         COMPOSE_DELIM="COMPOSE_END",
         COMPOSE_CONTENT=compose_content,
         ORCHESTRATOR_IMAGE=orch_img,
-        SCHEDULER_IMAGE=sched_img,
+        PULL_AND_RUN_SCRIPT=pull_and_run_script,
+        CRON_CIK=cron_cik,
+        CRON_CUSIP=cron_cusip,
     )

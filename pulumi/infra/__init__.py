@@ -1,1 +1,1 @@
-"""Infrastructure modules: IAM, networking, compute, storage, secrets."""
+"""Infrastructure modules: IAM, networking, compute, storage, secrets, ecr."""

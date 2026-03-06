@@ -1,9 +1,9 @@
 """Compute: AMI, launch template, Auto Scaling Group."""
 
-import pulumi
 import pulumi_aws as aws
 
 from . import config
+from . import ecr
 from . import iam
 from . import networking
 from . import secrets
@@ -33,15 +33,11 @@ ami = aws.ec2.get_ami(
 # -----------------------------------------------------------------------------
 # User Data
 # -----------------------------------------------------------------------------
-user_data_script = pulumi.Output.all(
-    networking.orchestrator_image,
-    networking.scheduler_image,
-).apply(
-    lambda args: user_data.build_user_data(
+user_data_script = ecr.orchestrator_image.apply(
+    lambda orch_img: user_data.build_user_data(
         name_prefix=config.name_prefix,
         has_secrets=bool(secrets.permid_api_key or secrets.geonames_user),
-        orch_img=args[0],
-        sched_img=args[1],
+        orch_img=orch_img,
     )
 )
 

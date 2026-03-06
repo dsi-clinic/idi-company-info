@@ -1,61 +1,7 @@
 services:
 
   # ---------------------------------------------------------------------------
-  # Auto-restart unhealthy containers
-  # ---------------------------------------------------------------------------
-  autoheal:
-    image: willfarrell/autoheal:latest
-    container_name: idi-company-info-autoheal
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - AUTOHEAL_CONTAINER_LABEL=all
-      - AUTOHEAL_INTERVAL=10
-      - AUTOHEAL_START_PERIOD=60
-      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
-
-  # ---------------------------------------------------------------------------
-  # Cron scheduler — triggers orchestrator containers on a schedule
-  # ---------------------------------------------------------------------------
-  scheduler:
-    image: ${SCHEDULER_IMAGE:-ghcr.io/dsi-clinic/idi-company-information-scheduler:latest}
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.scheduler
-    container_name: idi-company-info-scheduler
-    command: daemon --docker
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:rw
-      - .:/app
-    working_dir: /app
-    environment:
-      - SCHEDULE_CIK=${SCHEDULE_CIK:-0 0 2 * * *}
-      - SCHEDULE_CUSIP=${SCHEDULE_CUSIP:-0 30 2 * * *}
-    labels:
-      # CIK — runs at 02:00 by default
-      ofelia.enabled: "true"
-      ofelia.job-local.orchestrator-cik.schedule: "${SCHEDULE_CIK:-0 0 2 * * *}"
-      ofelia.job-local.orchestrator-cik.command: "docker compose run --rm orchestrator-cik"
-      # CUSIP (Entity Search) — runs at 02:30 by default
-      ofelia.job-local.orchestrator-cusip.schedule: "${SCHEDULE_CUSIP:-0 30 2 * * *}"
-      ofelia.job-local.orchestrator-cusip.command: "docker compose run --rm orchestrator-cusip"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "ofelia"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        compress: "true"
-
-  # ---------------------------------------------------------------------------
-  # CIK pipeline — Entity Search, scheduled
+  # CIK pipeline — Entity Search (EC2: host cron; local: docker compose run)
   # ---------------------------------------------------------------------------
   orchestrator-cik:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-information-orchestrator:latest}

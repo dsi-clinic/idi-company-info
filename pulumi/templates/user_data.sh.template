@@ -21,6 +21,9 @@ APP_DIR=/home/ec2-user/idi-company-info
 mkdir -p $APP_DIR
 cd $APP_DIR
 
+# Create output/log dirs
+mkdir -p /home/ec2-user/data/output /home/ec2-user/data/logs
+
 # Retrieve secret values
 {SECRET_RETRIEVAL}
 
@@ -31,8 +34,7 @@ cat > .env << ENVFILE_EOF
 PERMID_API_KEY=$PERMID_API_KEY
 GEONAMES_USER=$GEONAMES_USER
 
-# ECR image URIs (set by Pulumi)
-SCHEDULER_IMAGE={SCHEDULER_IMAGE}
+# ECR image URI (set by Pulumi)
 ORCHESTRATOR_IMAGE={ORCHESTRATOR_IMAGE}
 
 # Input files
@@ -58,23 +60,21 @@ SCHEDULE_CIK=0 0 2 * * *
 SCHEDULE_CUSIP=0 30 2 * * *
 ENVFILE_EOF
 
-# Create docker-compose.yml (uses SCHEDULER_IMAGE/ORCHESTRATOR_IMAGE from .env)
+# Create docker-compose.yml (orchestrator service defs for pull_and_run; no long-running services)
 cat > docker-compose.yml << '{COMPOSE_DELIM}'
 {COMPOSE_CONTENT}
 {COMPOSE_DELIM}
 
-# Login to ECR and pull images
-REGION=$(ec2-metadata --availability-zone | cut -d " " -f 2 | sed 's/[a-z]$//')
-ECR_REGISTRY=$(echo {ORCHESTRATOR_IMAGE} | cut -d'/' -f1)
-aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
-
-# Create output/log dirs
-mkdir -p /home/ec2-user/data/output /home/ec2-user/data/logs
+# Pull-and-run script for host cron (ECR login + pull + run per scheduled job)
+cat > $APP_DIR/pull_and_run.sh << 'PULL_RUN_EOF'
+{PULL_AND_RUN_SCRIPT}
+PULL_RUN_EOF
+chmod +x $APP_DIR/pull_and_run.sh
 
 # Set ownership
 chown -R ec2-user:ec2-user /home/ec2-user/idi-company-info /home/ec2-user/data
 
-# Start docker-compose as ec2-user
-su - ec2-user -c "cd $APP_DIR && docker compose up -d"
+# Host cron: pull latest orchestrator image, then run
+su - ec2-user -c "(crontab -l 2>/dev/null | grep -v pull_and_run; echo '{CRON_CIK} $APP_DIR/pull_and_run.sh orchestrator-cik'; echo '{CRON_CUSIP} $APP_DIR/pull_and_run.sh orchestrator-cusip') | crontab -"
 
 echo "Setup complete!"

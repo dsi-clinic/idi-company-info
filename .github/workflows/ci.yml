@@ -201,24 +201,6 @@ jobs:
           tags: ${{ steps.meta-orchestrator.outputs.tags }}
           labels: ${{ steps.meta-orchestrator.outputs.labels }}
 
-      - name: Extract metadata (scheduler)
-        id: meta-scheduler
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.PROJECT_DIR }}-scheduler
-          tags: |
-            type=raw,value=${{ needs.build.outputs.version }}
-            type=raw,value=latest
-
-      - name: Build and push scheduler
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ env.PROJECT_DIR }}
-          file: dockerfiles/Dockerfile.scheduler
-          push: true
-          tags: ${{ steps.meta-scheduler.outputs.tags }}
-          labels: ${{ steps.meta-scheduler.outputs.labels }}
-
   deploy-pulumi:
     name: Deploy Pulumi
     runs-on: ubuntu-latest
@@ -304,17 +286,6 @@ jobs:
           ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-company-info', needs.build.outputs.pulumi_project, needs.build.outputs.deploy_env) }}-orchestrator"
           ECR_URI="${{ steps.ecr-login.outputs.registry }}/$ECR_REPO"
           GHCR_IMG="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.PROJECT_DIR }}-orchestrator"
-          docker pull ${GHCR_IMG}:${{ needs.build.outputs.version }}
-          docker tag ${GHCR_IMG}:${{ needs.build.outputs.version }} ${ECR_URI}:${{ needs.build.outputs.version }}
-          docker tag ${GHCR_IMG}:${{ needs.build.outputs.version }} ${ECR_URI}:latest
-          docker push ${ECR_URI}:${{ needs.build.outputs.version }}
-          docker push ${ECR_URI}:latest
-
-      - name: Re-tag and push scheduler to ECR
-        run: |
-          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-company-info', needs.build.outputs.pulumi_project, needs.build.outputs.deploy_env) }}-scheduler"
-          ECR_URI="${{ steps.ecr-login.outputs.registry }}/$ECR_REPO"
-          GHCR_IMG="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.PROJECT_DIR }}-scheduler"
           docker pull ${GHCR_IMG}:${{ needs.build.outputs.version }}
           docker tag ${GHCR_IMG}:${{ needs.build.outputs.version }} ${ECR_URI}:${{ needs.build.outputs.version }}
           docker tag ${GHCR_IMG}:${{ needs.build.outputs.version }} ${ECR_URI}:latest

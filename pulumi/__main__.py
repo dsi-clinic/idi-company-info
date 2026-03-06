@@ -6,7 +6,7 @@ Imports all resource modules (creation order matters) and exports stack outputs.
 import pulumi
 
 # Import order matters: config first, then resources by dependency
-from infra import config
+from infra import ecr
 from infra import iam
 from infra import secrets
 from infra import networking
@@ -39,8 +39,7 @@ pulumi.export("processor_asg_arn", compute.processor_asg.arn)
 pulumi.export("processor_bucket_name", storage.processor_bucket.id)
 pulumi.export("processor_bucket_arn", storage.processor_bucket.arn)
 
-pulumi.export("ecr_orchestrator_image", networking.orchestrator_image)
-pulumi.export("ecr_scheduler_image", networking.scheduler_image)
+pulumi.export("ecr_orchestrator_image", ecr.orchestrator_image)
 
 pulumi.export("launch_template_id", compute.launch_template.id)
 pulumi.export("launch_template_name", compute.launch_template.name)
