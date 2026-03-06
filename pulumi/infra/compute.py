@@ -87,6 +87,7 @@ launch_template = aws.ec2.LaunchTemplate(
     "idi-lt-processing",
     name=f"{config.name_prefix}-lt-processing",
     description=f"Launch template for {config.project_name} processing instances",
+    update_default_version=True,
     **launch_template_args,
 )
 
@@ -96,10 +97,10 @@ launch_template = aws.ec2.LaunchTemplate(
 processor_asg = aws.autoscaling.Group(
     "idi-processor-asg",
     name=f"{config.name_prefix}-processor-asg",
-    launch_template={
-        "id": launch_template.id,
-        "version": "1",
-    },
+    launch_template=aws.autoscaling.GroupLaunchTemplateArgs(
+        id=launch_template.id,
+        version=launch_template.latest_version,
+    ),
     vpc_zone_identifiers=networking.default_vpc_subnets.ids,
     min_size=1,
     max_size=1,
