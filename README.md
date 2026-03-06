@@ -274,7 +274,7 @@ Requires=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/opt/idi-company-information
+WorkingDirectory=/opt/idi-company-info
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
 TimeoutStartSec=300
@@ -284,8 +284,8 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo cp -r . /opt/idi-company-information
-sudo nano /opt/idi-company-information/.env   # Set credentials + paths
+sudo cp -r . /opt/idi-company-info
+sudo nano /opt/idi-company-info/.env   # Set credentials + paths
 sudo systemctl daemon-reload
 sudo systemctl enable idi-pipeline-docker
 sudo systemctl start idi-pipeline-docker

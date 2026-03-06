@@ -1,5 +1,5 @@
 [project]
-name = "idi-company-information"
+name = "idi-company-info"
 version = "0.1.0"
 description = "LSEG scraper to query the `permid.org` API and return PermIds for investor CIKs"
 readme = "README.md"

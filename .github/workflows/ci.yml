@@ -22,7 +22,8 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  PROJECT_DIR: idi-company-information
+  PROJECT_DIR: .
+  IMAGE_PREFIX: idi-company-info
 
 jobs:
   build:
@@ -187,7 +188,7 @@ jobs:
         id: meta-orchestrator
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.PROJECT_DIR }}-orchestrator
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PREFIX }}-orchestrator
           tags: |
             type=raw,value=${{ needs.build.outputs.version }}
             type=raw,value=latest
@@ -285,7 +286,7 @@ jobs:
         run: |
           ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-company-info', needs.build.outputs.pulumi_project, needs.build.outputs.deploy_env) }}-orchestrator"
           ECR_URI="${{ steps.ecr-login.outputs.registry }}/$ECR_REPO"
-          GHCR_IMG="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.PROJECT_DIR }}-orchestrator"
+          GHCR_IMG="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PREFIX }}-orchestrator"
           docker pull ${GHCR_IMG}:${{ needs.build.outputs.version }}
           docker tag ${GHCR_IMG}:${{ needs.build.outputs.version }} ${ECR_URI}:${{ needs.build.outputs.version }}
           docker tag ${GHCR_IMG}:${{ needs.build.outputs.version }} ${ECR_URI}:latest
