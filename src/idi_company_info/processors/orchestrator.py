@@ -14,7 +14,7 @@ import argparse
 import os
 import pathlib
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum, StrEnum
 
@@ -218,6 +218,15 @@ class PipelineOrchestrator:
         self.logger.info(message)
         self.logger.info("=" * 60)
 
+    def _log_config(self) -> None:
+        config_safe = {}
+        for k, v in asdict(self.config).items():
+            if k in ("api_key", "geonames_user"):
+                config_safe[k] = "***"
+            else:
+                config_safe[k] = str(v) if isinstance(v, pathlib.Path) else v
+        self.logger.info("OrchestratorConfig: %s", config_safe)
+
     def run(self) -> bool:
         """Execute the identifier pipeline.
 
@@ -234,10 +243,7 @@ class PipelineOrchestrator:
             f"Starting pipeline | type={self.config.identifier_type} | "
             f"input={input_display}"
         )
-        self.logger.info("Output directory:       %s", self.config.output_dir)
-        self.logger.info("Batch size:             %d", self.config.batch_size)
-        self.logger.info("Threshold days:         %s", self.config.threshold_days)
-        self.logger.info("Match score threshold:  %d", self.config.match_score_threshold)
+        self._log_config()
 
         start_time = datetime.now()
 
