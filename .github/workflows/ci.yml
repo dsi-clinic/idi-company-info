@@ -93,18 +93,18 @@ jobs:
           uv run pytest --cov=idi_company_info --cov-report=xml:coverage.xml --cov-report=term -v
 
       - name: Validate Pulumi
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
         run: |
           uv sync --group pulumi
+          uv run pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
           uv run pulumi stack select dev 2>/dev/null || uv run pulumi stack init dev
           uv run pulumi preview --non-interactive
-        continue-on-error: true  # Remove when Pulumi backend is configured
 
       - name: Dependency vulnerability scan (pip-audit)
         run: |
           uv pip install pip-audit
           uv run pip-audit --desc
-        # Fails on any known vulnerability. Remove continue-on-error when ready to enforce.
-        continue-on-error: true
 
       - name: CodeQL Analysis Init
         uses: github/codeql-action/init@v4
@@ -215,6 +215,7 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}/pulumi
     env:
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+      PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -248,7 +249,6 @@ jobs:
 
       - name: Pulumi deploy
         run: uv run pulumi up --yes
-        continue-on-error: true  # Remove when Pulumi backend is configured
 
   sync-ecr:
     name: Sync GHCR to ECR
