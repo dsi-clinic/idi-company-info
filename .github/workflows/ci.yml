@@ -111,8 +111,8 @@ jobs:
           uv sync --group pulumi
           cd pulumi
           pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
-          pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
           pulumi stack select dev 2>/dev/null || pulumi stack init dev
+          pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
           PATH="${{ github.workspace }}/${{ env.PROJECT_DIR }}/.venv/bin:$PATH" pulumi preview --non-interactive
 
       - name: Dependency vulnerability scan (pip-audit)
