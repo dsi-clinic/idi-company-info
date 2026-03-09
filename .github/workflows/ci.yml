@@ -280,7 +280,7 @@ jobs:
   sync-ecr:
     name: Sync GHCR to ECR
     runs-on: ubuntu-latest
-    needs: [build, docker]
+    needs: [build, docker, deploy-pulumi]
     if: |
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/dev' ||
