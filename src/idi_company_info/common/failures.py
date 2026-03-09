@@ -93,8 +93,7 @@ class FailureRegistry:
     def load(self) -> None:
         """Load entries from the persistence file."""
         if not self.file_path or (
-            not self.file_path.startswith("s3://")
-            and not pathlib.Path(self.file_path).exists()
+            not self.file_path.startswith("s3://") and not pathlib.Path(self.file_path).exists()
         ):
             self._entries = set()
             self._reasons = {}

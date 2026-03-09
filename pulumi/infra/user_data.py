@@ -72,7 +72,9 @@ def build_user_data(
     cron_cik = _parse_cron(config.config.get("cron_cik"), "0 0 2 * * *")
     cron_cusip = _parse_cron(config.config.get("cron_cusip"), "0 30 2 * * *")
 
-    output_dir = f"s3://{processor_bucket}/output/" if use_s3_output else "/home/ec2-user/data/output"
+    output_dir = (
+        f"s3://{processor_bucket}/output/" if use_s3_output else "/home/ec2-user/data/output"
+    )
 
     return _load_template(
         "user_data.sh.template",

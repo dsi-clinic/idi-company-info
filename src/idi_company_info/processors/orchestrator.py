@@ -240,8 +240,7 @@ class PipelineOrchestrator:
 
         input_display = input_str.split("/")[-1] if "/" in input_str else input_str
         self._log_banner(
-            f"Starting pipeline | type={self.config.identifier_type} | "
-            f"input={input_display}"
+            f"Starting pipeline | type={self.config.identifier_type} | " f"input={input_display}"
         )
         self._log_config()
 

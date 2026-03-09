@@ -2,7 +2,6 @@
 
 # Standard library imports
 import json
-import pathlib
 import tempfile
 
 # Third party imports
@@ -35,6 +34,7 @@ def load_json(file_path: str, return_type: str = "dict") -> dict | list:
         if e.response.get("Error", {}).get("Code") == "NoSuchKey":
             return _empty_for_return_type(return_type)
         raise
+
 
 def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
     """Saves a JSON file to the given path.
