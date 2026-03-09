@@ -92,14 +92,28 @@ jobs:
         run: |
           uv run pytest --cov=idi_company_info --cov-report=xml:coverage.xml --cov-report=term -v
 
+      # - name: Install Pulumi CLI
+      #   uses: pulumi/actions@v5
+      #   with:
+      #     command: version
+
+      - name: Configure AWS credentials (Pulumi)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-2' }}
+
       - name: Validate Pulumi
         env:
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
         run: |
-          cd pulumi && uv sync --group pulumi
-          uv run pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
-          uv run pulumi stack select dev 2>/dev/null || uv run pulumi stack init dev
-          uv run pulumi preview --non-interactive
+          uv sync --group pulumi
+          cd pulumi
+          pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
+          pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
+          pulumi stack select dev 2>/dev/null || pulumi stack init dev
+          PATH="${{ github.workspace }}/${{ env.PROJECT_DIR }}/.venv/bin:$PATH" pulumi preview --non-interactive
 
       - name: Dependency vulnerability scan (pip-audit)
         run: |
