@@ -17,3 +17,9 @@ config:
     secret: true
   idi:geonames_user:
     description: GeoNames username for geocoding
+  idi:cron_cik:
+    description: Cron schedule for orchestrator-cik (min hour day month wday, or ofelia format)
+    default: "0 2 * * *"
+  idi:cron_cusip:
+    description: Cron schedule for orchestrator-cusip (min hour day month wday, or ofelia format)
+    default: "30 2 * * *"

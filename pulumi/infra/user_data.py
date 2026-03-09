@@ -14,6 +14,16 @@ def _ofelia_to_cron(ofelia_schedule: str) -> str:
     return "0 2 * * *"  # default 02:00
 
 
+def _parse_cron(raw: str | None, default_ofelia: str) -> str:
+    """Parse cron from config: accept cron format (min hour day month wday) or ofelia (sec min hour day month wday)."""
+    if not raw or not raw.strip():
+        return _ofelia_to_cron(default_ofelia)
+    parts = raw.strip().split()
+    if len(parts) >= 6:
+        return _ofelia_to_cron(raw)
+    return raw.strip()
+
+
 def _load_compose_for_ec2() -> str:
     """Load docker-compose.yml for EC2: remove build blocks (EC2 pulls from ECR)."""
     compose = yaml.safe_load(config.COMPOSE_PATH.read_text())
@@ -53,8 +63,8 @@ def build_user_data(name_prefix: str, has_secrets: bool, orch_img: str) -> str:
         AWS_REGION=config.aws_region,
     )
 
-    cron_cik = _ofelia_to_cron("0 0 2 * * *")
-    cron_cusip = _ofelia_to_cron("0 30 2 * * *")
+    cron_cik = _parse_cron(config.config.get("cron_cik"), "0 0 2 * * *")
+    cron_cusip = _parse_cron(config.config.get("cron_cusip"), "0 30 2 * * *")
 
     return _load_template(
         "user_data.sh.template",

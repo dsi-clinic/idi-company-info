@@ -110,6 +110,8 @@ jobs:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
           GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
+          CRON_CIK: ${{ secrets.CRON_CIK }}
+          CRON_CUSIP: ${{ secrets.CRON_CUSIP }}
         run: |
           uv sync --group pulumi
           cd pulumi
@@ -120,6 +122,8 @@ jobs:
           [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
           [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
           [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
+          [ -n "$CRON_CIK" ] && pulumi config set idi:cron_cik "$CRON_CIK"
+          [ -n "$CRON_CUSIP" ] && pulumi config set idi:cron_cusip "$CRON_CUSIP"
           uv run pulumi preview --non-interactive
 
       - name: Dependency vulnerability scan (pip-audit)
@@ -242,6 +246,8 @@ jobs:
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
       PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
       GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
+      CRON_CIK: ${{ secrets.CRON_CIK }}
+      CRON_CUSIP: ${{ secrets.CRON_CUSIP }}
     steps:
       - uses: actions/checkout@v4
 
@@ -272,6 +278,8 @@ jobs:
           [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
           [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
           [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
+          [ -n "$CRON_CIK" ] && pulumi config set idi:cron_cik "$CRON_CIK"
+          [ -n "$CRON_CUSIP" ] && pulumi config set idi:cron_cusip "$CRON_CUSIP"
 
       - name: Pulumi deploy
         run: |

@@ -16,7 +16,7 @@ COMPOSE_PATH = PULUMI_DIR.parent / "docker-compose.yml"
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-config = pulumi.Config()
+config = pulumi.Config("idi")
 project_name = pulumi.get_project()
 stack_name = pulumi.get_stack()
 name_prefix = f"{project_name}-{stack_name}"
