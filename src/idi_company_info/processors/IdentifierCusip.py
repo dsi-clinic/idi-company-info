@@ -10,6 +10,7 @@ from idi_company_info.processors.identifier import Identifier, QueryType
 
 class IdentifierCusip(Identifier):
     """Processes CUSIP identifiers for company information."""
+
     EXCHANGE_TO_MIC = {
         "SS": "XSTO",  # Stockholm Stock Exchange
     }
@@ -38,8 +39,10 @@ class IdentifierCusip(Identifier):
 
         # Filter: keep only rows where both issuer_name and stock_ticker are non-null and non-empty
         subset = subset[
-            subset["issuer_name"].notna() & (subset["issuer_name"] != "")
-            & subset["stock_ticker"].notna() & (subset["stock_ticker"] != "")
+            subset["issuer_name"].notna()
+            & (subset["issuer_name"] != "")
+            & subset["stock_ticker"].notna()
+            & (subset["stock_ticker"] != "")
         ]
         self.logger.info("Found %s rows with issuer_name and ticker", len(subset))
 
@@ -53,7 +56,9 @@ class IdentifierCusip(Identifier):
             lambda x: IdentifierCusip._parse_ticker_and_mic(x)
         )
         subset = subset[subset["stock_ticker"] != ""]
-        self.logger.info("After parsing and filtering: %s unique issuer_name/ticker pairs", len(subset))
+        self.logger.info(
+            "After parsing and filtering: %s unique issuer_name/ticker pairs", len(subset)
+        )
 
         # Group by issuer_name and aggregate tickers into a list
         result = subset.groupby("issuer_name")["stock_ticker"].apply(list).to_dict()
@@ -124,10 +129,10 @@ class IdentifierCusip(Identifier):
         # Check for numeric values (coupon rates) or date patterns
         for part in parts[1:]:  # Skip first part (ticker symbol)
             # Check for decimal numbers (coupon rates like "4.375", "7.5")
-            if re.match(r'^\d+(\.\d+)?$', part):
+            if re.match(r"^\d+(\.\d+)?$", part):
                 return True
             # Check for date patterns (MM/DD/YY)
-            if re.match(r'^\d{1,2}/\d{1,2}/\d{2,4}$', part):
+            if re.match(r"^\d{1,2}/\d{1,2}/\d{2,4}$", part):
                 return True
             # Check for "PERP" (perpetual bonds)
             if part.upper() == "PERP":
@@ -156,7 +161,9 @@ class IdentifierCusip(Identifier):
 
         # Remove duplicates AFTER normalization to catch formatting differences
         subset = subset.drop_duplicates(subset=["issuer_name", "security_cusip"])
-        self.logger.info("After normalization and deduplication: %s unique issuer_name/CUSIP pairs", len(subset))
+        self.logger.info(
+            "After normalization and deduplication: %s unique issuer_name/CUSIP pairs", len(subset)
+        )
 
         # Group by issuer_name and aggregate CUSIPs into a list
         result = subset.groupby("issuer_name")["security_cusip"].apply(list).to_dict()

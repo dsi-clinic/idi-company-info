@@ -9,9 +9,10 @@ import requests
 import watchtower
 
 EC2_METADATA_ENDPOINT = "http://169.254.169.254/latest/meta-data/instance-id"
-HEADERS = { "User-Agent": "idi-company-info/1.0" }
+HEADERS = {"User-Agent": "idi-company-info/1.0"}
 
 _configured_loggers: set[str] = set()
+
 
 def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     """Creates a logger with the given name and level.
@@ -34,7 +35,7 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     # Create logger and set level
     logger = logging.getLogger(name)
     logger.setLevel(level)
-    logger.propagate = False    # Prevent log messages from being propagated to the root logger
+    logger.propagate = False  # Prevent log messages from being propagated to the root logger
 
     # Create console handler and set level
     ch = logging.StreamHandler()
@@ -57,7 +58,7 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     return logger
 
 
-def _configure_cloudwatch(logger: logging.Logger, name: str) -> None :
+def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
     """Configures the logger to send logs to CloudWatch if executing in AWS.
 
     Args:

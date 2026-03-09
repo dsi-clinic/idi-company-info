@@ -90,4 +90,6 @@ class Buffer:
             The merged data.
         """
         self.flush()
-        return load_json(self.file_path, return_type=self.mode) or ({} if self.mode == "dict" else [])
+        return load_json(self.file_path, return_type=self.mode) or (
+            {} if self.mode == "dict" else []
+        )

@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 
 class BatchProcessing:
-
     def __init__(
         self,
         result_data: list[dict[str, Any]],
@@ -41,10 +40,9 @@ class BatchProcessing:
         Returns:
             Dict of entity_name -> list of identifiers
         """
-        processed_entities = set([
-            (entity["original_entity_name"], entity["identifier"])
-            for entity in self.result_data
-        ])
+        processed_entities = set(
+            [(entity["original_entity_name"], entity["identifier"]) for entity in self.result_data]
+        )
 
         new_entities = [
             (entity_name, identifier)
@@ -180,8 +178,10 @@ class BatchProcessing:
             return self.result_data
 
         filtered_results = [
-            record for record in self.result_data
-            if record and (record["original_entity_name"], record["identifier"]) not in stale_entities
+            record
+            for record in self.result_data
+            if record
+            and (record["original_entity_name"], record["identifier"]) not in stale_entities
         ]
 
         removed_count = len(self.result_data) - len(filtered_results)

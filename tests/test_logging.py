@@ -63,16 +63,13 @@ class TestConfigureCloudwatch:
         mock_configure.side_effect = lambda logger, name: None
         logger = get_logger("test")
         cloudwatch_handlers = [
-            h for h in logger.handlers
-            if type(h).__name__ == "CloudWatchLogHandler"
+            h for h in logger.handlers if type(h).__name__ == "CloudWatchLogHandler"
         ]
         assert len(cloudwatch_handlers) == 0
 
     @patch("idi_company_info.common.logs.requests.get")
     @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
-    def test_adds_cloudwatch_handler_when_on_ec2(
-        self, mock_cw_handler_class, mock_requests_get
-    ):
+    def test_adds_cloudwatch_handler_when_on_ec2(self, mock_cw_handler_class, mock_requests_get):
         """Test that CloudWatch handler is added when EC2 metadata endpoint returns 200."""
         mock_response = MagicMock()
         mock_response.status_code = 200

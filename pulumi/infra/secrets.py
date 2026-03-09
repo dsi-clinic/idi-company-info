@@ -60,15 +60,19 @@ if secrets_created:
     secrets_policy = aws.iam.RolePolicy(
         "idi-policy-secrets-access",
         role=iam.ec2_role.id,
-        policy=pulumi.Output.json_dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Action": [
-                    "secretsmanager:GetSecretValue",
-                    "secretsmanager:DescribeSecret",
+        policy=pulumi.Output.json_dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "secretsmanager:GetSecretValue",
+                            "secretsmanager:DescribeSecret",
+                        ],
+                        "Resource": secrets_created,
+                    }
                 ],
-                "Resource": secrets_created,
-            }],
-        }),
+            }
+        ),
     )

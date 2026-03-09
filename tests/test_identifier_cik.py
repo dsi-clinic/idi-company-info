@@ -25,10 +25,12 @@ class TestExtractFilterParquetCik:
     def test_returns_dict_grouped_by_investor_name(self):
         """Test that the result groups ciks by investor_name."""
         instance = make_cik_instance()
-        df = pd.DataFrame({
-            "investor_name": ["Firm A", "Firm A", "Firm B"],
-            "investor_cik": ["0001111111", "0002222222", "0003333333"],
-        })
+        df = pd.DataFrame(
+            {
+                "investor_name": ["Firm A", "Firm A", "Firm B"],
+                "investor_cik": ["0001111111", "0002222222", "0003333333"],
+            }
+        )
         result = instance._extract_filter_parquet_cik(df)
         assert set(result.keys()) == {"Firm A", "Firm B"}
         assert set(result["Firm A"]) == {"0001111111", "0002222222"}
@@ -37,10 +39,12 @@ class TestExtractFilterParquetCik:
     def test_filters_out_null_ciks(self):
         """Test that rows with null investor_cik are dropped."""
         instance = make_cik_instance()
-        df = pd.DataFrame({
-            "investor_name": ["Firm A", "Firm B"],
-            "investor_cik": [None, "0001234567"],
-        })
+        df = pd.DataFrame(
+            {
+                "investor_name": ["Firm A", "Firm B"],
+                "investor_cik": [None, "0001234567"],
+            }
+        )
         result = instance._extract_filter_parquet_cik(df)
         assert "Firm A" not in result
         assert "Firm B" in result
@@ -48,10 +52,12 @@ class TestExtractFilterParquetCik:
     def test_filters_out_empty_string_ciks(self):
         """Test that rows with empty-string investor_cik are dropped."""
         instance = make_cik_instance()
-        df = pd.DataFrame({
-            "investor_name": ["Firm A", "Firm B"],
-            "investor_cik": ["", "0001234567"],
-        })
+        df = pd.DataFrame(
+            {
+                "investor_name": ["Firm A", "Firm B"],
+                "investor_cik": ["", "0001234567"],
+            }
+        )
         result = instance._extract_filter_parquet_cik(df)
         assert "Firm A" not in result
         assert "Firm B" in result
@@ -59,20 +65,24 @@ class TestExtractFilterParquetCik:
     def test_removes_cik_prefix(self):
         """Test that CIK prefix is stripped from values."""
         instance = make_cik_instance()
-        df = pd.DataFrame({
-            "investor_name": ["Firm A"],
-            "investor_cik": ["CIK0001546531"],
-        })
+        df = pd.DataFrame(
+            {
+                "investor_name": ["Firm A"],
+                "investor_cik": ["CIK0001546531"],
+            }
+        )
         result = instance._extract_filter_parquet_cik(df)
         assert result["Firm A"] == ["0001546531"]
 
     def test_deduplicates_name_cik_pairs(self):
         """Test that duplicate investor_name/investor_cik pairs are removed."""
         instance = make_cik_instance()
-        df = pd.DataFrame({
-            "investor_name": ["Firm A", "Firm A"],
-            "investor_cik": ["0001111111", "0001111111"],
-        })
+        df = pd.DataFrame(
+            {
+                "investor_name": ["Firm A", "Firm A"],
+                "investor_cik": ["0001111111", "0001111111"],
+            }
+        )
         result = instance._extract_filter_parquet_cik(df)
         assert result["Firm A"] == ["0001111111"]
 
@@ -86,10 +96,12 @@ class TestExtractFilterParquetCik:
     def test_cik_values_are_strings(self):
         """Test that CIK values are cast to string."""
         instance = make_cik_instance()
-        df = pd.DataFrame({
-            "investor_name": ["Firm A"],
-            "investor_cik": [1234567],
-        })
+        df = pd.DataFrame(
+            {
+                "investor_name": ["Firm A"],
+                "investor_cik": [1234567],
+            }
+        )
         result = instance._extract_filter_parquet_cik(df)
         assert all(isinstance(v, str) for v in result["Firm A"])
 

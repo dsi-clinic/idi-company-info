@@ -52,7 +52,7 @@ class ApiClient(ABC):
             total=self.max_retries,
             backoff_factor=self.RETRY_BACKOFF_FACTOR,  # Wait 1, 2, 4 seconds between retries
             status_forcelist=self.RETRY_STATUS_FORCELIST,
-            allowed_methods=["GET", "POST"]
+            allowed_methods=["GET", "POST"],
         )
 
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -72,14 +72,10 @@ class ApiClient(ABC):
             The response from the API.
         """
         response = self.session.get(
-            url,
-            params=params,
-            headers=headers,
-            timeout=self.REQUEST_TIMEOUT
+            url, params=params, headers=headers, timeout=self.REQUEST_TIMEOUT
         )
         response.raise_for_status()
         return response
-
 
     def post(self, url: str, data: str | dict = None, headers: dict = None) -> requests.Response:
         """Post a resource to the API.
@@ -91,18 +87,18 @@ class ApiClient(ABC):
         Returns:
             The response from the API.
         """
-        response = self.session.post(
-            url,
-            headers=headers,
-            data=data,
-            timeout=self.REQUEST_TIMEOUT
-        )
+        response = self.session.post(url, headers=headers, data=data, timeout=self.REQUEST_TIMEOUT)
         response.raise_for_status()
         return response
 
-
-    def _query_with_error_handling(self, url: str, data: str | dict = None, params: dict = None,
-                                   headers: dict = None, method: str = "get") -> dict[str, Any]:
+    def _query_with_error_handling(
+        self,
+        url: str,
+        data: str | dict = None,
+        params: dict = None,
+        headers: dict = None,
+        method: str = "get",
+    ) -> dict[str, Any]:
         """Query an endpoint with error handling.
 
         Args:
@@ -132,11 +128,13 @@ class ApiClient(ABC):
         response_data = {}
         if response is not None:
             try:
-                response_data.update({
-                    "status_code": response.status_code,
-                    "url": response.url,
-                    "data": response.json()
-                })
+                response_data.update(
+                    {
+                        "status_code": response.status_code,
+                        "url": response.url,
+                        "data": response.json(),
+                    }
+                )
             except ValueError:
                 self.logger.error(f"Error parsing JSON response from {url}: {response.text}")
 
@@ -170,7 +168,9 @@ class LsegEntitySearch(ApiClient):
             "Accept": "application/json",
             "User-Agent": self.USER_AGENT,
         }
-        return self._query_with_error_handling(url=self.ENTITY_SEARCH_URL, params=params, headers=headers, method="get")
+        return self._query_with_error_handling(
+            url=self.ENTITY_SEARCH_URL, params=params, headers=headers, method="get"
+        )
 
 
 class LsegRecordMatch(ApiClient):
@@ -195,7 +195,9 @@ class LsegRecordMatch(ApiClient):
             "x-openmatch-dataType": "Organization",
             "User-Agent": self.USER_AGENT,
         }
-        return self._query_with_error_handling(url=self.RECORD_MATCH_URL, data=csv_data, headers=headers, method="post")
+        return self._query_with_error_handling(
+            url=self.RECORD_MATCH_URL, data=csv_data, headers=headers, method="post"
+        )
 
 
 class LSEGEntityLookup(ApiClient):
@@ -215,7 +217,9 @@ class LSEGEntityLookup(ApiClient):
             "Accept": "application/ld+json",
         }
         params = {"format": "json-ld"}
-        return self._query_with_error_handling(url=permid_url, params=params, headers=headers, method="get")
+        return self._query_with_error_handling(
+            url=permid_url, params=params, headers=headers, method="get"
+        )
 
 
 class GeonamesApi(ApiClient):
@@ -240,11 +244,10 @@ class GeonamesApi(ApiClient):
             params: The parameters to pass to the API.
         """
         # Extract geoname ID from URL (e.g., http://sws.geonames.org/6252001/)
-        geoname_id = geoname_url.rstrip('/').split('/')[-1]
+        geoname_id = geoname_url.rstrip("/").split("/")[-1]
 
         # Query Geonames API with credentials (per https://www.geonames.org/export/web-services.html)
-        params = {
-            "geonameId": geoname_id,
-            "username": self.geonames_user
-        }
-        return self._query_with_error_handling(url=self.GEONAMES_API_URL, params=params, method="get")
+        params = {"geonameId": geoname_id, "username": self.geonames_user}
+        return self._query_with_error_handling(
+            url=self.GEONAMES_API_URL, params=params, method="get"
+        )

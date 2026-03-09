@@ -39,13 +39,7 @@ _PERMID_URL = "https://permid.org/1-4295904307"
 # Entity Search: returns one matching organization
 _ENTITY_SEARCH_HIT = {
     "status_code": 200,
-    "data": {
-        "result": {
-            "organizations": {
-                "entities": [{"@id": _PERMID_URL}]
-            }
-        }
-    },
+    "data": {"result": {"organizations": {"entities": [{"@id": _PERMID_URL}]}}},
 }
 
 # Entity Search: returns no matches
@@ -96,6 +90,7 @@ _RECORD_MATCH_MISS = {
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def _make_config(
     input_file: pathlib.Path,
     output_dir: pathlib.Path,
@@ -131,6 +126,7 @@ def _read_permid_tracking(output_dir: pathlib.Path, identifier_type: IdentifierT
 # TestIdentifierFactory
 # ---------------------------------------------------------------------------
 
+
 class TestIdentifierFactory:
     """Verify the factory wires the correct Identifier subclass and configuration."""
 
@@ -145,7 +141,9 @@ class TestIdentifierFactory:
 
     def test_cusip_creates_identifier_cusip(self, tmp_path):
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({"issuer_name": ["Corp A"], "security_cusip": ["037833100"]}).to_parquet(parquet)
+        pd.DataFrame({"issuer_name": ["Corp A"], "security_cusip": ["037833100"]}).to_parquet(
+            parquet
+        )
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
 
         identifier = IdentifierFactory.build(config)
@@ -173,7 +171,9 @@ class TestIdentifierFactory:
 
     def test_cusip_uses_entity_search(self, tmp_path):
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({"issuer_name": ["Corp A"], "security_cusip": ["037833100"]}).to_parquet(parquet)
+        pd.DataFrame({"issuer_name": ["Corp A"], "security_cusip": ["037833100"]}).to_parquet(
+            parquet
+        )
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
 
         identifier = IdentifierFactory.build(config)
@@ -196,7 +196,9 @@ class TestIdentifierFactory:
     def test_batch_config_passed_through(self, tmp_path):
         parquet = tmp_path / "data.parquet"
         pd.DataFrame({"investor_name": ["Firm A"], "investor_cik": ["123"]}).to_parquet(parquet)
-        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK, batch_size=42, buffer_size=7)
+        config = _make_config(
+            parquet, tmp_path / "out", IdentifierType.CIK, batch_size=42, buffer_size=7
+        )
 
         identifier = IdentifierFactory.build(config)
 
@@ -204,17 +206,16 @@ class TestIdentifierFactory:
         assert identifier.batch_config.buffer_size == 7
 
     def test_each_type_has_distinct_output_filenames(self, tmp_path):
-        result_files = {
-            t: IDENTIFIER_REGISTRY[t].result_filename for t in IdentifierType
-        }
-        assert len(set(result_files.values())) == len(IdentifierType), (
-            "Each identifier type must write to a distinct result file"
-        )
+        result_files = {t: IDENTIFIER_REGISTRY[t].result_filename for t in IdentifierType}
+        assert len(set(result_files.values())) == len(
+            IdentifierType
+        ), "Each identifier type must write to a distinct result file"
 
 
 # ---------------------------------------------------------------------------
 # TestPipelineOrchestratorFlow
 # ---------------------------------------------------------------------------
+
 
 class TestPipelineOrchestratorFlow:
     """Verify PipelineOrchestrator.run() flow control."""
@@ -235,7 +236,9 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
+        with patch(
+            "idi_company_info.processors.orchestrator.IdentifierFactory.build"
+        ) as mock_build:
             mock_build.return_value.run.return_value = None
 
             result = PipelineOrchestrator(config).run()
@@ -248,7 +251,9 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
+        with patch(
+            "idi_company_info.processors.orchestrator.IdentifierFactory.build"
+        ) as mock_build:
             mock_build.return_value.run.side_effect = RuntimeError("simulated API failure")
 
             result = PipelineOrchestrator(config).run()
@@ -260,7 +265,9 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch("idi_company_info.processors.orchestrator.IdentifierFactory.build") as mock_build:
+        with patch(
+            "idi_company_info.processors.orchestrator.IdentifierFactory.build"
+        ) as mock_build:
             mock_build.return_value.run.side_effect = KeyboardInterrupt
 
             result = PipelineOrchestrator(config).run()
@@ -272,21 +279,25 @@ class TestPipelineOrchestratorFlow:
 # TestCikPipelineIntegration
 # ---------------------------------------------------------------------------
 
+
 class TestCikPipelineIntegration:
     """End-to-end integration tests for the CIK (Entity Search) pipeline."""
 
     def test_writes_company_info_for_matched_cik(self, tmp_path):
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "investor_name": ["Firm Alpha"],
-            "investor_cik": ["0001234567"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "investor_name": ["Firm Alpha"],
+                "investor_cik": ["0001234567"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -301,16 +312,19 @@ class TestCikPipelineIntegration:
 
     def test_produces_empty_output_when_no_permid_match(self, tmp_path):
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "investor_name": ["Unknown Corp"],
-            "investor_cik": ["0009999999"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "investor_name": ["Unknown Corp"],
+                "investor_cik": ["0009999999"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_MISS), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_MISS),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -327,16 +341,19 @@ class TestCikPipelineIntegration:
     def test_deduplicates_investor_cik_pairs(self, tmp_path):
         """Duplicate (investor_name, investor_cik) pairs produce only one record."""
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "investor_name": ["Firm Alpha", "Firm Alpha", "Firm Alpha"],
-            "investor_cik": ["0001234567", "0001234567", "0001234567"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "investor_name": ["Firm Alpha", "Firm Alpha", "Firm Alpha"],
+                "investor_cik": ["0001234567", "0001234567", "0001234567"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -352,21 +369,25 @@ class TestCikPipelineIntegration:
 # TestCusipPipelineIntegration
 # ---------------------------------------------------------------------------
 
+
 class TestCusipPipelineIntegration:
     """End-to-end integration tests for the CUSIP (Entity Search) pipeline."""
 
     def test_writes_company_info_for_matched_cusip(self, tmp_path):
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": ["Corp Beta"],
-            "security_cusip": ["037833100"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": ["Corp Beta"],
+                "security_cusip": ["037833100"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
 
-        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -381,16 +402,19 @@ class TestCusipPipelineIntegration:
 
     def test_produces_empty_output_when_no_permid_match(self, tmp_path):
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": ["Unknown Corp"],
-            "security_cusip": ["000000000"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": ["Unknown Corp"],
+                "security_cusip": ["000000000"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
 
-        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_MISS), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_MISS),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -401,16 +425,19 @@ class TestCusipPipelineIntegration:
     def test_deduplicates_issuer_cusip_pairs(self, tmp_path):
         """Duplicate (issuer_name, security_cusip) pairs produce only one record."""
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": ["Corp Beta", "Corp Beta", "Corp Beta"],
-            "security_cusip": ["037833100", "037833100", "037833100"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": ["Corp Beta", "Corp Beta", "Corp Beta"],
+                "security_cusip": ["037833100", "037833100", "037833100"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
 
-        with patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegEntitySearch, "query_endpoint", return_value=_ENTITY_SEARCH_HIT),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -426,6 +453,7 @@ class TestCusipPipelineIntegration:
 # TestCikMatchPipelineIntegration
 # ---------------------------------------------------------------------------
 
+
 class TestCikMatchPipelineIntegration:
     """End-to-end integration tests for the CIK Match (Record Match) pipeline."""
 
@@ -433,17 +461,21 @@ class TestCikMatchPipelineIntegration:
         entity_name = "Firm Alpha"
         cik = "0001234567"
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "investor_name": [entity_name],
-            "investor_cik": [cik],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "investor_name": [entity_name],
+                "investor_cik": [cik],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK_MATCH)
 
-        with patch.object(LsegRecordMatch, "query_endpoint",
-                          return_value=_record_match_hit(entity_name, cik)), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(
+                LsegRecordMatch, "query_endpoint", return_value=_record_match_hit(entity_name, cik)
+            ),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -471,6 +503,7 @@ class TestCikMatchPipelineIntegration:
 # TestTickerPipelineIntegration
 # ---------------------------------------------------------------------------
 
+
 class TestTickerPipelineIntegration:
     """End-to-end integration tests for the Ticker (Record Match) pipeline."""
 
@@ -480,17 +513,23 @@ class TestTickerPipelineIntegration:
         expected_local_id = "ticker:AAPL"
 
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": [entity_name],
-            "stock_ticker": [ticker],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": [entity_name],
+                "stock_ticker": [ticker],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
 
-        with patch.object(LsegRecordMatch, "query_endpoint",
-                          return_value=_record_match_hit(entity_name, expected_local_id)), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(
+                LsegRecordMatch,
+                "query_endpoint",
+                return_value=_record_match_hit(entity_name, expected_local_id),
+            ),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -506,16 +545,19 @@ class TestTickerPipelineIntegration:
     def test_bond_securities_are_filtered_before_api_call(self, tmp_path):
         """Bond tickers must be dropped before the Record Match API is called."""
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": ["Corp Delta"],
-            "stock_ticker": ["WEC 4.375 06/01/29"],  # bond — filtered by _is_bond_security
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": ["Corp Delta"],
+                "stock_ticker": ["WEC 4.375 06/01/29"],  # bond — filtered by _is_bond_security
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
 
-        with patch.object(LsegRecordMatch, "query_endpoint") as mock_rm, \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegRecordMatch, "query_endpoint") as mock_rm,
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -524,16 +566,19 @@ class TestTickerPipelineIntegration:
     def test_produces_empty_output_when_no_record_match(self, tmp_path):
         entity_name = "Corp Epsilon"
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": [entity_name],
-            "stock_ticker": ["XYZ"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": [entity_name],
+                "stock_ticker": ["XYZ"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
 
-        with patch.object(LsegRecordMatch, "query_endpoint", return_value=_RECORD_MATCH_MISS), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegRecordMatch, "query_endpoint", return_value=_RECORD_MATCH_MISS),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -545,12 +590,16 @@ class TestTickerPipelineIntegration:
         """A Record Match response below the score threshold should not produce output."""
         entity_name = "Corp Zeta"
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": [entity_name],
-            "stock_ticker": ["ZYX"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": [entity_name],
+                "stock_ticker": ["ZYX"],
+            }
+        ).to_parquet(parquet)
         # match_score_threshold=1 means 100% required; return 50% match
-        config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER, match_score_threshold=1)
+        config = _make_config(
+            parquet, tmp_path / "out", IdentifierType.TICKER, match_score_threshold=1
+        )
 
         low_score_response = {
             "status_code": 200,
@@ -566,10 +615,11 @@ class TestTickerPipelineIntegration:
             },
         }
 
-        with patch.object(LsegRecordMatch, "query_endpoint", return_value=low_score_response), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegRecordMatch, "query_endpoint", return_value=low_score_response),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -583,17 +633,23 @@ class TestTickerPipelineIntegration:
         ticker = "AAPL"
         expected_local_id = "ticker:AAPL"
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": [entity_name, entity_name, entity_name],
-            "stock_ticker": [ticker, ticker, ticker],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": [entity_name, entity_name, entity_name],
+                "stock_ticker": [ticker, ticker, ticker],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
 
-        with patch.object(LsegRecordMatch, "query_endpoint",
-                          return_value=_record_match_hit(entity_name, expected_local_id)), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(
+                LsegRecordMatch,
+                "query_endpoint",
+                return_value=_record_match_hit(entity_name, expected_local_id),
+            ),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -608,10 +664,12 @@ class TestTickerPipelineIntegration:
         """Same issuer with different tickers (AAPL, MSFT) produces both records."""
         entity_name = "Corp Gamma"
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": [entity_name, entity_name],
-            "stock_ticker": ["AAPL", "MSFT"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": [entity_name, entity_name],
+                "stock_ticker": ["AAPL", "MSFT"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
 
         def record_match_side_effect(*args, **kwargs):
@@ -620,18 +678,27 @@ class TestTickerPipelineIntegration:
                 "status_code": 200,
                 "data": {
                     "outputContentResponse": [
-                        {"Input_Name": entity_name, "Input_LocalID": "ticker:AAPL",
-                         "Match OpenPermID": _PERMID_URL, "Match Score": "100%"},
-                        {"Input_Name": entity_name, "Input_LocalID": "ticker:MSFT",
-                         "Match OpenPermID": _PERMID_URL, "Match Score": "100%"},
+                        {
+                            "Input_Name": entity_name,
+                            "Input_LocalID": "ticker:AAPL",
+                            "Match OpenPermID": _PERMID_URL,
+                            "Match Score": "100%",
+                        },
+                        {
+                            "Input_Name": entity_name,
+                            "Input_LocalID": "ticker:MSFT",
+                            "Match OpenPermID": _PERMID_URL,
+                            "Match Score": "100%",
+                        },
                     ]
                 },
             }
 
-        with patch.object(LsegRecordMatch, "query_endpoint", side_effect=record_match_side_effect), \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(LsegRecordMatch, "query_endpoint", side_effect=record_match_side_effect),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -650,10 +717,12 @@ class TestTickerPipelineIntegration:
         """
         entity_name = "Active Biotech AB"
         parquet = tmp_path / "data.parquet"
-        pd.DataFrame({
-            "issuer_name": [entity_name, entity_name, entity_name],
-            "stock_ticker": ["AAPL", "ACTI SS", "MSFT"],
-        }).to_parquet(parquet)
+        pd.DataFrame(
+            {
+                "issuer_name": [entity_name, entity_name, entity_name],
+                "stock_ticker": ["AAPL", "ACTI SS", "MSFT"],
+            }
+        ).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.TICKER)
 
         def record_match_side_effect(*args, **kwargs):
@@ -661,20 +730,35 @@ class TestTickerPipelineIntegration:
                 "status_code": 200,
                 "data": {
                     "outputContentResponse": [
-                        {"Input_Name": entity_name, "Input_LocalID": "ticker:AAPL",
-                         "Match OpenPermID": _PERMID_URL, "Match Score": "100%"},
-                        {"Input_Name": entity_name, "Input_LocalID": "ticker:ACTI&&mic:XSTO",
-                         "Match OpenPermID": _PERMID_URL, "Match Score": "100%"},
-                        {"Input_Name": entity_name, "Input_LocalID": "ticker:MSFT",
-                         "Match OpenPermID": _PERMID_URL, "Match Score": "100%"},
+                        {
+                            "Input_Name": entity_name,
+                            "Input_LocalID": "ticker:AAPL",
+                            "Match OpenPermID": _PERMID_URL,
+                            "Match Score": "100%",
+                        },
+                        {
+                            "Input_Name": entity_name,
+                            "Input_LocalID": "ticker:ACTI&&mic:XSTO",
+                            "Match OpenPermID": _PERMID_URL,
+                            "Match Score": "100%",
+                        },
+                        {
+                            "Input_Name": entity_name,
+                            "Input_LocalID": "ticker:MSFT",
+                            "Match OpenPermID": _PERMID_URL,
+                            "Match Score": "100%",
+                        },
                     ]
                 },
             }
 
-        with patch.object(LsegRecordMatch, "query_endpoint", side_effect=record_match_side_effect) as mock_rm, \
-             patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT), \
-             patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS):
-
+        with (
+            patch.object(
+                LsegRecordMatch, "query_endpoint", side_effect=record_match_side_effect
+            ) as mock_rm,
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+        ):
             result = PipelineOrchestrator(config).run()
 
         assert result is True
@@ -692,7 +776,5 @@ class TestTickerPipelineIntegration:
         assert entity_name in permid_data
         assert isinstance(permid_data[entity_name], list)
         assert len(permid_data[entity_name]) == 3
-        identifiers_in_permid = [
-            list(item.keys())[0] for item in permid_data[entity_name]
-        ]
+        identifiers_in_permid = [list(item.keys())[0] for item in permid_data[entity_name]]
         assert set(identifiers_in_permid) == {"ticker:AAPL", "ticker:ACTI&&mic:XSTO", "ticker:MSFT"}

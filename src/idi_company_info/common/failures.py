@@ -24,7 +24,9 @@ class FailureType(StrEnum):
 class FailureClassifier:
     """Classifies failures as retryable or permanent."""
 
-    DO_NOT_RETRY = frozenset({FailureType.NO_PERMID, FailureType.NO_COMPANY_INFO, FailureType.LOW_MATCH_SCORE})
+    DO_NOT_RETRY = frozenset(
+        {FailureType.NO_PERMID, FailureType.NO_COMPANY_INFO, FailureType.LOW_MATCH_SCORE}
+    )
 
     @classmethod
     def is_retryable(cls, failure_type: FailureType) -> bool:
@@ -72,6 +74,7 @@ class FailureClassifier:
 
         return FailureType.API_ERROR
 
+
 class FailureRegistry:
     """Persists permanent failures to avoid retrying entities that will always fail."""
 
@@ -90,7 +93,7 @@ class FailureRegistry:
     def load(self) -> None:
         """Load entries from the persistence file."""
         if not self.file_path or not pathlib.Path(self.file_path).exists():
-            self._entries = set()    # Becomes the do-not-retry set
+            self._entries = set()  # Becomes the do-not-retry set
             self._reasons = {}
             return
 

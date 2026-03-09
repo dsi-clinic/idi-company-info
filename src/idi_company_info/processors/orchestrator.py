@@ -33,8 +33,10 @@ from idi_company_info.processors.IdentifierCusip import IdentifierCusip
 # Status
 # ---------------------------------------------------------------------------
 
+
 class StageStatus(Enum):
     """Execution status for pipeline stages."""
+
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
@@ -46,8 +48,10 @@ class StageStatus(Enum):
 # Identifier type registry
 # ---------------------------------------------------------------------------
 
+
 class IdentifierType(StrEnum):
     """Supported identifier types."""
+
     CIK = "cik"
     CIK_MATCH = "cik-match"
     CUSIP = "cusip"
@@ -61,6 +65,7 @@ class IdentifierSpec:
     Adding a new type requires only a new entry in IDENTIFIER_REGISTRY —
     no other code needs to change.
     """
+
     cls: type[Identifier]
     query_type: QueryType
     permid_filename: str
@@ -104,9 +109,11 @@ IDENTIFIER_REGISTRY: dict[IdentifierType, IdentifierSpec] = {
 # Configuration
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class OrchestratorConfig:
     """Configuration for a single orchestrator run."""
+
     input_file: pathlib.Path
     output_dir: pathlib.Path
     identifier_type: IdentifierType
@@ -121,6 +128,7 @@ class OrchestratorConfig:
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+
 
 class IdentifierFactory:
     """Builds a configured Identifier instance from an OrchestratorConfig.
@@ -147,15 +155,9 @@ class IdentifierFactory:
 
         file_paths = FilePaths(
             input_file=str(config.input_file),
-            result_file=str(
-                config.output_dir / "company_info" / spec.result_filename
-            ),
-            permid_file=str(
-                config.output_dir / "permid_data" / spec.permid_filename
-            ),
-            failure_file=str(
-                config.output_dir / "failures" / spec.failure_filename
-            ),
+            result_file=str(config.output_dir / "company_info" / spec.result_filename),
+            permid_file=str(config.output_dir / "permid_data" / spec.permid_filename),
+            failure_file=str(config.output_dir / "failures" / spec.failure_filename),
         )
 
         batch_config = BatchConfig(
@@ -181,6 +183,7 @@ class IdentifierFactory:
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
+
 
 class PipelineOrchestrator:
     """Orchestrates identifier processing for a single input file.
@@ -245,6 +248,7 @@ class PipelineOrchestrator:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def get_args() -> argparse.Namespace:
     """Parse and return command-line arguments."""

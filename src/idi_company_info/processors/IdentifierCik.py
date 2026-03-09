@@ -8,7 +8,6 @@ from idi_company_info.processors.identifier import Identifier
 
 
 class IdentifierCik(Identifier):
-
     @property
     def identifier_type(self) -> str:
         """Get the identifier type.
@@ -18,7 +17,7 @@ class IdentifierCik(Identifier):
         """
         return "cik"
 
-    def _extract_filter_parquet_cik(self,df):
+    def _extract_filter_parquet_cik(self, df):
         """Extract investor_name and investor_cik pairs (CIK mode).
 
         Args:
@@ -42,7 +41,9 @@ class IdentifierCik(Identifier):
 
         # Remove duplicates AFTER normalization to catch formatting differences
         subset = subset.drop_duplicates(subset=["investor_name", "investor_cik"])
-        self.logger.info("After normalization and deduplication: %s unique investor_name/CIK pairs", len(subset))
+        self.logger.info(
+            "After normalization and deduplication: %s unique investor_name/CIK pairs", len(subset)
+        )
 
         # Group by investor_name and aggregate CIKs into a list
         result = subset.groupby("investor_name")["investor_cik"].apply(list).to_dict()
@@ -56,7 +57,9 @@ class IdentifierCik(Identifier):
             A dictionary with investor_name as key and a list of investor_cik as value.
         """
 
-        df = self.read_parquet(self.file_paths.input_file, required_columns=["investor_name", "investor_cik"])
+        df = self.read_parquet(
+            self.file_paths.input_file, required_columns=["investor_name", "investor_cik"]
+        )
         self.logger.info("Loaded %s rows", len(df))
 
         result = self._extract_filter_parquet_cik(df)
@@ -64,10 +67,10 @@ class IdentifierCik(Identifier):
 
     def _build_query_params(self, identifier: str) -> dict[str, Any]:
         """Build the query parameters.
-            Args:
-                identifier: The identifier.
+        Args:
+            identifier: The identifier.
 
-            Returns:
-                The query parameters.
+        Returns:
+            The query parameters.
         """
         return {"q": f"cik:{identifier}", "format": "json"}

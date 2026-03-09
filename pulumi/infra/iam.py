@@ -15,14 +15,18 @@ ec2_role = aws.iam.Role(
     "idi-role-ssm-agent",
     name=f"{config.name_prefix}-role-ssm-agent",
     description="IAM role for EC2 instances with ssm agent access",
-    assume_role_policy=json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {"Service": "ec2.amazonaws.com"},
-            "Action": "sts:AssumeRole",
-        }],
-    }),
+    assume_role_policy=json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "ec2.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    ),
     tags=config.tags(),
 )
 
@@ -39,22 +43,26 @@ ssm_policy_attachment = aws.iam.RolePolicyAttachment(
 cloudwatch_logs_policy = aws.iam.RolePolicy(
     "idi-policy-cloudwatch-logs",
     role=ec2_role.id,
-    policy=json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Action": [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:DescribeLogStreams",
-                "logs:PutLogEvents",
+    policy=json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "logs:CreateLogGroup",
+                        "logs:CreateLogStream",
+                        "logs:DescribeLogStreams",
+                        "logs:PutLogEvents",
+                    ],
+                    "Resource": [
+                        "arn:aws:logs:*:*:log-group:idi-company-info-*",
+                        "arn:aws:logs:*:*:log-group:idi-company-info-*:*",
+                    ],
+                }
             ],
-            "Resource": [
-                "arn:aws:logs:*:*:log-group:idi-company-info-*",
-                "arn:aws:logs:*:*:log-group:idi-company-info-*:*",
-            ],
-        }],
-    }),
+        }
+    ),
 )
 
 # Instance profile
@@ -74,25 +82,27 @@ ecr_policy = aws.iam.RolePolicy(
     "idi-policy-ecr-pull",
     role=ec2_role.id,
     policy=pulumi.Output.from_input(config.caller.account_id).apply(
-        lambda aid: json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": "ecr:GetAuthorizationToken",
-                    "Resource": "*",
-                },
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "ecr:BatchGetImage",
-                        "ecr:GetDownloadUrlForLayer",
-                    ],
-                    "Resource": [
-                        f"arn:aws:ecr:{config.aws_region}:{aid}:repository/{ecr_orchestrator_repo}",
-                    ],
-                },
-            ],
-        })
+        lambda aid: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": "ecr:GetAuthorizationToken",
+                        "Resource": "*",
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "ecr:BatchGetImage",
+                            "ecr:GetDownloadUrlForLayer",
+                        ],
+                        "Resource": [
+                            f"arn:aws:ecr:{config.aws_region}:{aid}:repository/{ecr_orchestrator_repo}",
+                        ],
+                    },
+                ],
+            }
+        )
     ),
 )

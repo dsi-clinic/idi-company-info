@@ -54,29 +54,31 @@ s3_policy = aws.iam.RolePolicy(
     "idi-policy-s3-processor",
     role=iam.ec2_role.id,
     policy=processor_bucket.arn.apply(
-        lambda arn: json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": ["s3:ListBucket"],
-                    "Resource": arn,
-                },
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "s3:GetObject",
-                        "s3:PutObject",
-                        "s3:DeleteObject",
-                        "s3:AbortMultipartUpload",
-                        "s3:CreateMultipartUpload",
-                        "s3:UploadPart",
-                        "s3:CompleteMultipartUpload",
-                        "s3:ListMultipartUploadParts",
-                    ],
-                    "Resource": f"{arn}/*",
-                },
-            ],
-        })
+        lambda arn: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": ["s3:ListBucket"],
+                        "Resource": arn,
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            "s3:DeleteObject",
+                            "s3:AbortMultipartUpload",
+                            "s3:CreateMultipartUpload",
+                            "s3:UploadPart",
+                            "s3:CompleteMultipartUpload",
+                            "s3:ListMultipartUploadParts",
+                        ],
+                        "Resource": f"{arn}/*",
+                    },
+                ],
+            }
+        )
     ),
 )

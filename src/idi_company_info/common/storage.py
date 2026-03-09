@@ -46,7 +46,7 @@ def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
     """
     if "s3://" in file_path:
         with tempfile.NamedTemporaryFile() as tmp:
-            tp = {'writebuffer': tmp}
+            tp = {"writebuffer": tmp}
             with smart_open.open(file_path, "w", transport_params=tp) as fout:
                 json.dump(data, fout, indent=2)
     else:

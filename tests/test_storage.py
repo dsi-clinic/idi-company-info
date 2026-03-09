@@ -21,7 +21,9 @@ class TestLoadJson:
         mock_stream.__exit__ = MagicMock(return_value=False)
 
         with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=True):
-            with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+            with patch(
+                "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
+            ) as mock_open:
                 result = load_json("/fake/path/data.json")
                 assert result == data
                 mock_open.assert_called_once_with("/fake/path/data.json", mode="r")
@@ -45,7 +47,9 @@ class TestLoadJson:
         mock_stream.__exit__ = MagicMock(return_value=False)
 
         with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=True):
-            with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+            with patch(
+                "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
+            ) as mock_open:
                 load_json("/my/custom/path.json")
                 mock_open.assert_called_once_with("/my/custom/path.json", mode="r")
 
@@ -73,12 +77,16 @@ class TestSaveJson:
         class CaptureWriter:
             def write(self, s):
                 written.append(s)
+
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 return False
 
-        with patch("idi_company_info.common.storage.smart_open.open", return_value=CaptureWriter()) as mock_open:
+        with patch(
+            "idi_company_info.common.storage.smart_open.open", return_value=CaptureWriter()
+        ) as mock_open:
             save_json("/fake/local/path.json", data)
             mock_open.assert_called_once_with("/fake/local/path.json", "w")
             assert json.loads("".join(written)) == data
@@ -91,8 +99,10 @@ class TestSaveJson:
         class CaptureWriter:
             def write(self, s):
                 written.append(s)
+
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 return False
 
@@ -107,7 +117,9 @@ class TestSaveJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+        with patch(
+            "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
+        ) as mock_open:
             with patch("idi_company_info.common.storage.json.dump") as mock_dump:
                 save_json("/local/path.json", data)
                 mock_open.assert_called_once_with("/local/path.json", "w")
@@ -120,7 +132,9 @@ class TestSaveJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+        with patch(
+            "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
+        ) as mock_open:
             with patch("idi_company_info.common.storage.tempfile.NamedTemporaryFile") as mock_tmp:
                 mock_tmp_file = MagicMock()
                 mock_tmp.return_value.__enter__ = MagicMock(return_value=mock_tmp_file)

@@ -96,9 +96,7 @@ class TestApiClient:
             client = ConcreteApiClient(api_key="key")
             with patch.object(client, "session") as mock_session:
                 mock_response = MagicMock()
-                mock_response.raise_for_status.side_effect = (
-                    requests.exceptions.HTTPError("404")
-                )
+                mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("404")
                 mock_session.get.return_value = mock_response
                 with pytest.raises(requests.exceptions.HTTPError):
                     client.get("https://example.com")
@@ -194,9 +192,7 @@ class TestLsegRecordMatch:
         with patch("idi_company_info.common.api.get_logger"):
             client = LsegRecordMatch(api_key="test-key")
             with patch.object(client, "post", return_value=mock_response):
-                result = client.query_endpoint(
-                    csv_data="LocalID,Name,Ticker\n100001,Test Inc,TEST"
-                )
+                result = client.query_endpoint(csv_data="LocalID,Name,Ticker\n100001,Test Inc,TEST")
 
         assert result["data"] == {"matches": []}
         assert result["status_code"] == 200
