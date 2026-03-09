@@ -1,9 +1,9 @@
 """Provides API utilities for use across the application."""
 
 # Standard library imports
+import logging
 from abc import ABC, abstractmethod
 from functools import cached_property
-import logging
 from typing import Any
 
 # Third party imports

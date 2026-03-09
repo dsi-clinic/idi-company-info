@@ -1,12 +1,11 @@
 """Buffer for storing data that flushes to file when threshold is reached."""
 
 # Standard library imports
-from abc import ABC, abstractmethod
-from typing import Any, TYPE_CHECKING
 
 # Application imports
-from idi_company_info.common.storage import load_json, save_json
 from idi_company_info.common.logs import get_logger
+from idi_company_info.common.storage import load_json, save_json
+
 
 class Buffer:
     """PermidBuffer for storing permid data in a sync buffer."""

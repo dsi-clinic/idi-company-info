@@ -3,9 +3,9 @@
 Unit tests for idi_company_info.processors.IdentifierCusip
 """
 
+from unittest.mock import MagicMock
+
 import pandas as pd
-import pytest
-from unittest.mock import MagicMock, patch
 
 from idi_company_info.processors.IdentifierCusip import IdentifierCusip
 

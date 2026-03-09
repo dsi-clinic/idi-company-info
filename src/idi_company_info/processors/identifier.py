@@ -3,22 +3,32 @@
 # Standard library imports
 import os
 from abc import ABC, abstractmethod
-from dataclasses import asdict,dataclass
-from datetime import datetime, timezone
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Callable
+from typing import Any
 
 # Third party imports
 import pandas as pd
 
 # Application imports
-from idi_company_info.common.api import LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup, GeonamesApi
-from idi_company_info.common.failures import FailureClassifier, FailureRegistry
-from idi_company_info.common.logs import get_logger
+from idi_company_info.common.api import (
+    GeonamesApi,
+    LSEGEntityLookup,
+    LsegEntitySearch,
+    LsegRecordMatch,
+)
 from idi_company_info.common.batch import BatchProcessing
 from idi_company_info.common.buffer import Buffer
+from idi_company_info.common.failures import FailureClassifier, FailureRegistry
+from idi_company_info.common.logs import get_logger
 from idi_company_info.common.storage import load_json, save_json
-from idi_company_info.processors.permid_retriever import PermidRetriever, EntitySearchRetriever, RecordMatchRetriever
+from idi_company_info.processors.permid_retriever import (
+    EntitySearchRetriever,
+    PermidRetriever,
+    RecordMatchRetriever,
+)
 
 
 @dataclass
@@ -467,7 +477,7 @@ class Identifier(ABC):
             domiciled_in=self._query_geonames_location(response.get("isDomiciledIn")),
             url=response.get("hasURL"),
             activity_status=response.get("hasActivityStatus"),
-            last_processed=datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S"),
+            last_processed=datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
         )
         return company_info
 

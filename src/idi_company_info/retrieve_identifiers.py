@@ -122,9 +122,12 @@ def extract_filter_parquet_record(df):
     """
     Extract issuer_name, ticker, MIC, and local_id for record matching.
 
+    Deduplicates by (issuer_name, stock_ticker) combo; retains all unique combos
+    (e.g. APPLE INC + AAPL and APPLE INC + AAPL2 are both kept).
+
     Returns:
-        Dict with issuer_name as key, dict with ticker, mic, and local_id as value
-        Example: {"ACTIVE BIOTECH AB": {"ticker": "ACTI", "mic": "XSTO", "local_id": 42}}
+        Dict with issuer_name as key, list of {ticker, mic, local_id} as value
+        Example: {"ACTIVE BIOTECH AB": [{"ticker": "ACTI", "mic": "XSTO", "local_id": 42}]}
     """
     # Extract relevant columns
     subset = df[["issuer_name", "stock_ticker"]].copy()
@@ -138,9 +141,9 @@ def extract_filter_parquet_record(df):
     ]
     logging.info(f"Found {len(subset)} rows with valid issuer_name and stock_ticker")
 
-    # Remove duplicates by issuer_name (keep first occurrence)
+    # Remove duplicate (issuer_name, stock_ticker) combos; retain all unique combos
     subset = subset.drop_duplicates(subset=["issuer_name", "stock_ticker"], keep="first")
-    logging.info(f"After deduplication by issuer_name: {len(subset)} unique issuers")
+    logging.info(f"After deduplication by issuer_name+stock_ticker: {len(subset)} unique combos")
 
     # Parse ticker and MIC
     parsed_records = []
@@ -169,15 +172,15 @@ def extract_filter_parquet_record(df):
     logging.info(f"Filtered out {bonds_filtered} bond securities")
     logging.info(f"Skipped {invalid_format} records with invalid format")
 
-    # Convert to desired output format
-    # {"issuer_name": {"ticker": "ACTI", "mic": "XSTO", "local_id": 123}}
+    # Group by issuer_name; each issuer can have multiple tickers
+    # {"issuer_name": [{"ticker": "ACTI", "mic": "XSTO", "local_id": 42}, ...]}
     result = {}
     for record in parsed_records:
-        result[record["issuer_name"]] = {
-            "ticker": record["ticker"],
-            "mic": record["mic"],
-            "local_id": record["local_id"]
-        }
+        entry = {"ticker": record["ticker"], "mic": record["mic"], "local_id": record["local_id"]}
+        result.setdefault(record["issuer_name"], []).append(entry)
+
+    print("RESULT: ", result)
+    exit()
 
     return result
 
@@ -256,19 +259,21 @@ def is_bond_security(ticker_str):
 
 def save_result_record(result, output_file):
     """Save record matching results to JSON."""
-    logging.info(f"Writing {len(result)} unique issuers to: {output_file}")
+    total_combos = sum(len(entries) for entries in result.values())
+    logging.info(f"Writing {len(result)} issuers ({total_combos} issuer+ticker combos) to: {output_file}")
     with open(output_file, "w") as f:
         json.dump(result, f, indent=2)
     logging.info(f"Successfully wrote {len(result)} issuer records to {output_file}")
 
     # Print sample statistics
     mic_counts = {}
-    for issuer_data in result.values():
-        mic = issuer_data.get("mic", "UNKNOWN")
-        mic_counts[mic] = mic_counts.get(mic, 0) + 1
+    for entries in result.values():
+        for entry in entries:
+            mic = entry.get("mic", "UNKNOWN")
+            mic_counts[mic] = mic_counts.get(mic, 0) + 1
 
     logging.info(f"Total unique issuers: {len(result)}")
-    logging.info(f"MIC distribution:")
+    logging.info("MIC distribution:")
     for mic, count in sorted(mic_counts.items(), key=lambda x: x[1], reverse=True):
         logging.info(f"  {mic}: {count}")
 

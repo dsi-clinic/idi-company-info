@@ -1,10 +1,10 @@
 """AWS Secrets Manager (optional)."""
 
-import pulumi
 import pulumi_aws as aws
 
-from . import config
-from . import iam
+import pulumi
+
+from . import config, iam
 
 # -----------------------------------------------------------------------------
 # Config

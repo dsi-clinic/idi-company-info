@@ -17,19 +17,17 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any
 
 from idi_company_info.common.logs import get_logger
 from idi_company_info.processors.identifier import (
-    Identifier,
-    FilePaths,
-    BatchConfig,
     ApiCredentials,
+    BatchConfig,
+    FilePaths,
+    Identifier,
     QueryType,
 )
 from idi_company_info.processors.IdentifierCik import IdentifierCik
 from idi_company_info.processors.IdentifierCusip import IdentifierCusip
-
 
 # ---------------------------------------------------------------------------
 # Status

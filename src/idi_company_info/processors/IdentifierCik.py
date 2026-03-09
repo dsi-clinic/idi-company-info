@@ -6,6 +6,7 @@ from typing import Any
 # Application imports
 from idi_company_info.processors.identifier import Identifier
 
+
 class IdentifierCik(Identifier):
 
     @property

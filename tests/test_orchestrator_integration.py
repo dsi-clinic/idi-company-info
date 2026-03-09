@@ -9,11 +9,19 @@ using real temporary files and mocked API clients. They verify:
 
 import json
 import pathlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
-import pytest
 
+from idi_company_info.common.api import (
+    GeonamesApi,
+    LSEGEntityLookup,
+    LsegEntitySearch,
+    LsegRecordMatch,
+)
+from idi_company_info.processors.identifier import QueryType
+from idi_company_info.processors.IdentifierCik import IdentifierCik
+from idi_company_info.processors.IdentifierCusip import IdentifierCusip
 from idi_company_info.processors.orchestrator import (
     IDENTIFIER_REGISTRY,
     IdentifierFactory,
@@ -21,11 +29,6 @@ from idi_company_info.processors.orchestrator import (
     OrchestratorConfig,
     PipelineOrchestrator,
 )
-from idi_company_info.common.api import GeonamesApi, LSEGEntityLookup, LsegEntitySearch, LsegRecordMatch
-from idi_company_info.processors.IdentifierCik import IdentifierCik
-from idi_company_info.processors.IdentifierCusip import IdentifierCusip
-from idi_company_info.processors.identifier import QueryType
-
 
 # ---------------------------------------------------------------------------
 # Shared mock API responses

@@ -4,8 +4,7 @@ import json
 
 import pulumi_aws as aws
 
-from . import config
-from . import iam
+from . import config, iam
 
 # -----------------------------------------------------------------------------
 # Processor S3 Bucket

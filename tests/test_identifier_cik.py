@@ -3,9 +3,9 @@
 Unit tests for idi_company_info.processors.IdentifierCik
 """
 
-import pandas as pd
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 from idi_company_info.processors.IdentifierCik import IdentifierCik
 

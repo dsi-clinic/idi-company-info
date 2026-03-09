@@ -3,15 +3,23 @@
 # Standard library imports
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from functools import cached_property
-from typing import Any, Callable, Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
+
+from idi_company_info.common.buffer import Buffer
 
 # Application imports
 from idi_company_info.common.failures import FailureClassifier, FailureType
 from idi_company_info.common.logs import get_logger
-from idi_company_info.common.buffer import Buffer
+
 if TYPE_CHECKING:
-    from idi_company_info.processors.identifier import BatchStats, ApiClients, FilePaths, BatchConfig
+    from idi_company_info.processors.identifier import (
+        ApiClients,
+        BatchConfig,
+        BatchStats,
+        FilePaths,
+    )
 
 # Third party imports
 import pandas as pd

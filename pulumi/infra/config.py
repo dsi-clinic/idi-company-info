@@ -2,8 +2,9 @@
 
 from pathlib import Path
 
-import pulumi
 import pulumi_aws as aws
+
+import pulumi
 
 # -----------------------------------------------------------------------------
 # Paths (infra/ is inside pulumi/, so parent.parent = pulumi dir)

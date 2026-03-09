@@ -2,11 +2,11 @@
 
 # Standard library imports
 import logging
+
 import requests
 
 # Third party imports
 import watchtower
-
 
 EC2_METADATA_ENDPOINT = "http://169.254.169.254/latest/meta-data/instance-id"
 HEADERS = { "User-Agent": "idi-company-info/1.0" }

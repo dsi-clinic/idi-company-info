@@ -3,15 +3,10 @@
 Imports all resource modules (creation order matters) and exports stack outputs.
 """
 
-import pulumi
-
 # Import order matters: config first, then resources by dependency
-from infra import ecr
-from infra import iam
-from infra import secrets
-from infra import networking
-from infra import compute
-from infra import storage
+from infra import compute, ecr, iam, networking, secrets, storage
+
+import pulumi
 
 # -----------------------------------------------------------------------------
 # Exports

@@ -6,8 +6,6 @@ Unit tests for idi_company_info.common.logs
 import logging
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from idi_company_info.common.logs import get_logger
 
 
@@ -95,7 +93,6 @@ class TestConfigureCloudwatch:
         mock_requests_get.side_effect = Exception("Connection refused")
 
         with patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler") as mock_cw:
-            logger = get_logger("test_logger")
             mock_cw.assert_not_called()
 
     @patch("idi_company_info.common.logs.requests.get")
@@ -106,5 +103,4 @@ class TestConfigureCloudwatch:
         mock_requests_get.return_value = mock_response
 
         with patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler") as mock_cw:
-            logger = get_logger("test_logger")
             mock_cw.assert_not_called()

@@ -12,7 +12,6 @@ import pytest
 
 from idi_company_info import retrieve_identifiers
 
-
 # ============================================================================
 # Tests for Common Functions
 # ============================================================================
@@ -245,16 +244,16 @@ class TestExtractFilterParquetRecord:
         result = retrieve_identifiers.extract_filter_parquet_record(df)
 
         assert "ACTIVE BIOTECH AB" in result
-        assert result["ACTIVE BIOTECH AB"]["ticker"] == "ACTI"
-        assert result["ACTIVE BIOTECH AB"]["mic"] == "XSTO"
+        assert result["ACTIVE BIOTECH AB"][0]["ticker"] == "ACTI"
+        assert result["ACTIVE BIOTECH AB"][0]["mic"] == "XSTO"
 
         assert "APPLE INC" in result
-        assert result["APPLE INC"]["ticker"] == "AAPL"
-        assert result["APPLE INC"]["mic"] is None  # US ticker, no MIC
+        assert result["APPLE INC"][0]["ticker"] == "AAPL"
+        assert result["APPLE INC"][0]["mic"] is None  # US ticker, no MIC
 
         assert "TESLA INC" in result
-        assert result["TESLA INC"]["ticker"] == "TSLA"
-        assert result["TESLA INC"]["mic"] is None  # US ticker, no MIC
+        assert result["TESLA INC"][0]["ticker"] == "TSLA"
+        assert result["TESLA INC"][0]["mic"] is None  # US ticker, no MIC
 
     def test_extract_filter_removes_nulls(self):
         """Test that null values are filtered out"""
@@ -266,23 +265,27 @@ class TestExtractFilterParquetRecord:
         result = retrieve_identifiers.extract_filter_parquet_record(df)
 
         assert "Company A" in result
+        assert len(result["Company A"]) == 1
         assert "Company B" not in result
         assert "Company C" not in result
         assert None not in result
 
     def test_extract_filter_removes_duplicates(self):
-        """Test that duplicate issuer_name entries are removed (keeps first)"""
+        """Test that duplicate (issuer_name, stock_ticker) combos are removed; unique combos retained"""
         df = pd.DataFrame({
-            "issuer_name": ["APPLE INC", "APPLE INC", "TESLA INC"],
-            "stock_ticker": ["AAPL", "AAPL2", "TSLA"]
+            "issuer_name": ["APPLE INC", "APPLE INC", "APPLE INC", "TESLA INC"],
+            "stock_ticker": ["AAPL", "AAPL2", "AAPL", "TSLA"]  # AAPL duplicated
         })
 
         result = retrieve_identifiers.extract_filter_parquet_record(df)
 
-        # Should only have 2 entries (duplicates removed)
+        # APPLE INC has 2 unique combos (AAPL, AAPL2); TESLA INC has 1
         assert len(result) == 2
         assert "APPLE INC" in result
-        assert result["APPLE INC"]["ticker"] == "AAPL"  # First occurrence kept
+        tickers = [e["ticker"] for e in result["APPLE INC"]]
+        assert sorted(tickers) == ["AAPL", "AAPL2"]
+        assert "TESLA INC" in result
+        assert result["TESLA INC"][0]["ticker"] == "TSLA"
 
     def test_extract_filter_removes_bonds(self):
         """Test that bond securities are filtered out"""
@@ -296,6 +299,7 @@ class TestExtractFilterParquetRecord:
         # Only equity should remain
         assert len(result) == 1
         assert "APPLE INC" in result
+        assert result["APPLE INC"][0]["ticker"] == "AAPL"
         assert "WELLS FARGO BOND" not in result
         assert "BOND CORP" not in result
 
@@ -308,8 +312,8 @@ class TestExtractFilterParquetRecord:
 
         result = retrieve_identifiers.extract_filter_parquet_record(df)
 
-        assert result["ACTIVE BIOTECH AB"]["mic"] == "XSTO"
-        assert result["ABB LTD"]["mic"] == "XSTO"
+        assert result["ACTIVE BIOTECH AB"][0]["mic"] == "XSTO"
+        assert result["ABB LTD"][0]["mic"] == "XSTO"
 
     def test_extract_filter_unknown_exchange(self):
         """Test unknown exchange returns None (let API determine)"""
@@ -320,8 +324,8 @@ class TestExtractFilterParquetRecord:
 
         result = retrieve_identifiers.extract_filter_parquet_record(df)
 
-        assert result["TEST COMPANY"]["ticker"] == "TEST"
-        assert result["TEST COMPANY"]["mic"] is None  # Unknown exchange
+        assert result["TEST COMPANY"][0]["ticker"] == "TEST"
+        assert result["TEST COMPANY"][0]["mic"] is None  # Unknown exchange
 
 
 class TestSaveResultRecord:
@@ -330,8 +334,8 @@ class TestSaveResultRecord:
     def test_save_result_success(self):
         """Test successful result saving"""
         result = {
-            "ACTIVE BIOTECH AB": {"ticker": "ACTI", "mic": "XSTO"},
-            "APPLE INC": {"ticker": "AAPL", "mic": None}
+            "ACTIVE BIOTECH AB": [{"ticker": "ACTI", "mic": "XSTO"}],
+            "APPLE INC": [{"ticker": "AAPL", "mic": None}]
         }
 
         m = mock_open()

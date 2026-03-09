@@ -2,8 +2,8 @@
 
 # Standard library imports
 import json
-import tempfile
 import pathlib
+import tempfile
 
 # Third party imports
 import smart_open

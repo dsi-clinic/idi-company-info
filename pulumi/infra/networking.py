@@ -1,6 +1,5 @@
 """VPC, security groups, and VPC endpoints."""
 
-import pulumi
 import pulumi_aws as aws
 
 from . import config
