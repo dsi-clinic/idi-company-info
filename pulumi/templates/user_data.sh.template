@@ -55,9 +55,6 @@ BATCH_SIZE_CIK_MATCH=2450
 BATCH_SIZE_TICKER=2450
 MATCH_SCORE_THRESHOLD=1
 
-# Scheduler Configuration (cron format)
-SCHEDULE_CIK=0 0 2 * * *
-SCHEDULE_CUSIP=0 30 2 * * *
 ENVFILE_EOF
 
 # Create docker-compose.yml (orchestrator service defs for pull_and_run; no long-running services)
