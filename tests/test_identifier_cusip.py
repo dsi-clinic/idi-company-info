@@ -107,6 +107,24 @@ class TestExtractFilterParquetTicker:
         assert set(result.keys()) == {"Corp A", "Corp B"}
         assert set(result["Corp A"]) == {"ticker:AAPL", "ticker:MSFT"}
 
+    def test_record_data_has_issuer_name_and_list_of_tickers(self):
+        """Record data is created correctly: issuer_name as key, list of parsed tickers as value."""
+        instance = make_cusip_instance()
+        df = pd.DataFrame({
+            "issuer_name": ["Active Biotech AB", "Active Biotech AB", "Active Biotech AB", "Apple Inc"],
+            "stock_ticker": ["AAPL", "ACTI SS", "AAPL", "MSFT"],  # duplicate (Active Biotech AB, AAPL)
+        })
+        result = instance._extract_filter_parquet_ticker(df)
+        # Structure: {issuer_name: [ticker1, ticker2, ...]}
+        assert isinstance(result, dict)
+        assert "Active Biotech AB" in result
+        assert "Apple Inc" in result
+        assert isinstance(result["Active Biotech AB"], list)
+        assert len(result["Active Biotech AB"]) == 2
+        assert "ticker:AAPL" in result["Active Biotech AB"]
+        assert "ticker:ACTI&&mic:XSTO" in result["Active Biotech AB"]
+        assert result["Apple Inc"] == ["ticker:MSFT"]
+
     def test_filters_out_null_tickers(self):
         """Test that rows with null stock_ticker are dropped."""
         instance = make_cusip_instance()
