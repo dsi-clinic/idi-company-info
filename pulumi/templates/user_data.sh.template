@@ -38,9 +38,9 @@ GEONAMES_USER=$GEONAMES_USER
 ORCHESTRATOR_IMAGE={ORCHESTRATOR_IMAGE}
 
 # Input files
-INPUT_FILE_CIK=/home/ec2-user/data/input/investors_cik.parquet
-INPUT_FILE_CUSIP=/home/ec2-user/data/input/securities_cusip.parquet
-INPUT_FILE_TICKER=/home/ec2-user/data/input/securities_ticker.parquet
+INPUT_FILE_CIK=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
+INPUT_FILE_CUSIP=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
+INPUT_FILE_TICKER=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
 
 # Output Configuration (local path or s3:// URL for buffered files)
 OUTPUT_DIR_ORCHESTRATOR={OUTPUT_DIR}
