@@ -263,6 +263,7 @@ dev = [
 
 [package.dev-dependencies]
 pulumi = [
+    { name = "pip" },
     { name = "pulumi" },
     { name = "pulumi-aws" },
     { name = "pyyaml" },
@@ -284,6 +285,7 @@ provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 pulumi = [
+    { name = "pip", specifier = ">=24.0" },
     { name = "pulumi", specifier = ">=3.220.0" },
     { name = "pulumi-aws", specifier = ">=7.19.0" },
     { name = "pyyaml", specifier = ">=6.0" },
