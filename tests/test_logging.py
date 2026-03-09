@@ -4,7 +4,7 @@ Unit tests for idi_company_info.common.logs
 """
 
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from idi_company_info.common.logs import get_logger
 
@@ -67,57 +67,46 @@ class TestConfigureCloudwatch:
         ]
         assert len(cloudwatch_handlers) == 0
 
+    @patch("idi_company_info.common.logs.boto3.client")
     @patch("idi_company_info.common.logs.requests.get")
+    @patch("idi_company_info.common.logs.requests.put")
     @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
-    def test_adds_cloudwatch_handler_when_on_ec2(self, mock_cw_handler_class, mock_requests_get):
-        """Test that CloudWatch handler is added when EC2 metadata endpoint returns 200."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "i-1234567890abcdef0"
-        mock_requests_get.return_value = mock_response
+    def test_adds_cloudwatch_handler_with_instance_id_from_metadata(
+        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
+    ):
+        """Test that CloudWatch handler uses instance ID from EC2 metadata (IMDSv2) when available."""
+        mock_token_resp = MagicMock()
+        mock_token_resp.text = "test-token"
+        mock_put.return_value = mock_token_resp
+
+        mock_instance_resp = MagicMock()
+        mock_instance_resp.text = "i-1234567890abcdef0"
+        mock_get.return_value = mock_instance_resp
 
         mock_cw_handler = MagicMock()
         mock_cw_handler.level = logging.INFO
         mock_cw_handler_class.return_value = mock_cw_handler
 
-        with patch("idi_company_info.common.logs.os.getpid", return_value=12345):
-            logger = get_logger("test_logger")
+        with patch.dict("os.environ", {"CLOUDWATCH_LOGS_ENABLED": "true"}):
+            logger = get_logger("test_instance_id")
 
-        assert mock_requests_get.call_count >= 1
         mock_cw_handler_class.assert_called_once_with(
-            log_group_name="idi-company-info-test_logger",
-            log_stream_name="i-1234567890abcdef0/test_logger/12345",
+            log_group_name="idi-ftm2j",
+            log_stream_name="/company-info/i-1234567890abcdef0",
             use_queues=False,
+            boto3_client=ANY,
         )
         assert mock_cw_handler in logger.handlers
 
+    @patch("idi_company_info.common.logs.boto3.client")
     @patch("idi_company_info.common.logs.requests.get")
-    def test_no_cloudwatch_handler_when_metadata_fails(self, mock_requests_get):
-        """Test that CloudWatch handler is not added when metadata request fails."""
-        mock_requests_get.side_effect = Exception("Connection refused")
-
-        with patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler") as mock_cw:
-            get_logger("test_metadata_fail")
-            mock_cw.assert_not_called()
-
-    @patch("idi_company_info.common.logs.requests.get")
-    def test_no_cloudwatch_handler_when_metadata_returns_non_200(self, mock_requests_get):
-        """Test that CloudWatch handler is not added when metadata returns non-200."""
-        mock_response = MagicMock()
-        mock_response.status_code = 404
-        mock_requests_get.return_value = mock_response
-
-        with patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler") as mock_cw:
-            get_logger("test_non_200")
-            mock_cw.assert_not_called()
-
-    @patch("idi_company_info.common.logs.requests.get")
+    @patch("idi_company_info.common.logs.requests.put")
     @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
-    def test_adds_cloudwatch_handler_when_env_enabled(
-        self, mock_cw_handler_class, mock_requests_get
+    def test_adds_cloudwatch_handler_when_env_enabled_uses_hostname_fallback(
+        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
     ):
-        """Test that CloudWatch handler is added when CLOUDWATCH_LOGS_ENABLED=true even without EC2 metadata."""
-        mock_requests_get.side_effect = Exception("Connection refused")
+        """Test that CloudWatch handler uses HOSTNAME when metadata is unreachable (e.g. Docker)."""
+        mock_put.side_effect = Exception("Connection refused")
 
         mock_cw_handler = MagicMock()
         mock_cw_handler.level = logging.INFO
@@ -126,12 +115,40 @@ class TestConfigureCloudwatch:
         with patch.dict(
             "os.environ", {"CLOUDWATCH_LOGS_ENABLED": "true", "HOSTNAME": "docker-container-1"}
         ):
-            with patch("idi_company_info.common.logs.os.getpid", return_value=999):
-                logger = get_logger("test_env_enabled")
+            logger = get_logger("test_env_enabled")
 
         mock_cw_handler_class.assert_called_once_with(
-            log_group_name="idi-company-info-test_env_enabled",
-            log_stream_name="docker-container-1/test_env_enabled/999",
+            log_group_name="idi-ftm2j",
+            log_stream_name="/company-info/docker-container-1",
             use_queues=False,
+            boto3_client=ANY,
+        )
+        assert mock_cw_handler in logger.handlers
+
+    @patch("idi_company_info.common.logs.boto3.client")
+    @patch("idi_company_info.common.logs.requests.get")
+    @patch("idi_company_info.common.logs.requests.put")
+    @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
+    def test_adds_cloudwatch_handler_uses_instance_id_env_var(
+        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
+    ):
+        """Test that INSTANCE_ID env var takes precedence over metadata."""
+        mock_cw_handler = MagicMock()
+        mock_cw_handler.level = logging.INFO
+        mock_cw_handler_class.return_value = mock_cw_handler
+
+        with patch.dict(
+            "os.environ",
+            {"CLOUDWATCH_LOGS_ENABLED": "true", "INSTANCE_ID": "i-custom-from-env"},
+        ):
+            logger = get_logger("test_instance_env")
+
+        mock_put.assert_not_called()
+        mock_get.assert_not_called()
+        mock_cw_handler_class.assert_called_once_with(
+            log_group_name="idi-ftm2j",
+            log_stream_name="/company-info/i-custom-from-env",
+            use_queues=False,
+            boto3_client=ANY,
         )
         assert mock_cw_handler in logger.handlers

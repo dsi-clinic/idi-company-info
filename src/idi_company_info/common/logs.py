@@ -4,15 +4,46 @@
 import logging
 import os
 
-import requests
-
 # Third party imports
+import boto3
+import requests
 import watchtower
 
-EC2_METADATA_ENDPOINT = "http://169.254.169.254/latest/meta-data/instance-id"
-HEADERS = {"User-Agent": "idi-company-info/1.0"}
 
 _configured_loggers: set[str] = set()
+
+EC2_METADATA_BASE = "http://169.254.169.254"
+EC2_METADATA_TOKEN_URL = f"{EC2_METADATA_BASE}/latest/api/token"
+EC2_METADATA_INSTANCE_ID_URL = f"{EC2_METADATA_BASE}/latest/meta-data/instance-id"
+
+
+def _get_instance_id() -> str:
+    """Returns the EC2 instance ID when available, otherwise a fallback identifier."""
+    # Prefer explicit env var (e.g. when running in Docker where metadata may be unreachable)
+    if instance_id := os.environ.get("INSTANCE_ID"):
+        return instance_id
+    try:
+        # IMDSv2: obtain session token first (required when IMDSv2 is enforced)
+        token_resp = requests.put(
+            EC2_METADATA_TOKEN_URL,
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"},
+            timeout=1,
+        )
+        token_resp.raise_for_status()
+        token = token_resp.text.strip()
+
+        # Fetch instance-id with token
+        instance_resp = requests.get(
+            EC2_METADATA_INSTANCE_ID_URL,
+            headers={"X-aws-ec2-metadata-token": token},
+            timeout=1,
+        )
+        instance_resp.raise_for_status()
+        return instance_resp.text.strip()
+
+    except Exception:
+        hostname = os.environ.get("HOSTNAME", "unknown")
+        return hostname.split(".")[0]
 
 
 def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
@@ -59,17 +90,6 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     return logger
 
 
-def _get_instance_id() -> str:
-    """Get EC2 instance ID from metadata, or hostname as fallback."""
-    try:
-        r = requests.get(EC2_METADATA_ENDPOINT, headers=HEADERS, timeout=2)
-        if r.status_code == 200:
-            return r.text.strip()
-    except Exception:
-        pass
-    return os.environ.get("HOSTNAME", "local")
-
-
 def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
     """Configures the logger to send logs to CloudWatch if executing in AWS.
 
@@ -81,31 +101,28 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
         logger: The logger to configure.
         name: The name of the logger.
     """
-    # Check EC2 metadata
-    try:
-        r = requests.get(EC2_METADATA_ENDPOINT, headers=HEADERS, timeout=2)
-        is_ec2 = r.status_code == 200
-    except Exception:
-        is_ec2 = False
-
-    # Also enable when explicitly requested (e.g. Docker on EC2 where metadata may be unreachable)
+    # Enable when explicitly requested (e.g. Docker on EC2)
     env_enabled = os.environ.get("CLOUDWATCH_LOGS_ENABLED", "").lower() in ("true", "1", "yes")
 
-    if not (is_ec2 or env_enabled):
-        return
+    if env_enabled:
+        instance_id = _get_instance_id()
+        log_group_name = f"idi-ftm2j"
+        log_stream_name = f"/company-info/{instance_id}"
 
-    log_group_name = f"idi-company-info-{name.lower()}"
-    instance_id = _get_instance_id()
-    log_stream_name = f"{instance_id}/{name}/{os.getpid()}"
+        if "AWS_REGION" in os.environ:
+            logs_client = boto3.client("logs", region_name=os.environ["AWS_REGION"])
+        else:
+            logs_client = boto3.client("logs")
 
-    handler = watchtower.CloudWatchLogHandler(
-        log_group_name=log_group_name,
-        log_stream_name=log_stream_name,
-        use_queues=False,
-    )
-    logger.addHandler(handler)
-    logger.info(
-        "CloudWatch logging enabled: log_group=%s log_stream=%s",
-        log_group_name,
-        log_stream_name,
-    )
+        handler = watchtower.CloudWatchLogHandler(
+            log_group_name=log_group_name,
+            log_stream_name=log_stream_name,
+            use_queues=False,
+            boto3_client=logs_client
+        )
+        logger.addHandler(handler)
+        logger.info(
+            "CloudWatch logging enabled: log_group=%s log_stream=%s",
+            log_group_name,
+            log_stream_name,
+        )
