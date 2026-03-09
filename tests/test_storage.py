@@ -26,7 +26,7 @@ class TestLoadJson:
             ) as mock_open:
                 result = load_json("/fake/path/data.json")
                 assert result == data
-                mock_open.assert_called_once_with("/fake/path/data.json", mode="r")
+                mock_open.assert_called_once_with("/fake/path/data.json")
 
     def test_loads_list_from_local_file(self):
         """Test loading a JSON array (list) from a local file path."""
@@ -51,7 +51,7 @@ class TestLoadJson:
                 "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
             ) as mock_open:
                 load_json("/my/custom/path.json")
-                mock_open.assert_called_once_with("/my/custom/path.json", mode="r")
+                mock_open.assert_called_once_with("/my/custom/path.json")
 
     def test_returns_empty_dict_when_file_does_not_exist(self):
         """Test that load_json returns empty dict when file does not exist."""
