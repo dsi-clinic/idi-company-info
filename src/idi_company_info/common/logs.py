@@ -9,7 +9,6 @@ import boto3
 import requests
 import watchtower
 
-
 _configured_loggers: set[str] = set()
 
 EC2_METADATA_BASE = "http://169.254.169.254"
@@ -106,7 +105,7 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
 
     if env_enabled:
         instance_id = _get_instance_id()
-        log_group_name = f"idi-ftm2j"
+        log_group_name = "idi-ftm2j"
         log_stream_name = f"/company-info/{instance_id}"
 
         if "AWS_REGION" in os.environ:
@@ -118,7 +117,7 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
             log_group_name=log_group_name,
             log_stream_name=log_stream_name,
             use_queues=False,
-            boto3_client=logs_client
+            boto3_client=logs_client,
         )
         logger.addHandler(handler)
         logger.info(
