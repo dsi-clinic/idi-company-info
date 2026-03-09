@@ -92,11 +92,6 @@ jobs:
         run: |
           uv run pytest --cov=idi_company_info --cov-report=xml:coverage.xml --cov-report=term -v
 
-      # - name: Install Pulumi CLI
-      #   uses: pulumi/actions@v5
-      #   with:
-      #     command: version
-
       - name: Configure AWS credentials (Pulumi)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -106,14 +101,23 @@ jobs:
 
       - name: Validate Pulumi
         env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+          EC2_INSTANCE_TYPE: ${{ secrets.EC2_INSTANCE_TYPE }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
+          GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
         run: |
           uv sync --group pulumi
           cd pulumi
           pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
           pulumi stack select dev 2>/dev/null || pulumi stack init dev
           pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
-          PATH="${{ github.workspace }}/${{ env.PROJECT_DIR }}/.venv/bin:$PATH" pulumi preview --non-interactive
+          pulumi config set idi:instance_type ${EC2_INSTANCE_TYPE:-t2.small}
+          [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
+          [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
+          [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
+          uv run pulumi preview --non-interactive
 
       - name: Dependency vulnerability scan (pip-audit)
         run: |
@@ -230,7 +234,10 @@ jobs:
     env:
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
       PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+      EC2_INSTANCE_TYPE: ${{ secrets.EC2_INSTANCE_TYPE }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
+      GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
     steps:
       - uses: actions/checkout@v4
 
@@ -251,18 +258,21 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION || 'us-east-2' }}
 
-      - name: Login to Pulumi S3 backend
-        run: uv run pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
-
-      - name: Configure Pulumi (EC2 SSH key)
+      - name: Configure Pulumi
         run: |
-          uv run pulumi stack select ${{ needs.build.outputs.deploy_env }} 2>/dev/null || uv run pulumi stack init ${{ needs.build.outputs.deploy_env }}
-          if [ -n "$EC2_SSH_KEY" ]; then
-            uv run pulumi config set idi:key_name "$EC2_SSH_KEY"
-          fi
+          cd ${{ github.workspace }}/${{ env.PROJECT_DIR }}/pulumi
+          pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
+          pulumi stack select ${{ needs.build.outputs.deploy_env }} 2>/dev/null || pulumi stack init ${{ needs.build.outputs.deploy_env }}
+          pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
+          pulumi config set idi:instance_type ${EC2_INSTANCE_TYPE:-t2.small}
+          [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
+          [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
+          [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
 
       - name: Pulumi deploy
-        run: uv run pulumi up --yes
+        run: |
+          cd ${{ github.workspace }}/${{ env.PROJECT_DIR }}/pulumi
+          uv run pulumi up --yes
 
   sync-ecr:
     name: Sync GHCR to ECR
