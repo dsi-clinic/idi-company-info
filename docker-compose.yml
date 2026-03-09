@@ -21,16 +21,17 @@ services:
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
+      - INPUT_FILE_ORCHESTRATOR_CIK=${INPUT_FILE_ORCHESTRATOR_CIK:-/data/input/data.parquet}
 
     volumes:
-      - ${INPUT_FILE_CIK:?INPUT_FILE_CIK is required}:/data/input/data.parquet:ro
+      - ${INPUT_VOLUME_SPEC_CIK:-${INPUT_FILE_CIK:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}
       - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "python -m idi_company_info.processors.orchestrator
-      --input-file /data/input/data.parquet
+      --input-file $${INPUT_FILE_ORCHESTRATOR_CIK:-/data/input/data.parquet}
       --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       --type cik
       --permid-api-key ${PERMID_API_KEY}
@@ -71,16 +72,17 @@ services:
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
+      - INPUT_FILE_ORCHESTRATOR_CUSIP=${INPUT_FILE_ORCHESTRATOR_CUSIP:-/data/input/data.parquet}
 
     volumes:
-      - ${INPUT_FILE_CUSIP:?INPUT_FILE_CUSIP is required}:/data/input/data.parquet:ro
+      - ${INPUT_VOLUME_SPEC_CUSIP:-${INPUT_FILE_CUSIP:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}
       - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "python -m idi_company_info.processors.orchestrator
-      --input-file /data/input/data.parquet
+      --input-file $${INPUT_FILE_ORCHESTRATOR_CUSIP:-/data/input/data.parquet}
       --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       --type cusip
       --permid-api-key ${PERMID_API_KEY}
@@ -122,16 +124,17 @@ services:
       - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
+      - INPUT_FILE_ORCHESTRATOR_CIK_MATCH=${INPUT_FILE_ORCHESTRATOR_CIK_MATCH:-${INPUT_FILE_ORCHESTRATOR_CIK:-/data/input/data.parquet}}
 
     volumes:
-      - ${INPUT_FILE_CIK:?INPUT_FILE_CIK is required}:/data/input/data.parquet:ro
+      - ${INPUT_VOLUME_SPEC_CIK_MATCH:-${INPUT_VOLUME_SPEC_CIK:-${INPUT_FILE_CIK:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}}
       - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "python -m idi_company_info.processors.orchestrator
-      --input-file /data/input/data.parquet
+      --input-file $${INPUT_FILE_ORCHESTRATOR_CIK_MATCH:-/data/input/data.parquet}
       --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       --type cik-match
       --permid-api-key ${PERMID_API_KEY}
@@ -173,16 +176,17 @@ services:
       - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
+      - INPUT_FILE_ORCHESTRATOR_TICKER=${INPUT_FILE_ORCHESTRATOR_TICKER:-/data/input/data.parquet}
 
     volumes:
-      - ${INPUT_FILE_TICKER:?INPUT_FILE_TICKER is required}:/data/input/data.parquet:ro
+      - ${INPUT_VOLUME_SPEC_TICKER:-${INPUT_FILE_TICKER:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}
       - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "python -m idi_company_info.processors.orchestrator
-      --input-file /data/input/data.parquet
+      --input-file $${INPUT_FILE_ORCHESTRATOR_TICKER:-/data/input/data.parquet}
       --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       --type ticker
       --permid-api-key ${PERMID_API_KEY}

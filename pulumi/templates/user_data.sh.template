@@ -37,10 +37,11 @@ GEONAMES_USER=$GEONAMES_USER
 # ECR image URI (set by Pulumi)
 ORCHESTRATOR_IMAGE={ORCHESTRATOR_IMAGE}
 
-# Input files
-INPUT_FILE_CIK=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
-INPUT_FILE_CUSIP=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
-INPUT_FILE_TICKER=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
+# Input files — S3 URLs (orchestrator reads directly; docker-compose uses /tmp dummy mount by default)
+INPUT_FILE_ORCHESTRATOR_CIK=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
+INPUT_FILE_ORCHESTRATOR_CUSIP=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
+INPUT_FILE_ORCHESTRATOR_CIK_MATCH=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
+INPUT_FILE_ORCHESTRATOR_TICKER=s3://idi-dev-processor-s3/input/shareholder_tracker_release_20251218.parquet
 
 # Output Configuration (local path or s3:// URL for buffered files)
 OUTPUT_DIR_ORCHESTRATOR={OUTPUT_DIR}
