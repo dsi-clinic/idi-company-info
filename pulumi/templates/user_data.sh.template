@@ -75,7 +75,7 @@ chmod +x $APP_DIR/pull_and_run.sh
 # Set ownership
 chown -R ec2-user:ec2-user /home/ec2-user/idi-company-info /home/ec2-user/data
 
-# Host cron: pull latest orchestrator image, then run
-su - ec2-user -c "(crontab -l 2>/dev/null | grep -v pull_and_run; echo '{CRON_CIK} $APP_DIR/pull_and_run.sh orchestrator-cik'; echo '{CRON_CUSIP} $APP_DIR/pull_and_run.sh orchestrator-cusip') | crontab -"
+# Host cron: pull latest orchestrator image, then run (sg docker ensures group is active for cron)
+su - ec2-user -c "(crontab -l 2>/dev/null | grep -v pull_and_run; echo '{CRON_CIK} sg docker -c \"$APP_DIR/pull_and_run.sh orchestrator-cik\"'; echo '{CRON_CUSIP} sg docker -c \"$APP_DIR/pull_and_run.sh orchestrator-cusip\"') | crontab -"
 
 echo "Setup complete!"
