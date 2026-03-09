@@ -225,7 +225,8 @@ class PipelineOrchestrator:
                 config_safe[k] = "***"
             else:
                 config_safe[k] = str(v) if isinstance(v, pathlib.Path) else v
-        self.logger.info("OrchestratorConfig: %s", config_safe)
+        for k, v in config_safe.items():
+            self.logger.info(f"{k}: {v}")
 
     def run(self) -> bool:
         """Execute the identifier pipeline.
