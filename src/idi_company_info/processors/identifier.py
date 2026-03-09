@@ -146,11 +146,14 @@ class Identifier(ABC):
         self.logger = get_logger("Identifier")
 
     def _init_dirs(self) -> None:
-        """Initialize the directories."""
-        os.makedirs(os.path.dirname(self.file_paths.result_file), exist_ok=True)
-        os.makedirs(os.path.dirname(self.file_paths.permid_file), exist_ok=True)
-        if self.file_paths.failure_file:
-            os.makedirs(os.path.dirname(self.file_paths.failure_file), exist_ok=True)
+        """Initialize the directories. Skip for S3 paths (no local dirs needed)."""
+        for path in (
+            self.file_paths.result_file,
+            self.file_paths.permid_file,
+            self.file_paths.failure_file or "",
+        ):
+            if path and not path.startswith("s3://"):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
 
     def _create_permid_retriever(
         self, query_type: QueryType, match_score_threshold: int = 1

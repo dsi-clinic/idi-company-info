@@ -25,6 +25,8 @@ Processing is resumable: if a run is interrupted, the next run picks up where it
 
 ### Output Layout
 
+Output paths support local directories or S3 URLs (`s3://bucket/path`). Buffered files (permid, result, failures) are written via smart_open.
+
 ```
 {output_dir}/
   company_info/
@@ -121,8 +123,8 @@ make help   # Full option listing
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--input-file` | Yes | — | Path to input parquet file |
-| `--output-directory` | Yes | — | Root directory for all output files |
+| `--input-file` | Yes | — | Path to input parquet file (local or s3:// URL) |
+| `--output-directory` | Yes | — | Root directory for output files (local path or s3:// URL) |
 | `--type` | Yes | — | `cik`, `cik-match`, `cusip`, or `ticker` |
 | `--permid-api-key` | Env/CLI | `$PERMID_API_KEY` | LSEG PermID access token |
 | `--geonames-user` | Env/CLI | `$GEONAMES_USER` | Geonames API username |

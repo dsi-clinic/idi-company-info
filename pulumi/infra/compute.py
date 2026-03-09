@@ -1,8 +1,9 @@
 """Compute: AMI, launch template, Auto Scaling Group."""
 
+import pulumi
 import pulumi_aws as aws
 
-from . import config, ecr, iam, networking, secrets, user_data
+from . import config, ecr, iam, networking, secrets, storage, user_data
 
 # -----------------------------------------------------------------------------
 # Config
@@ -28,11 +29,19 @@ ami = aws.ec2.get_ami(
 # -----------------------------------------------------------------------------
 # User Data
 # -----------------------------------------------------------------------------
-user_data_script = ecr.orchestrator_image.apply(
-    lambda orch_img: user_data.build_user_data(
+_use_s3 = config.config.get("use_s3_output")
+use_s3_output = _use_s3 is None or str(_use_s3).lower() in ("true", "1", "yes")
+
+user_data_script = pulumi.Output.all(
+    ecr.orchestrator_image,
+    storage.processor_bucket.id,
+).apply(
+    lambda args: user_data.build_user_data(
         name_prefix=config.name_prefix,
         has_secrets=bool(secrets.permid_api_key or secrets.geonames_user),
-        orch_img=orch_img,
+        orch_img=args[0],
+        processor_bucket=args[1],
+        use_s3_output=use_s3_output,
     )
 )
 

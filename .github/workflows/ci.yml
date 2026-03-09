@@ -119,6 +119,7 @@ jobs:
           pulumi stack select dev 2>/dev/null || pulumi stack init dev
           pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
           pulumi config set idi:instance_type ${EC2_INSTANCE_TYPE:-t2.small}
+          pulumi config set idi:use_s3_output true
           [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
           [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
           [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
@@ -275,6 +276,7 @@ jobs:
           pulumi stack select ${{ needs.build.outputs.deploy_env }} 2>/dev/null || pulumi stack init ${{ needs.build.outputs.deploy_env }}
           pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
           pulumi config set idi:instance_type ${EC2_INSTANCE_TYPE:-t2.small}
+          pulumi config set idi:use_s3_output true
           [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
           [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
           [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"

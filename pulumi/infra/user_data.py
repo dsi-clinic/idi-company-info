@@ -43,7 +43,13 @@ def _load_template(name: str, **replacements: str) -> str:
     return content
 
 
-def build_user_data(name_prefix: str, has_secrets: bool, orch_img: str) -> str:
+def build_user_data(
+    name_prefix: str,
+    has_secrets: bool,
+    orch_img: str,
+    processor_bucket: str,
+    use_s3_output: bool = True,
+) -> str:
     """Build EC2 user data script from templates (matches .env.example structure)."""
     if has_secrets:
         secret_retrieval = _load_template(
@@ -66,6 +72,8 @@ def build_user_data(name_prefix: str, has_secrets: bool, orch_img: str) -> str:
     cron_cik = _parse_cron(config.config.get("cron_cik"), "0 0 2 * * *")
     cron_cusip = _parse_cron(config.config.get("cron_cusip"), "0 30 2 * * *")
 
+    output_dir = f"s3://{processor_bucket}/output/" if use_s3_output else "/home/ec2-user/data/output"
+
     return _load_template(
         "user_data.sh.template",
         SECRET_RETRIEVAL=secret_retrieval,
@@ -75,4 +83,5 @@ def build_user_data(name_prefix: str, has_secrets: bool, orch_img: str) -> str:
         PULL_AND_RUN_SCRIPT=pull_and_run_script,
         CRON_CIK=cron_cik,
         CRON_CUSIP=cron_cusip,
+        OUTPUT_DIR=output_dir,
     )

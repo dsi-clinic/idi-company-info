@@ -8,6 +8,7 @@ dependencies = [
     "pandas>=3.0.0",
     "pyarrow>=23.0.0",
     "requests>=2.32.5",
+    "s3fs>=2026.2.0",
     "smart-open>=7.0.0",
     "watchtower>=3.4.0",
 ]

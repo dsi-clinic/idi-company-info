@@ -19,17 +19,18 @@ services:
       - BATCH_SIZE_CIK=${BATCH_SIZE_CIK:-2450}
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
 
     volumes:
       - ${INPUT_FILE_CIK:?INPUT_FILE_CIK is required}:/data/input/data.parquet:ro
-      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "python -m idi_company_info.processors.orchestrator
       --input-file /data/input/data.parquet
-      --output-directory /data/output
+      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       --type cik
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
@@ -67,17 +68,18 @@ services:
       - BATCH_SIZE_CUSIP=${BATCH_SIZE_CUSIP:-2450}
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
 
     volumes:
       - ${INPUT_FILE_CUSIP:?INPUT_FILE_CUSIP is required}:/data/input/data.parquet:ro
-      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "python -m idi_company_info.processors.orchestrator
       --input-file /data/input/data.parquet
-      --output-directory /data/output
+      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       --type cusip
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
@@ -116,17 +118,18 @@ services:
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
+      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
 
     volumes:
       - ${INPUT_FILE_CIK:?INPUT_FILE_CIK is required}:/data/input/data.parquet:ro
-      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "python -m idi_company_info.processors.orchestrator
       --input-file /data/input/data.parquet
-      --output-directory /data/output
+      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       --type cik-match
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
@@ -165,17 +168,18 @@ services:
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
+      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
 
     volumes:
       - ${INPUT_FILE_TICKER:?INPUT_FILE_TICKER is required}:/data/input/data.parquet:ro
-      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "python -m idi_company_info.processors.orchestrator
       --input-file /data/input/data.parquet
-      --output-directory /data/output
+      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       --type ticker
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}

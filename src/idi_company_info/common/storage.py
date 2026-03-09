@@ -7,31 +7,34 @@ import tempfile
 
 # Third party imports
 import smart_open
+from botocore.exceptions import ClientError
 
 
-def load_json(file_path: str, mode: str = "r", return_type: str = "dict") -> dict | list:
+def _empty_for_return_type(return_type: str) -> dict | list:
+    """Return empty dict or list per return_type."""
+    if return_type == "dict":
+        return {}
+    if return_type == "list":
+        return []
+    raise ValueError(f"Invalid return type: {return_type}")
+
+
+def load_json(file_path: str, return_type: str = "dict") -> dict | list:
     """Loads a JSON file from the given path.
-
-    Args:
-        file_path: The path to the JSON file.
-        mode: The mode to open the file in.
-        return_type: The type to return the data as.
-
-    Returns:
-        The JSON data loaded from the file as a dictionary or list.
+    Supports local paths and s3:// URLs.
+    Returns empty dict/list if file does not exist; raises on other errors.
     """
-    if not pathlib.Path(file_path).exists():
-        if return_type == "dict":
-            return {}
-        elif return_type == "list":
-            return []
-        else:
-            raise ValueError(f"Invalid return type: {return_type}")
+    try:
+        with smart_open.open(file_path) as f:
+            return json.load(f)
 
-    with smart_open.open(file_path, mode=mode) as f:
-        json_data = json.load(f)
-    return json_data
+    except (FileNotFoundError, OSError):
+        return _empty_for_return_type(return_type)
 
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "NoSuchKey":
+            return _empty_for_return_type(return_type)
+        raise
 
 def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
     """Saves a JSON file to the given path.

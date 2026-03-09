@@ -23,3 +23,6 @@ config:
   idi:cron_cusip:
     description: Cron schedule for orchestrator-cusip (min hour day month wday, or ofelia format)
     default: "30 2 * * *"
+  idi:use_s3_output:
+    description: Use S3 for buffered output files on EC2 (true) or local disk (false)
+    default: "true"

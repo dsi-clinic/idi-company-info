@@ -114,8 +114,8 @@ IDENTIFIER_REGISTRY: dict[IdentifierType, IdentifierSpec] = {
 class OrchestratorConfig:
     """Configuration for a single orchestrator run."""
 
-    input_file: pathlib.Path
-    output_dir: pathlib.Path
+    input_file: str | pathlib.Path
+    output_dir: str | pathlib.Path
     identifier_type: IdentifierType
     api_key: str
     geonames_user: str
@@ -153,12 +153,23 @@ class IdentifierFactory:
         """
         spec = IDENTIFIER_REGISTRY[config.identifier_type]
 
-        file_paths = FilePaths(
-            input_file=str(config.input_file),
-            result_file=str(config.output_dir / "company_info" / spec.result_filename),
-            permid_file=str(config.output_dir / "permid_data" / spec.permid_filename),
-            failure_file=str(config.output_dir / "failures" / spec.failure_filename),
-        )
+        output_base = str(config.output_dir)
+        if output_base.startswith("s3://"):
+            base = output_base.rstrip("/")
+            file_paths = FilePaths(
+                input_file=str(config.input_file),
+                result_file=f"{base}/company_info/{spec.result_filename}",
+                permid_file=f"{base}/permid_data/{spec.permid_filename}",
+                failure_file=f"{base}/failures/{spec.failure_filename}",
+            )
+        else:
+            output_path = pathlib.Path(config.output_dir)
+            file_paths = FilePaths(
+                input_file=str(config.input_file),
+                result_file=str(output_path / "company_info" / spec.result_filename),
+                permid_file=str(output_path / "permid_data" / spec.permid_filename),
+                failure_file=str(output_path / "failures" / spec.failure_filename),
+            )
 
         batch_config = BatchConfig(
             batch_size=config.batch_size,
@@ -213,13 +224,15 @@ class PipelineOrchestrator:
         Returns:
             True if processing completed successfully, False otherwise.
         """
-        if not self.config.input_file.exists():
-            self.logger.error("Input file does not exist: %s", self.config.input_file)
+        input_str = str(self.config.input_file)
+        if not input_str.startswith("s3://") and not pathlib.Path(input_str).exists():
+            self.logger.error("Input file does not exist: %s", input_str)
             return False
 
+        input_display = input_str.split("/")[-1] if "/" in input_str else input_str
         self._log_banner(
             f"Starting pipeline | type={self.config.identifier_type} | "
-            f"input={self.config.input_file.name}"
+            f"input={input_display}"
         )
         self.logger.info("Output directory:       %s", self.config.output_dir)
         self.logger.info("Batch size:             %d", self.config.batch_size)
@@ -261,15 +274,15 @@ def get_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--input-file",
-        type=pathlib.Path,
+        type=str,
         required=True,
-        help="Path to input parquet file",
+        help="Path to input parquet file (local or s3:// URL)",
     )
     parser.add_argument(
         "--output-directory",
-        type=pathlib.Path,
+        type=str,
         required=True,
-        help="Root directory for output files",
+        help="Root directory for output files (local path or s3:// URL)",
     )
     parser.add_argument(
         "--type",

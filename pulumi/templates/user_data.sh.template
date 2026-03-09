@@ -42,8 +42,8 @@ INPUT_FILE_CIK=/home/ec2-user/data/input/investors_cik.parquet
 INPUT_FILE_CUSIP=/home/ec2-user/data/input/securities_cusip.parquet
 INPUT_FILE_TICKER=/home/ec2-user/data/input/securities_ticker.parquet
 
-# Output Configuration
-OUTPUT_DIR=/home/ec2-user/data/output
+# Output Configuration (local path or s3:// URL for buffered files)
+OUTPUT_DIR_ORCHESTRATOR={OUTPUT_DIR}
 LOG_DIR=/home/ec2-user/data/logs
 
 # Processing Parameters
