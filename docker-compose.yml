@@ -20,6 +20,7 @@ services:
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
 
     volumes:
       - ${INPUT_FILE_CIK:?INPUT_FILE_CIK is required}:/data/input/data.parquet:ro
@@ -69,6 +70,7 @@ services:
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
 
     volumes:
       - ${INPUT_FILE_CUSIP:?INPUT_FILE_CUSIP is required}:/data/input/data.parquet:ro
@@ -119,6 +121,7 @@ services:
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
 
     volumes:
       - ${INPUT_FILE_CIK:?INPUT_FILE_CIK is required}:/data/input/data.parquet:ro
@@ -169,6 +172,7 @@ services:
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
 
     volumes:
       - ${INPUT_FILE_TICKER:?INPUT_FILE_TICKER is required}:/data/input/data.parquet:ro

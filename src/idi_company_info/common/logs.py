@@ -2,6 +2,7 @@
 
 # Standard library imports
 import logging
+import os
 
 import requests
 
@@ -58,20 +59,53 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     return logger
 
 
+def _get_instance_id() -> str:
+    """Get EC2 instance ID from metadata, or hostname as fallback."""
+    try:
+        r = requests.get(EC2_METADATA_ENDPOINT, headers=HEADERS, timeout=2)
+        if r.status_code == 200:
+            return r.text.strip()
+    except Exception:
+        pass
+    return os.environ.get("HOSTNAME", "local")
+
+
 def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
     """Configures the logger to send logs to CloudWatch if executing in AWS.
+
+    Enables CloudWatch when:
+    - EC2 metadata endpoint is reachable, or
+    - CLOUDWATCH_LOGS_ENABLED=true (e.g. when running in Docker on EC2).
 
     Args:
         logger: The logger to configure.
         name: The name of the logger.
     """
-    # Determine if executing on AWS EC2 instance
+    # Check EC2 metadata
     try:
         r = requests.get(EC2_METADATA_ENDPOINT, headers=HEADERS, timeout=2)
         is_ec2 = r.status_code == 200
     except Exception:
         is_ec2 = False
 
-    if is_ec2:
-        handler = watchtower.CloudWatchLogHandler(log_group=f"idi-company-info-{name.lower()}")
-        logger.addHandler(handler)
+    # Also enable when explicitly requested (e.g. Docker on EC2 where metadata may be unreachable)
+    env_enabled = os.environ.get("CLOUDWATCH_LOGS_ENABLED", "").lower() in ("true", "1", "yes")
+
+    if not (is_ec2 or env_enabled):
+        return
+
+    log_group_name = f"idi-company-info-{name.lower()}"
+    instance_id = _get_instance_id()
+    log_stream_name = f"{instance_id}/{name}/{os.getpid()}"
+
+    handler = watchtower.CloudWatchLogHandler(
+        log_group_name=log_group_name,
+        log_stream_name=log_stream_name,
+        use_queues=False,
+    )
+    logger.addHandler(handler)
+    logger.info(
+        "CloudWatch logging enabled: log_group=%s log_stream=%s",
+        log_group_name,
+        log_stream_name,
+    )

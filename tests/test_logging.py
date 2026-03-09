@@ -73,15 +73,22 @@ class TestConfigureCloudwatch:
         """Test that CloudWatch handler is added when EC2 metadata endpoint returns 200."""
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.text = "i-1234567890abcdef0"
         mock_requests_get.return_value = mock_response
 
         mock_cw_handler = MagicMock()
+        mock_cw_handler.level = logging.INFO
         mock_cw_handler_class.return_value = mock_cw_handler
 
-        logger = get_logger("test_logger")
+        with patch("idi_company_info.common.logs.os.getpid", return_value=12345):
+            logger = get_logger("test_logger")
 
-        mock_requests_get.assert_called_once()
-        mock_cw_handler_class.assert_called_once_with(log_group="idi-company-info-test_logger")
+        assert mock_requests_get.call_count >= 1
+        mock_cw_handler_class.assert_called_once_with(
+            log_group_name="idi-company-info-test_logger",
+            log_stream_name="i-1234567890abcdef0/test_logger/12345",
+            use_queues=False,
+        )
         assert mock_cw_handler in logger.handlers
 
     @patch("idi_company_info.common.logs.requests.get")
@@ -90,6 +97,7 @@ class TestConfigureCloudwatch:
         mock_requests_get.side_effect = Exception("Connection refused")
 
         with patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler") as mock_cw:
+            get_logger("test_metadata_fail")
             mock_cw.assert_not_called()
 
     @patch("idi_company_info.common.logs.requests.get")
@@ -100,4 +108,26 @@ class TestConfigureCloudwatch:
         mock_requests_get.return_value = mock_response
 
         with patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler") as mock_cw:
+            get_logger("test_non_200")
             mock_cw.assert_not_called()
+
+    @patch("idi_company_info.common.logs.requests.get")
+    @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
+    def test_adds_cloudwatch_handler_when_env_enabled(self, mock_cw_handler_class, mock_requests_get):
+        """Test that CloudWatch handler is added when CLOUDWATCH_LOGS_ENABLED=true even without EC2 metadata."""
+        mock_requests_get.side_effect = Exception("Connection refused")
+
+        mock_cw_handler = MagicMock()
+        mock_cw_handler.level = logging.INFO
+        mock_cw_handler_class.return_value = mock_cw_handler
+
+        with patch.dict("os.environ", {"CLOUDWATCH_LOGS_ENABLED": "true", "HOSTNAME": "docker-container-1"}):
+            with patch("idi_company_info.common.logs.os.getpid", return_value=999):
+                logger = get_logger("test_env_enabled")
+
+        mock_cw_handler_class.assert_called_once_with(
+            log_group_name="idi-company-info-test_env_enabled",
+            log_stream_name="docker-container-1/test_env_enabled/999",
+            use_queues=False,
+        )
+        assert mock_cw_handler in logger.handlers

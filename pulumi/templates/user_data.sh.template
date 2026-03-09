@@ -46,6 +46,9 @@ INPUT_FILE_TICKER=/home/ec2-user/data/input/securities_ticker.parquet
 OUTPUT_DIR_ORCHESTRATOR={OUTPUT_DIR}
 LOG_DIR=/home/ec2-user/data/logs
 
+# CloudWatch logging (enables when metadata unreachable from Docker)
+CLOUDWATCH_LOGS_ENABLED=true
+
 # Processing Parameters
 BUFFER_SIZE=500
 THRESHOLD_DAYS=30
