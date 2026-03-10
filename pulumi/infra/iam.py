@@ -54,6 +54,7 @@ cloudwatch_logs_policy = aws.iam.RolePolicy(
                         "logs:CreateLogStream",
                         "logs:DescribeLogStreams",
                         "logs:PutLogEvents",
+                        "logs:PutRetentionPolicy"
                     ],
                     "Resource": [
                         "arn:aws:logs:*:*:log-group:idi-ftm2j",
