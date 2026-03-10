@@ -95,6 +95,7 @@ class TestConfigureCloudwatch:
             log_stream_name="/company-info/i-1234567890abcdef0",
             use_queues=False,
             boto3_client=ANY,
+            log_group_retention_days=30,
         )
         assert mock_cw_handler in logger.handlers
 
@@ -122,6 +123,7 @@ class TestConfigureCloudwatch:
             log_stream_name="/company-info/docker-container-1",
             use_queues=False,
             boto3_client=ANY,
+            log_group_retention_days=30,
         )
         assert mock_cw_handler in logger.handlers
 
@@ -150,5 +152,6 @@ class TestConfigureCloudwatch:
             log_stream_name="/company-info/i-custom-from-env",
             use_queues=False,
             boto3_client=ANY,
+            log_group_retention_days=30,
         )
         assert mock_cw_handler in logger.handlers
