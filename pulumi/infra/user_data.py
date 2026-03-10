@@ -86,4 +86,5 @@ def build_user_data(
         CRON_CIK=cron_cik,
         CRON_CUSIP=cron_cusip,
         OUTPUT_DIR=output_dir,
+        AWS_REGION=config.aws_region,
     )

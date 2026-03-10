@@ -47,6 +47,9 @@ INPUT_FILE_ORCHESTRATOR_TICKER=s3://idi-dev-processor-s3/input/shareholder_track
 OUTPUT_DIR_ORCHESTRATOR={OUTPUT_DIR}
 LOG_DIR=/home/ec2-user/data/logs
 
+# AWS region (required for CloudWatch and other boto3 clients)
+AWS_REGION={AWS_REGION}
+
 # CloudWatch logging (enables when metadata unreachable from Docker)
 CLOUDWATCH_LOGS_ENABLED=true
 
