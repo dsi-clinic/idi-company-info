@@ -1,6 +1,7 @@
 """Provides loggers for use across the application."""
 
 # Standard library imports
+import datetime
 import logging
 import os
 
@@ -14,6 +15,8 @@ _configured_loggers: set[str] = set()
 EC2_METADATA_BASE = "http://169.254.169.254"
 EC2_METADATA_TOKEN_URL = f"{EC2_METADATA_BASE}/latest/api/token"
 EC2_METADATA_INSTANCE_ID_URL = f"{EC2_METADATA_BASE}/latest/meta-data/instance-id"
+LOG_GROUP_NAME = "idi-ftm2j"
+LOG_STREAM_PREFIX = "/company-info"
 LOG_RETENTION_DAYS = (
     30  # Possible values are: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, ...
 )
@@ -108,8 +111,8 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
 
     if env_enabled:
         instance_id = _get_instance_id()
-        log_group_name = "idi-ftm2j"
-        log_stream_name = f"/company-info/{instance_id}"
+        log_group_name = LOG_GROUP_NAME
+        log_stream_name = f"{LOG_STREAM_PREFIX}/{instance_id}/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
 
         if "AWS_REGION" in os.environ:
             logs_client = boto3.client("logs", region_name=os.environ["AWS_REGION"])
