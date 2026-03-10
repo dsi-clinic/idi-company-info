@@ -14,7 +14,9 @@ ecr_registry = pulumi.Output.from_input(config.caller.account_id).apply(
 )
 
 ecr_repo = aws.ecr.Repository(
-    "idi-ecr-orchestrator", name=f"{config.name_prefix}-company-info-orchestrator"
+    "idi-ecr-orchestrator",
+    name=f"{config.name_prefix}-company-info-orchestrator",
+    force_delete=True,
 )
 
 orchestrator_image = ecr_registry.apply(
