@@ -67,14 +67,17 @@ class TestConfigureCloudwatch:
         ]
         assert len(cloudwatch_handlers) == 0
 
+    @patch("idi_company_info.common.logs.datetime")
     @patch("idi_company_info.common.logs.boto3.client")
     @patch("idi_company_info.common.logs.requests.get")
     @patch("idi_company_info.common.logs.requests.put")
     @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
     def test_adds_cloudwatch_handler_with_instance_id_from_metadata(
-        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
+        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client, mock_datetime
     ):
         """Test that CloudWatch handler uses instance ID from EC2 metadata (IMDSv2) when available."""
+        mock_datetime.datetime.now.return_value.strftime.return_value = "20240101_000000_000000"
+
         mock_token_resp = MagicMock()
         mock_token_resp.text = "test-token"
         mock_put.return_value = mock_token_resp
@@ -92,21 +95,23 @@ class TestConfigureCloudwatch:
 
         mock_cw_handler_class.assert_called_once_with(
             log_group_name="idi-ftm2j",
-            log_stream_name="/company-info/i-1234567890abcdef0",
+            log_stream_name="/company-info/i-1234567890abcdef0/20240101_000000_000000",
             use_queues=False,
             boto3_client=ANY,
             log_group_retention_days=30,
         )
         assert mock_cw_handler in logger.handlers
 
+    @patch("idi_company_info.common.logs.datetime")
     @patch("idi_company_info.common.logs.boto3.client")
     @patch("idi_company_info.common.logs.requests.get")
     @patch("idi_company_info.common.logs.requests.put")
     @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
     def test_adds_cloudwatch_handler_when_env_enabled_uses_hostname_fallback(
-        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
+        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client, mock_datetime
     ):
         """Test that CloudWatch handler uses HOSTNAME when metadata is unreachable (e.g. Docker)."""
+        mock_datetime.datetime.now.return_value.strftime.return_value = "20240101_000000_000000"
         mock_put.side_effect = Exception("Connection refused")
 
         mock_cw_handler = MagicMock()
@@ -120,21 +125,24 @@ class TestConfigureCloudwatch:
 
         mock_cw_handler_class.assert_called_once_with(
             log_group_name="idi-ftm2j",
-            log_stream_name="/company-info/docker-container-1",
+            log_stream_name="/company-info/docker-container-1/20240101_000000_000000",
             use_queues=False,
             boto3_client=ANY,
             log_group_retention_days=30,
         )
         assert mock_cw_handler in logger.handlers
 
+    @patch("idi_company_info.common.logs.datetime")
     @patch("idi_company_info.common.logs.boto3.client")
     @patch("idi_company_info.common.logs.requests.get")
     @patch("idi_company_info.common.logs.requests.put")
     @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
     def test_adds_cloudwatch_handler_uses_instance_id_env_var(
-        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
+        self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client, mock_datetime
     ):
         """Test that INSTANCE_ID env var takes precedence over metadata."""
+        mock_datetime.datetime.now.return_value.strftime.return_value = "20240101_000000_000000"
+
         mock_cw_handler = MagicMock()
         mock_cw_handler.level = logging.INFO
         mock_cw_handler_class.return_value = mock_cw_handler
@@ -149,7 +157,7 @@ class TestConfigureCloudwatch:
         mock_get.assert_not_called()
         mock_cw_handler_class.assert_called_once_with(
             log_group_name="idi-ftm2j",
-            log_stream_name="/company-info/i-custom-from-env",
+            log_stream_name="/company-info/i-custom-from-env/20240101_000000_000000",
             use_queues=False,
             boto3_client=ANY,
             log_group_retention_days=30,
