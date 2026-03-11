@@ -98,6 +98,10 @@ class TestConfigureCloudwatch:
             boto3_client=ANY,
             log_group_retention_days=30,
         )
+        mock_cw_handler.setFormatter.assert_called_once()
+        formatter_arg = mock_cw_handler.setFormatter.call_args[0][0]
+        assert isinstance(formatter_arg, logging.Formatter)
+        assert "%(name)s" in formatter_arg._fmt
         assert mock_cw_handler in logger.handlers
 
     @patch("idi_company_info.common.logs._EXECUTION_ID", "20240101_000000_000000")
@@ -127,6 +131,10 @@ class TestConfigureCloudwatch:
             boto3_client=ANY,
             log_group_retention_days=30,
         )
+        mock_cw_handler.setFormatter.assert_called_once()
+        formatter_arg = mock_cw_handler.setFormatter.call_args[0][0]
+        assert isinstance(formatter_arg, logging.Formatter)
+        assert "%(name)s" in formatter_arg._fmt
         assert mock_cw_handler in logger.handlers
 
     @patch("idi_company_info.common.logs._EXECUTION_ID", "20240101_000000_000000")
@@ -157,4 +165,8 @@ class TestConfigureCloudwatch:
             boto3_client=ANY,
             log_group_retention_days=30,
         )
+        mock_cw_handler.setFormatter.assert_called_once()
+        formatter_arg = mock_cw_handler.setFormatter.call_args[0][0]
+        assert isinstance(formatter_arg, logging.Formatter)
+        assert "%(name)s" in formatter_arg._fmt
         assert mock_cw_handler in logger.handlers

@@ -129,9 +129,15 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
             boto3_client=logs_client,
             log_group_retention_days=LOG_RETENTION_DAYS,
         )
+
+        format = "%(name)s - %(levelname)s - %(message)s"
+        formatter = logging.Formatter(format)
+        handler.setFormatter(formatter)
+
         logger.addHandler(handler)
         logger.info(
-            "CloudWatch logging enabled: log_group=%s log_stream=%s",
+            "CloudWatch logging enabled: name=%s, log_group=%s log_stream=%s",
+            name,
             log_group_name,
             log_stream_name,
         )
