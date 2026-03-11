@@ -12,9 +12,12 @@ import watchtower
 
 _configured_loggers: set[str] = set()
 
+_EXECUTION_ID = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
 EC2_METADATA_BASE = "http://169.254.169.254"
 EC2_METADATA_TOKEN_URL = f"{EC2_METADATA_BASE}/latest/api/token"
 EC2_METADATA_INSTANCE_ID_URL = f"{EC2_METADATA_BASE}/latest/meta-data/instance-id"
+
 LOG_GROUP_NAME = "idi-ftm2j"
 LOG_STREAM_PREFIX = "/company-info"
 LOG_RETENTION_DAYS = (
@@ -112,7 +115,7 @@ def _configure_cloudwatch(logger: logging.Logger, name: str) -> None:
     if env_enabled:
         instance_id = _get_instance_id()
         log_group_name = LOG_GROUP_NAME
-        log_stream_name = f"{LOG_STREAM_PREFIX}/{instance_id}/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        log_stream_name = f"{LOG_STREAM_PREFIX}/{instance_id}/{_EXECUTION_ID}"
 
         if "AWS_REGION" in os.environ:
             logs_client = boto3.client("logs", region_name=os.environ["AWS_REGION"])
