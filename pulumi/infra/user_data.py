@@ -4,12 +4,18 @@ import yaml
 
 from . import config
 
+_OFELIA_SCHEDULE_PARTS = 4
+_CRON_SCHEDULE_PARTS = 6
+
 
 def _ofelia_to_cron(ofelia_schedule: str) -> str:
-    """Convert ofelia schedule (sec min hour day month wday) to cron (min hour day month wday).
-    Used by build_user_data() for CRON_CIK and CRON_CUSIP passed to user_data template."""
+    """Convert ofelia schedule to cron format.
+
+    Converts (sec min hour day month wday) to (min hour day month wday).
+    Used by build_user_data() for CRON_CIK and CRON_CUSIP passed to user_data template.
+    """
     parts = ofelia_schedule.split()
-    if len(parts) >= 4:
+    if len(parts) >= _OFELIA_SCHEDULE_PARTS:
         return f"{parts[1]} {parts[2]} * * *"  # min hour day month wday
     return "0 2 * * *"  # default 02:00
 
@@ -19,7 +25,7 @@ def _parse_cron(raw: str | None, default_ofelia: str) -> str:
     if not raw or not raw.strip():
         return _ofelia_to_cron(default_ofelia)
     parts = raw.strip().split()
-    if len(parts) >= 6:
+    if len(parts) >= _CRON_SCHEDULE_PARTS:
         return _ofelia_to_cron(raw)
     return raw.strip()
 

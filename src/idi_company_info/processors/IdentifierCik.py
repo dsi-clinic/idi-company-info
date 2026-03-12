@@ -3,10 +3,15 @@
 # Standard library imports
 from typing import Any
 
+# Third party imports
+import pandas as pd
+
 # Application imports
 from idi_company_info.processors.identifier import IdentifierPipeline
 
+
 class IdentifierCik(IdentifierPipeline):
+    """Processes CIK identifiers through the PermID entity search pipeline."""
 
     @property
     def identifier_type(self) -> str:
@@ -17,7 +22,7 @@ class IdentifierCik(IdentifierPipeline):
         """
         return "cik"
 
-    def _extract_filter_parquet_cik(self, df):
+    def _extract_filter_parquet_cik(self, df: pd.DataFrame) -> dict[str, list[str]]:
         """Extract investor_name and investor_cik pairs (CIK mode).
 
         Args:
@@ -56,7 +61,6 @@ class IdentifierCik(IdentifierPipeline):
         Returns:
             A dictionary with investor_name as key and a list of investor_cik as value.
         """
-
         df = self.read_parquet(
             self.file_paths.input_file, required_columns=["investor_name", "investor_cik"]
         )
@@ -67,6 +71,7 @@ class IdentifierCik(IdentifierPipeline):
 
     def _build_query_params(self, identifier: str) -> dict[str, Any]:
         """Build the query parameters.
+
         Args:
             identifier: The identifier.
 

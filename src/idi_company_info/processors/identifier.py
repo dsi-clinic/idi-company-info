@@ -1,11 +1,12 @@
 """Processes identifiers for company information."""
 
 # Standard library imports
-import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 # Third party imports
 import pandas as pd
@@ -22,7 +23,11 @@ from idi_company_info.common.buffer import Buffer
 from idi_company_info.common.failures import FailureClassifier, FailureRegistry
 from idi_company_info.common.logs import get_logger
 from idi_company_info.common.storage import load_json, save_json
-from idi_company_info.processors.permid_retriever import PermidRetriever, EntitySearchRetriever, RecordMatchRetriever
+from idi_company_info.processors.permid_retriever import (
+    EntitySearchRetriever,
+    PermidRetriever,
+    RecordMatchRetriever,
+)
 from idi_company_info.processors.types import (
     ApiCredentials,
     BatchConfig,
@@ -32,9 +37,13 @@ from idi_company_info.processors.types import (
     QueryType,
 )
 
+_HTTP_OK = 200
+
 
 @dataclass
 class ApiClients:
+    """Grouping of all API client instances used by the pipeline."""
+
     entity_search: LsegEntitySearch
     record_match: LsegRecordMatch
     entity_lookup: LSEGEntityLookup
@@ -51,7 +60,7 @@ class IdentifierPipeline(ABC):
         api_credentials: ApiCredentials,
         query_type: QueryType = QueryType.ENTITY_SEARCH,
         match_score_threshold: int = 1,
-    ):
+    ) -> None:
         """Initialize the Identifier.
 
         Args:
@@ -96,7 +105,7 @@ class IdentifierPipeline(ABC):
             self.file_paths.failure_file or "",
         ):
             if path and not path.startswith("s3://"):
-                os.makedirs(os.path.dirname(path), exist_ok=True)
+                Path(path).parent.mkdir(parents=True, exist_ok=True)
 
     def _create_permid_retriever(
         self, query_type: QueryType, match_score_threshold: int = 1
@@ -106,6 +115,7 @@ class IdentifierPipeline(ABC):
         Args:
             query_type: The query type.
             match_score_threshold: The match score threshold.
+
         Returns:
             The PermID retriever.
         """
@@ -373,8 +383,7 @@ class IdentifierPipeline(ABC):
         error_msg: str = "API error for entity %s with %s: %s",
         no_match_msg: str = "No data found for entity %s with %s",
     ) -> tuple[bool, Any]:
-        """
-        Parse API response and handle success/failure logging.
+        """Parse API response and handle success/failure logging.
 
         Args:
             response: The API response.
@@ -389,7 +398,7 @@ class IdentifierPipeline(ABC):
                 success: True if the API response is successful, False otherwise.
                 data: The data from the API response.
         """
-        if response.get("status_code") != 200:
+        if response.get("status_code") != _HTTP_OK:
             self.logger.error(error_msg, entity_name, identifier, response.get("error"))
             return False, None
 
@@ -479,7 +488,7 @@ class IdentifierPipeline(ABC):
             domiciled_in=self._query_geonames_location(response.get("isDomiciledIn")),
             url=response.get("hasURL"),
             activity_status=response.get("hasActivityStatus"),
-            last_processed=datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S"),
+            last_processed=datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
         )
         return company_info
 
@@ -496,7 +505,7 @@ class IdentifierPipeline(ABC):
             return None
 
         response = self.api_clients.geonames_api.query_endpoint(url)
-        if response.get("status_code") == 200:
+        if response.get("status_code") == _HTTP_OK:
             return (
                 response.get("data").get("name")
                 or response.get("data").get("asciiName")
@@ -569,9 +578,8 @@ class IdentifierPipeline(ABC):
         """
         save_json(self.file_paths.result_file, company_info)
 
-    def run(self):
+    def run(self) -> None:
         """Run the identifier pipeline."""
-
         # Load identifier data
         identifier_data = self.load_data()
 

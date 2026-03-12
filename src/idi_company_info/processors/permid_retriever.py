@@ -7,11 +7,15 @@ from collections.abc import Callable
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Protocol
 
-from idi_company_info.common.buffer import Buffer
+# Third party imports
+import pandas as pd
 
 # Application imports
-from idi_company_info.common.failures import FailureClassifier, FailureType
+from idi_company_info.common.buffer import Buffer
+from idi_company_info.common.failures import FailureClassifier, FailureRegistry, FailureType
 from idi_company_info.common.logs import get_logger
+
+_HTTP_OK = 200
 
 if TYPE_CHECKING:
     from idi_company_info.processors.identifier import (
@@ -20,9 +24,6 @@ if TYPE_CHECKING:
         BatchStats,
         FilePaths,
     )
-
-# Third party imports
-import pandas as pd
 
 
 class EntitySearchContext(Protocol):
@@ -34,7 +35,7 @@ class EntitySearchContext(Protocol):
         ...
 
     @property
-    def failure_registry(self):
+    def failure_registry(self) -> "FailureRegistry | None":
         """Optional failure registry for do-not-retry list."""
         ...
 
@@ -72,7 +73,7 @@ class EntitySearchContext(Protocol):
 class PermidRetriever(ABC):
     """Strategy for retrieving PermIDs. Produces unified {identifier: [permid, ...]} format."""
 
-    def __init__(self, context: EntitySearchContext, match_score_threshold: int = 1):
+    def __init__(self, context: EntitySearchContext, match_score_threshold: int = 1) -> None:
         """Initialize the PermidRetriever."""
         self._context = context
         self._match_score_threshold = match_score_threshold
@@ -344,7 +345,7 @@ class RecordMatchRetriever(PermidRetriever):
         try:
             self.logger.info("Submitted %d record(s) to Record Match API", len(records))
             response = self._context.api_clients.record_match.query_endpoint(csv_data)
-            if response["status_code"] == 200:
+            if response["status_code"] == _HTTP_OK:
                 full_response = response.get("data", {}).get("outputContentResponse", [])
                 filtered_response = self._filter_record_match_response(full_response)
 

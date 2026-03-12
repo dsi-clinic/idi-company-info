@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Pytest configuration file
-"""
+"""Pytest configuration file."""
 
 import sys
 from pathlib import Path

@@ -19,7 +19,8 @@ def _empty_for_return_type(return_type: str) -> dict | list:
 
 
 def load_json(file_path: str, return_type: str = "dict") -> dict | list:
-    """Loads a JSON file from the given path.
+    """Load a JSON file from the given path.
+
     Supports local paths and s3:// URLs.
     Returns empty dict/list if file does not exist; raises on other errors.
     """
@@ -37,7 +38,7 @@ def load_json(file_path: str, return_type: str = "dict") -> dict | list:
 
 
 def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
-    """Saves a JSON file to the given path.
+    """Save a JSON file to the given path.
 
     Efficient writing: https://github.com/piskvorky/smart_open/blob/develop/howto.md#how-to-write-to-s3-efficiently
 
@@ -46,6 +47,7 @@ def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
     Args:
         file_path: The path to the JSON file.
         data: The JSON data to save to the file as a dictionary or list.
+        mode: File open mode (e.g. "w" for write, "a" for append). S3 always overwrites.
     """
     if "s3://" in file_path:
         with tempfile.NamedTemporaryFile() as tmp:

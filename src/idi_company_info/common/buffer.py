@@ -10,7 +10,7 @@ from idi_company_info.common.storage import load_json, save_json
 class Buffer:
     """PermidBuffer for storing permid data in a sync buffer."""
 
-    def __init__(self, file_path: str, buffer_size: int = 500, mode: str = "dict"):
+    def __init__(self, file_path: str, buffer_size: int = 500, mode: str = "dict") -> None:
         """Initialize the PermidBuffer.
 
         Args:

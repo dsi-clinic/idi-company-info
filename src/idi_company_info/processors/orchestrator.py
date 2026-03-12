@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Pipeline Orchestrator - Runs the identifier processing pipeline for a specified input file.
+"""Pipeline Orchestrator - Runs the identifier processing pipeline for a specified input file.
 
 Supports three identifier types:
   cik    — CIK-based Entity Search (IdentifierCik)
@@ -19,8 +18,8 @@ from datetime import datetime
 
 from idi_company_info.common.logs import get_logger
 from idi_company_info.processors.identifier import IdentifierPipeline
-from idi_company_info.processors.types import ApiCredentials, BatchConfig, FilePaths
 from idi_company_info.processors.registry import IDENTIFIER_REGISTRY, IdentifierType
+from idi_company_info.processors.types import ApiCredentials, BatchConfig, FilePaths
 
 
 @dataclass

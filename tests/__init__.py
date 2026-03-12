@@ -1,4 +1,2 @@
 #!/usr/bin/env python3
-"""
-Tests package for idi-company-info
-"""
+"""Tests package for idi-company-info."""

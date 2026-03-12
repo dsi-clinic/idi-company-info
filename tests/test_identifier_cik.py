@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.processors.IdentifierCik
-"""
+"""Unit tests for idi_company_info.processors.IdentifierCik."""
 
 from unittest.mock import MagicMock, patch
 
@@ -12,7 +10,7 @@ from idi_company_info.processors.IdentifierCik import IdentifierCik
 
 def make_cik_instance():
     """Create an IdentifierCik with mocked dependencies."""
-    with patch("idi_company_info.processors.identifier.os.makedirs"):
+    with patch("idi_company_info.processors.identifier.Path"):
         with patch("idi_company_info.processors.identifier.FailureRegistry"):
             instance = IdentifierCik.__new__(IdentifierCik)
             instance.logger = MagicMock()

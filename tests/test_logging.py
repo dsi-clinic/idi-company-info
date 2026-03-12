@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.common.logs
-"""
+"""Unit tests for idi_company_info.common.logs."""
 
 import logging
 from unittest.mock import ANY, MagicMock, patch

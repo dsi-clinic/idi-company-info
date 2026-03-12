@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.common.storage
-"""
+"""Unit tests for idi_company_info.common.storage."""
 
 import io
 import json

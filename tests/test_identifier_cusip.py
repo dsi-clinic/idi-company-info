@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.processors.IdentifierCusip
-"""
+"""Unit tests for idi_company_info.processors.IdentifierCusip."""
 
 from unittest.mock import MagicMock
 

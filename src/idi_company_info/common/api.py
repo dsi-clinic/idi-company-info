@@ -4,7 +4,6 @@
 import logging
 from abc import ABC, abstractmethod
 from functools import cached_property
-import logging
 from typing import Any, Literal
 
 # Third party imports
@@ -25,14 +24,12 @@ class ApiClient(ABC):
     RETRY_STATUS_FORCELIST: list[int] = [429, 500, 502, 503, 504]
     USER_AGENT: str = "idi-company-info"
 
-    def __init__(self, api_key: str, max_retries: int = DEFAULT_MAX_RETRIES):
-        """
-        Initialize the ApiClient.
+    def __init__(self, api_key: str, max_retries: int = DEFAULT_MAX_RETRIES) -> None:
+        """Initialize the ApiClient.
 
         Args:
             api_key: The API key.
             max_retries: The maximum number of retries.
-            logger: The logger to use.
         """
         self.api_key: str = api_key
         self.max_retries: int = max_retries if max_retries is not None else self.DEFAULT_MAX_RETRIES
@@ -40,8 +37,7 @@ class ApiClient(ABC):
 
     @cached_property
     def session(self) -> requests.Session:
-        """
-        Create a requests Session with retry strategy.
+        """Create a requests Session with retry strategy.
 
         Returns:
             Configured requests.Session with retry logic
@@ -62,7 +58,9 @@ class ApiClient(ABC):
 
         return session
 
-    def get(self, url: str, params: dict = None, headers: dict = None, **kwargs: Any) -> requests.Response:
+    def get(
+        self, url: str, params: dict = None, headers: dict = None, **kwargs
+    ) -> requests.Response:
         """Get a resource from the API.
 
         Args:
@@ -75,17 +73,13 @@ class ApiClient(ABC):
             The response from the API.
         """
         kwargs.setdefault("timeout", self.REQUEST_TIMEOUT)
-        response = self.session.get(
-            url,
-            params=params,
-            headers=headers,
-            **kwargs
-        )
+        response = self.session.get(url, params=params, headers=headers, **kwargs)
         response.raise_for_status()
         return response
 
-
-    def post(self, url: str, data: str | dict = None, headers: dict = None, **kwargs: Any) -> requests.Response:
+    def post(
+        self, url: str, data: str | dict = None, headers: dict = None, **kwargs
+    ) -> requests.Response:
         """Post a resource to the API.
 
         Args:
@@ -98,18 +92,18 @@ class ApiClient(ABC):
             The response from the API.
         """
         kwargs.setdefault("timeout", self.REQUEST_TIMEOUT)
-        response = self.session.post(
-            url,
-            headers=headers,
-            data=data,
-            **kwargs
-        )
+        response = self.session.post(url, headers=headers, data=data, **kwargs)
         response.raise_for_status()
         return response
 
-
-    def _query_with_error_handling(self, url: str, data: str | dict = None, params: dict = None,
-                                   headers: dict = None, method: Literal["get", "post"] = "get") -> dict[str, Any]:
+    def _query_with_error_handling(
+        self,
+        url: str,
+        data: str | dict = None,
+        params: dict = None,
+        headers: dict = None,
+        method: Literal["get", "post"] = "get",
+    ) -> dict[str, Any]:
         """Query an endpoint with error handling.
 
         Args:
@@ -124,7 +118,11 @@ class ApiClient(ABC):
         """
         response, error = None, None
         try:
-            response = self.get(url=url, params=params, headers=headers) if method == "get" else self.post(url=url, data=data, headers=headers)
+            response = (
+                self.get(url=url, params=params, headers=headers)
+                if method == "get"
+                else self.post(url=url, data=data, headers=headers)
+            )
 
         except requests.exceptions.RequestException as e:
             error = f"Error querying {url}: {e}"
@@ -232,7 +230,7 @@ class GeonamesApi(ApiClient):
 
     GEONAMES_API_URL = "http://api.geonames.org/getJSON"
 
-    def __init__(self, api_key: str, geonames_user: str):
+    def __init__(self, api_key: str, geonames_user: str) -> None:
         """Initialize the GeonamesApi.
 
         Args:
@@ -246,7 +244,10 @@ class GeonamesApi(ApiClient):
         """Query the Geonames API.
 
         Args:
-            params: The parameters to pass to the API.
+            geoname_url: The Geonames URL to look up.
+
+        Returns:
+            The data from the API.
         """
         # Extract geoname ID from URL (e.g., http://sws.geonames.org/6252001/)
         geoname_id = geoname_url.rstrip("/").split("/")[-1]

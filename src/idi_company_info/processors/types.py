@@ -3,11 +3,12 @@
 # Standard library imports
 from dataclasses import dataclass
 from enum import Enum, StrEnum
-import pathlib
 
 
 @dataclass
 class FilePaths:
+    """File paths for pipeline input and output."""
+
     input_file: str
     result_file: str
     permid_file: str
@@ -16,6 +17,8 @@ class FilePaths:
 
 @dataclass
 class BatchConfig:
+    """Configuration for batch processing behaviour."""
+
     batch_size: int = 2450
     buffer_size: int = 500
     threshold_days: int = 30
@@ -23,12 +26,16 @@ class BatchConfig:
 
 @dataclass
 class ApiCredentials:
+    """API credentials required by pipeline clients."""
+
     api_key: str
     geonames_user: str
 
 
 @dataclass
 class CompanyInfo:
+    """Resolved company information record written to the result buffer."""
+
     investor_name: str | None
     original_entity_name: str
     identifier: str
@@ -50,6 +57,8 @@ class CompanyInfo:
 
 @dataclass
 class BatchStats:
+    """Counters accumulated during a single pipeline run for reporting."""
+
     total_entities: int = 0
     total_records: int = 0
     total_ids: int = 0
@@ -61,6 +70,8 @@ class BatchStats:
 
 
 class QueryType(StrEnum):
+    """Strategy used to look up PermIDs for an identifier batch."""
+
     ENTITY_SEARCH = "entity_search"
     RECORD_MATCH = "record_match"
 

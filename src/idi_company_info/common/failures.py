@@ -21,6 +21,13 @@ class FailureType(StrEnum):
     RATE_LIMIT = "rate_limit"  # 429
 
 
+_HTTP_RATE_LIMIT = 429
+_HTTP_OK = 200
+_HTTP_CLIENT_ERROR_MIN = 400
+_HTTP_SERVER_ERROR_MIN = 500
+_MIN_ENTRY_LEN = 2
+
+
 class FailureClassifier:
     """Classifies failures as retryable or permanent."""
 
@@ -63,13 +70,13 @@ class FailureClassifier:
         if has_error or status_code is None:
             return FailureType.API_ERROR
 
-        if status_code == 429:
+        if status_code == _HTTP_RATE_LIMIT:
             return FailureType.RATE_LIMIT
 
-        if status_code == 200 and empty_data:
+        if status_code == _HTTP_OK and empty_data:
             return FailureType.NO_PERMID if category == "permid" else FailureType.NO_COMPANY_INFO
 
-        if 400 <= status_code < 500:
+        if _HTTP_CLIENT_ERROR_MIN <= status_code < _HTTP_SERVER_ERROR_MIN:
             return FailureType.NO_PERMID if category == "permid" else FailureType.NO_COMPANY_INFO
 
         return FailureType.API_ERROR
@@ -78,7 +85,7 @@ class FailureClassifier:
 class FailureRegistry:
     """Persists permanent failures to avoid retrying entities that will always fail."""
 
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: str) -> None:
         """Initialize the FailureRegistry.
 
         Args:
@@ -108,7 +115,7 @@ class FailureRegistry:
         entries_data = data.get("entries", [])
         reasons_data = data.get("reasons", {})
 
-        self._entries = {tuple(e) for e in entries_data if len(e) >= 2}
+        self._entries = {tuple(e) for e in entries_data if len(e) >= _MIN_ENTRY_LEN}
         self._reasons = {}
         for entry in self._entries:
             key = f"{entry[0]} {entry[1]}"

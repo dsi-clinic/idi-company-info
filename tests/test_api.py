@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.common.api
-"""
+"""Unit tests for idi_company_info.common.api."""
 
 from unittest.mock import MagicMock, patch
 
