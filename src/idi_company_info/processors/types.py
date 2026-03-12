@@ -2,7 +2,8 @@
 
 # Standard library imports
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum
+import pathlib
 
 
 @dataclass
@@ -62,3 +63,13 @@ class BatchStats:
 class QueryType(StrEnum):
     ENTITY_SEARCH = "entity_search"
     RECORD_MATCH = "record_match"
+
+
+class StageStatus(Enum):
+    """Execution status for pipeline stages."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED = "skipped"

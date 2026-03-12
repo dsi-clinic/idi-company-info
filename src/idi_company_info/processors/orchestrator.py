@@ -16,31 +16,11 @@ import pathlib
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from enum import Enum
 
 from idi_company_info.common.logs import get_logger
 from idi_company_info.processors.identifier import IdentifierPipeline
-from idi_company_info.processors.types import ApiCredentials, BatchConfig, FilePaths, QueryType
-from idi_company_info.processors.registry import IDENTIFIER_REGISTRY, IdentifierSpec, IdentifierType
-
-# ---------------------------------------------------------------------------
-# Status
-# ---------------------------------------------------------------------------
-
-
-class StageStatus(Enum):
-    """Execution status for pipeline stages."""
-
-    PENDING = "pending"
-    RUNNING = "running"
-    SUCCESS = "success"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
+from idi_company_info.processors.types import ApiCredentials, BatchConfig, FilePaths
+from idi_company_info.processors.registry import IDENTIFIER_REGISTRY, IdentifierType
 
 
 @dataclass
@@ -56,11 +36,6 @@ class OrchestratorConfig:
     buffer_size: int = 500
     threshold_days: int | None = None
     match_score_threshold: int = 1
-
-
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
 
 
 class IdentifierFactory:
@@ -122,11 +97,6 @@ class IdentifierFactory:
             query_type=spec.query_type,
             match_score_threshold=config.match_score_threshold,
         )
-
-
-# ---------------------------------------------------------------------------
-# Orchestrator
-# ---------------------------------------------------------------------------
 
 
 class PipelineOrchestrator:
@@ -195,11 +165,6 @@ class PipelineOrchestrator:
         elapsed = datetime.now() - start_time
         self._log_banner(f"Pipeline completed successfully in {elapsed}")
         return True
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 
 def get_args() -> argparse.Namespace:

@@ -4,12 +4,8 @@
 import logging
 from abc import ABC, abstractmethod
 from functools import cached_property
-<<<<<<< HEAD
-from typing import Any
-=======
 import logging
 from typing import Any, Literal
->>>>>>> 6fda0ecb68670daecab313f9a22a493ebd8940f3
 
 # Third party imports
 import requests

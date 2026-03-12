@@ -4,7 +4,7 @@
 import os
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 # Third party imports
@@ -479,7 +479,7 @@ class IdentifierPipeline(ABC):
             domiciled_in=self._query_geonames_location(response.get("isDomiciledIn")),
             url=response.get("hasURL"),
             activity_status=response.get("hasActivityStatus"),
-            last_processed=datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
+            last_processed=datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S"),
         )
         return company_info
 
