@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.processors.IdentifierCusip."""
+"""Unit tests for idi_company_info.processors.identifier_cusip."""
 
 from unittest.mock import MagicMock
 
 import pandas as pd
 
-from idi_company_info.processors.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.identifier_cusip import IdentifierCusip
 
 
 def make_cusip_instance():

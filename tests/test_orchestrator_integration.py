@@ -20,8 +20,8 @@ from idi_company_info.common.api import (
     LsegRecordMatch,
 )
 from idi_company_info.processors.factory import IdentifierFactory
-from idi_company_info.processors.IdentifierCik import IdentifierCik
-from idi_company_info.processors.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.identifier_cik import IdentifierCik
+from idi_company_info.processors.identifier_cusip import IdentifierCusip
 from idi_company_info.processors.orchestrator import PipelineOrchestrator
 from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
 from idi_company_info.processors.types import IdentifierType, OrchestratorConfig, QueryType

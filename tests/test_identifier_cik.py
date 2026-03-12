@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.processors.IdentifierCik."""
+"""Unit tests for idi_company_info.processors.identifier_cik."""
 
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from idi_company_info.processors.IdentifierCik import IdentifierCik
+from idi_company_info.processors.identifier_cik import IdentifierCik
 
 
 def make_cik_instance():
