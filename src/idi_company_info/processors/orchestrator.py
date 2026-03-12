@@ -21,7 +21,7 @@ from typing import Any
 
 from idi_company_info.common.logs import get_logger
 from idi_company_info.processors.identifier import (
-    Identifier,
+    IdentifierPipeline,
     FilePaths,
     BatchConfig,
     ApiCredentials,
@@ -63,7 +63,7 @@ class IdentifierSpec:
     Adding a new type requires only a new entry in IDENTIFIER_REGISTRY —
     no other code needs to change.
     """
-    cls: type[Identifier]
+    cls: type[IdentifierPipeline]
     query_type: QueryType
     permid_filename: str
     result_filename: str
@@ -125,22 +125,22 @@ class OrchestratorConfig:
 # ---------------------------------------------------------------------------
 
 class IdentifierFactory:
-    """Builds a configured Identifier instance from an OrchestratorConfig.
+    """Builds a configured IdentifierPipeline instance from an OrchestratorConfig.
 
     Single responsibility: translate orchestrator-level config into the
-    dataclasses expected by the Identifier base class, then instantiate the
+    dataclasses expected by the IdentifierPipeline base class, then instantiate the
     correct subclass.
     """
 
     @staticmethod
-    def build(config: OrchestratorConfig) -> Identifier:
-        """Build and return the appropriate Identifier for the given config.
+    def build(config: OrchestratorConfig) -> IdentifierPipeline:
+        """Build and return the appropriate IdentifierPipeline for the given config.
 
         Args:
             config: Orchestrator configuration.
 
         Returns:
-            A fully configured Identifier subclass instance.
+            A fully configured IdentifierPipeline subclass instance.
 
         Raises:
             KeyError: If config.identifier_type is not in IDENTIFIER_REGISTRY.

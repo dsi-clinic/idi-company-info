@@ -4,9 +4,9 @@
 from typing import Any
 
 # Application imports
-from idi_company_info.processors.identifier import Identifier
+from idi_company_info.processors.identifier import IdentifierPipeline
 
-class IdentifierCik(Identifier):
+class IdentifierCik(IdentifierPipeline):
 
     @property
     def identifier_type(self) -> str:

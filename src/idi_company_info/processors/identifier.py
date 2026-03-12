@@ -88,7 +88,7 @@ class QueryType(StrEnum):
     RECORD_MATCH = "record_match"
 
 
-class Identifier(ABC):
+class IdentifierPipeline(ABC):
     """Base class for identifier types."""
 
     def __init__(self, file_paths: FilePaths, batch_config: BatchConfig, api_credentials: ApiCredentials, query_type: QueryType = QueryType.ENTITY_SEARCH, match_score_threshold: int = 1):
@@ -122,7 +122,7 @@ class Identifier(ABC):
         self.query_type = query_type
         self.permid_retriever: PermidRetriever = self._create_permid_retriever(query_type, match_score_threshold)  # Strategy pattern
 
-        self.logger = get_logger("Identifier")
+        self.logger = get_logger("IdentifierPipeline")
 
     def _init_dirs(self) -> None:
         """Initialize the directories."""

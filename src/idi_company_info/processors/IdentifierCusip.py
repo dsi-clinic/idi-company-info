@@ -5,10 +5,10 @@ import re
 from typing import Any
 
 # Application imports
-from idi_company_info.processors.identifier import Identifier, QueryType
+from idi_company_info.processors.identifier import IdentifierPipeline, QueryType
 
 
-class IdentifierCusip(Identifier):
+class IdentifierCusip(IdentifierPipeline):
     """Processes CUSIP identifiers for company information."""
     EXCHANGE_TO_MIC = {
         "SS": "XSTO",  # Stockholm Stock Exchange
