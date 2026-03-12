@@ -1,26 +1,17 @@
 """Builds configured IdentifierPipeline instances from a top-level OrchestratorConfig."""
 
+# Standard library imports
 import pathlib
-from dataclasses import dataclass
 
+# Application imports
 from idi_company_info.processors.identifier import IdentifierPipeline
-from idi_company_info.processors.registry import IDENTIFIER_REGISTRY, IdentifierType
-from idi_company_info.processors.types import ApiCredentials, BatchConfig, FilePaths
-
-
-@dataclass
-class OrchestratorConfig:
-    """Configuration for a single orchestrator run."""
-
-    input_file: str | pathlib.Path
-    output_dir: str | pathlib.Path
-    identifier_type: IdentifierType
-    api_key: str
-    geonames_user: str
-    batch_size: int = 2450
-    buffer_size: int = 500
-    threshold_days: int | None = None
-    match_score_threshold: int = 1
+from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
+from idi_company_info.processors.types import (
+    ApiCredentials,
+    BatchConfig,
+    FilePaths,
+    OrchestratorConfig,
+)
 
 
 class IdentifierFactory:

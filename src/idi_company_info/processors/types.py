@@ -1,6 +1,7 @@
 """Shared dataclasses and enums for the identifier processing pipeline."""
 
 # Standard library imports
+import pathlib
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 
@@ -69,6 +70,15 @@ class BatchStats:
     duplicates_ids_removed: int = 0
 
 
+class IdentifierType(StrEnum):
+    """Supported identifier types."""
+
+    CIK = "cik"
+    CIK_MATCH = "cik-match"
+    CUSIP = "cusip"
+    TICKER = "ticker"
+
+
 class QueryType(StrEnum):
     """Strategy used to look up PermIDs for an identifier batch."""
 
@@ -84,3 +94,18 @@ class StageStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+@dataclass
+class OrchestratorConfig:
+    """Configuration for a single orchestrator run."""
+
+    input_file: str | pathlib.Path
+    output_dir: str | pathlib.Path
+    identifier_type: IdentifierType
+    api_key: str
+    geonames_user: str
+    batch_size: int = 2450
+    buffer_size: int = 500
+    threshold_days: int | None = None
+    match_score_threshold: int = 1

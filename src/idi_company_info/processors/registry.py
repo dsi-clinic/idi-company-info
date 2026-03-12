@@ -2,23 +2,13 @@
 
 # Standard library imports
 from dataclasses import dataclass
-from enum import StrEnum
 
 from idi_company_info.processors.identifier import IdentifierPipeline
 from idi_company_info.processors.IdentifierCik import IdentifierCik
 from idi_company_info.processors.IdentifierCusip import IdentifierCusip
 
 # Application imports
-from idi_company_info.processors.types import QueryType
-
-
-class IdentifierType(StrEnum):
-    """Supported identifier types."""
-
-    CIK = "cik"
-    CIK_MATCH = "cik-match"
-    CUSIP = "cusip"
-    TICKER = "ticker"
+from idi_company_info.processors.types import IdentifierType, QueryType
 
 
 @dataclass

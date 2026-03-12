@@ -17,8 +17,8 @@ from dataclasses import asdict
 from datetime import datetime
 
 from idi_company_info.common.logs import get_logger
-from idi_company_info.processors.factory import IdentifierFactory, OrchestratorConfig
-from idi_company_info.processors.registry import IdentifierType
+from idi_company_info.processors.factory import IdentifierFactory
+from idi_company_info.processors.types import IdentifierType, OrchestratorConfig
 
 
 class PipelineOrchestrator:
