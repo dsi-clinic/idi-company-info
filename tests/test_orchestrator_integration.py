@@ -19,16 +19,12 @@ from idi_company_info.common.api import (
     LsegEntitySearch,
     LsegRecordMatch,
 )
+from idi_company_info.processors.factory import IdentifierFactory, OrchestratorConfig
 from idi_company_info.processors.identifier import QueryType
 from idi_company_info.processors.IdentifierCik import IdentifierCik
 from idi_company_info.processors.IdentifierCusip import IdentifierCusip
-from idi_company_info.processors.orchestrator import (
-    IDENTIFIER_REGISTRY,
-    IdentifierFactory,
-    IdentifierType,
-    OrchestratorConfig,
-    PipelineOrchestrator,
-)
+from idi_company_info.processors.orchestrator import PipelineOrchestrator
+from idi_company_info.processors.registry import IDENTIFIER_REGISTRY, IdentifierType
 
 # ---------------------------------------------------------------------------
 # Shared mock API responses
