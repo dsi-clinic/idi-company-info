@@ -61,7 +61,7 @@ class TestGetUnprocessedEntities:
     def test_excludes_failure_registry_entries(self):
         """Entities in the failure registry are excluded."""
         failure_registry = MagicMock()
-        failure_registry.contains.side_effect = lambda name, id_: (name, id_) == ("Firm A", "id1")
+        failure_registry.__contains__ = lambda self, key: key == ("Firm A", "id1")
 
         bp = BatchProcessing(result_data=[], failure_registry=failure_registry)
         entity_data = {"Firm A": ["id1", "id2"]}
