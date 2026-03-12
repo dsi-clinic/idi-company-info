@@ -83,7 +83,7 @@ class BatchProcessing:
         result = [
             (entity_name, identifier)
             for entity_name, identifier in entities
-            if not self.failure_registry.contains(entity_name, identifier)
+            if (entity_name, identifier) not in self.failure_registry
         ]
 
         excluded = before_count - len(result)

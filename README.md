@@ -160,7 +160,25 @@ orchestrator.py
                           └── storage.py   — JSON load/save helpers
 ```
 
-**Adding a new identifier type**: add one entry to `IDENTIFIER_REGISTRY` in `orchestrator.py` in addtion to creating a new `Identifier` subclass.
+**Adding a new identifier type**: add one entry to `IDENTIFIER_REGISTRY` in `registry.py` in addition to creating a new `Identifier` subclass.
+
+### PermidRetriever vs IdentifierPipeline — division of responsibility
+
+`PermidRetriever` (and its subclasses in `permid_retriever.py`) is a strategy that is for **Stage 1 only**: fetching PermID URLs from the API, writing raw PermID results to the intermediate buffer, and tracking per-entity failures. It receives a reference to the `IdentifierPipeline` instance (its context) so it can access shared state like file paths, API clients, and the failure registry — but it does not touch the company info buffer or produce final output records.
+
+`IdentifierPipeline` (`identifier.py`) is for **Stage 2 and orchestration**: it calls `PermidRetriever.retrieve()` for Stage 1, then drives the company info lookup loop (`generate_company_info`), parses raw API responses into `CompanyInfo` dataclasses, writes results to the company info buffer, and prints the final batch stats.
+
+Since there is only one way to search for company info a separate strategy class is not needed and the functionality is implemented in the `IdentifierPipeline`.
+
+Both stages interact with `Buffer`, which can make the boundary feel blurry when reading the two files. A quick mental model:
+
+| Concern | Owner |
+|---------|-------|
+| PermID API calls + raw PermID buffer writes | `PermidRetriever` |
+| Company info API calls + result buffer writes | `IdentifierPipeline` |
+| Parsing raw PermID response → PermID URL list | `IdentifierPipeline._parse_permid_entities()` (called by retriever via context) |
+| Parsing company info response → `CompanyInfo` | `IdentifierPipeline._parse_company_info()` |
+| Failure registry updates | Both (PermID failures in retriever; company info failures in identifier) |
 
 **Batch size behaviour**:
 - PermID stage: processes up to `batch_size` entities per run; already-resolved entities are skipped

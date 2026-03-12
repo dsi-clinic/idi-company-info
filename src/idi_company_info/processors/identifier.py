@@ -3,11 +3,9 @@
 # Standard library imports
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
-from enum import StrEnum
-from typing import Any
+from datetime import datetime
+from typing import Any, Callable
 
 # Third party imports
 import pandas as pd
@@ -24,32 +22,15 @@ from idi_company_info.common.buffer import Buffer
 from idi_company_info.common.failures import FailureClassifier, FailureRegistry
 from idi_company_info.common.logs import get_logger
 from idi_company_info.common.storage import load_json, save_json
-from idi_company_info.processors.permid_retriever import (
-    EntitySearchRetriever,
-    PermidRetriever,
-    RecordMatchRetriever,
+from idi_company_info.processors.permid_retriever import PermidRetriever, EntitySearchRetriever, RecordMatchRetriever
+from idi_company_info.processors.types import (
+    ApiCredentials,
+    BatchConfig,
+    BatchStats,
+    CompanyInfo,
+    FilePaths,
+    QueryType,
 )
-
-
-@dataclass
-class FilePaths:
-    input_file: str
-    result_file: str
-    permid_file: str
-    failure_file: str = ""
-
-
-@dataclass
-class BatchConfig:
-    batch_size: int = 2450
-    buffer_size: int = 500
-    threshold_days: int = 30
-
-
-@dataclass
-class ApiCredentials:
-    api_key: str
-    geonames_user: str
 
 
 @dataclass
@@ -60,45 +41,7 @@ class ApiClients:
     geonames_api: GeonamesApi
 
 
-@dataclass
-class CompanyInfo:
-    investor_name: str | None
-    original_entity_name: str
-    identifier: str
-    identifier_type: str
-    permid_id: str
-    permid_url: str | None
-    hq_address: str | None
-    registered_address: str | None
-    fax_number: str | None
-    phone_number: str | None
-    lei: str | None
-    founded_date: str | None
-    incorporated_in: str | None
-    domiciled_in: str | None
-    url: str | None
-    activity_status: str | None
-    last_processed: str
-
-
-@dataclass
-class BatchStats:
-    total_entities: int = 0
-    total_records: int = 0
-    total_ids: int = 0
-    total_permids: int = 0
-    total_permid_failed: int = 0
-    total_company_info: int = 0
-    total_company_info_failed: int = 0
-    duplicates_ids_removed: int = 0
-
-
-class QueryType(StrEnum):
-    ENTITY_SEARCH = "entity_search"
-    RECORD_MATCH = "record_match"
-
-
-class Identifier(ABC):
+class IdentifierPipeline(ABC):
     """Base class for identifier types."""
 
     def __init__(
@@ -143,7 +86,7 @@ class Identifier(ABC):
             query_type, match_score_threshold
         )  # Strategy pattern
 
-        self.logger = get_logger("Identifier")
+        self.logger = get_logger("IdentifierPipeline")
 
     def _init_dirs(self) -> None:
         """Initialize the directories. Skip for S3 paths (no local dirs needed)."""

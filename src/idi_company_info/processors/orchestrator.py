@@ -16,18 +16,12 @@ import pathlib
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from enum import Enum, StrEnum
+from enum import Enum
 
 from idi_company_info.common.logs import get_logger
-from idi_company_info.processors.identifier import (
-    ApiCredentials,
-    BatchConfig,
-    FilePaths,
-    Identifier,
-    QueryType,
-)
-from idi_company_info.processors.IdentifierCik import IdentifierCik
-from idi_company_info.processors.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.identifier import IdentifierPipeline
+from idi_company_info.processors.types import ApiCredentials, BatchConfig, FilePaths, QueryType
+from idi_company_info.processors.registry import IDENTIFIER_REGISTRY, IdentifierSpec, IdentifierType
 
 # ---------------------------------------------------------------------------
 # Status
@@ -42,67 +36,6 @@ class StageStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"
-
-
-# ---------------------------------------------------------------------------
-# Identifier type registry
-# ---------------------------------------------------------------------------
-
-
-class IdentifierType(StrEnum):
-    """Supported identifier types."""
-
-    CIK = "cik"
-    CIK_MATCH = "cik-match"
-    CUSIP = "cusip"
-    TICKER = "ticker"
-
-
-@dataclass
-class IdentifierSpec:
-    """Specification for a single identifier type.
-
-    Adding a new type requires only a new entry in IDENTIFIER_REGISTRY —
-    no other code needs to change.
-    """
-
-    cls: type[Identifier]
-    query_type: QueryType
-    permid_filename: str
-    result_filename: str
-    failure_filename: str
-
-
-IDENTIFIER_REGISTRY: dict[IdentifierType, IdentifierSpec] = {
-    IdentifierType.CIK: IdentifierSpec(
-        cls=IdentifierCik,
-        query_type=QueryType.ENTITY_SEARCH,
-        permid_filename="permid_tracking_cik.json",
-        result_filename="company_info_cik.json",
-        failure_filename="failures_cik.json",
-    ),
-    IdentifierType.CUSIP: IdentifierSpec(
-        cls=IdentifierCusip,
-        query_type=QueryType.ENTITY_SEARCH,
-        permid_filename="permid_tracking_cusip.json",
-        result_filename="company_info_cusip.json",
-        failure_filename="failures_cusip.json",
-    ),
-    IdentifierType.CIK_MATCH: IdentifierSpec(
-        cls=IdentifierCik,
-        query_type=QueryType.RECORD_MATCH,
-        permid_filename="permid_tracking_cik_match.json",
-        result_filename="company_info_cik_match.json",
-        failure_filename="failures_cik_match.json",
-    ),
-    IdentifierType.TICKER: IdentifierSpec(
-        cls=IdentifierCusip,
-        query_type=QueryType.RECORD_MATCH,
-        permid_filename="permid_tracking_ticker.json",
-        result_filename="company_info_ticker.json",
-        failure_filename="failures_ticker.json",
-    ),
-}
 
 
 # ---------------------------------------------------------------------------
@@ -131,22 +64,22 @@ class OrchestratorConfig:
 
 
 class IdentifierFactory:
-    """Builds a configured Identifier instance from an OrchestratorConfig.
+    """Builds a configured IdentifierPipeline instance from an OrchestratorConfig.
 
     Single responsibility: translate orchestrator-level config into the
-    dataclasses expected by the Identifier base class, then instantiate the
+    dataclasses expected by the IdentifierPipeline base class, then instantiate the
     correct subclass.
     """
 
     @staticmethod
-    def build(config: OrchestratorConfig) -> Identifier:
-        """Build and return the appropriate Identifier for the given config.
+    def build(config: OrchestratorConfig) -> IdentifierPipeline:
+        """Build and return the appropriate IdentifierPipeline for the given config.
 
         Args:
             config: Orchestrator configuration.
 
         Returns:
-            A fully configured Identifier subclass instance.
+            A fully configured IdentifierPipeline subclass instance.
 
         Raises:
             KeyError: If config.identifier_type is not in IDENTIFIER_REGISTRY.

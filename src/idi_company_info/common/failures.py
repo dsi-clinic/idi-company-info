@@ -138,18 +138,6 @@ class FailureRegistry:
             self._reasons[key] = reason
         self.save()
 
-    def contains(self, entity_name: str, identifier: str) -> bool:
-        """Check if an entity/identifier is in the do-not-retry list.
-
-        Args:
-            entity_name: The entity name.
-            identifier: The identifier.
-
-        Returns:
-            True if the entry should not be retried.
-        """
-        return (entity_name, identifier) in self._entries
-
     def __contains__(self, key: tuple[str, str]) -> bool:
         """Set-like membership check.
 
