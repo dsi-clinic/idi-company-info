@@ -61,41 +61,47 @@ class ApiClient(ABC):
 
         return session
 
-    def get(self, url: str, params: dict = None, headers: dict = None) -> requests.Response:
+    def get(self, url: str, params: dict = None, headers: dict = None, **kwargs: Any) -> requests.Response:
         """Get a resource from the API.
 
         Args:
+            url: The URL to get from.
             params: The parameters to pass to the API.
             headers: The headers to pass to the API.
+            kwargs: Additional keyword arguments to pass to the API.
 
         Returns:
             The response from the API.
         """
+        kwargs.setdefault("timeout", self.REQUEST_TIMEOUT)
         response = self.session.get(
             url,
             params=params,
             headers=headers,
-            timeout=self.REQUEST_TIMEOUT
+            **kwargs
         )
         response.raise_for_status()
         return response
 
 
-    def post(self, url: str, data: str | dict = None, headers: dict = None) -> requests.Response:
+    def post(self, url: str, data: str | dict = None, headers: dict = None, **kwargs: Any) -> requests.Response:
         """Post a resource to the API.
 
         Args:
+            url: The URL to post to.
             data: The data to post to the API.
             headers: The headers to post to the API.
+            kwargs: Additional keyword arguments to pass to the API.
 
         Returns:
             The response from the API.
         """
+        kwargs.setdefault("timeout", self.REQUEST_TIMEOUT)
         response = self.session.post(
             url,
             headers=headers,
             data=data,
-            timeout=self.REQUEST_TIMEOUT
+            **kwargs
         )
         response.raise_for_status()
         return response
