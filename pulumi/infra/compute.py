@@ -108,7 +108,7 @@ processor_asg = aws.autoscaling.Group(
         id=launch_template.id,
         version=launch_template.latest_version,
     ),
-    vpc_zone_identifiers=networking.default_vpc_subnets.ids,
+    vpc_zone_identifiers=[networking.primary_subnet_id],
     min_size=1,
     max_size=1,
     desired_capacity=1,

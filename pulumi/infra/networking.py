@@ -12,6 +12,10 @@ default_vpc_subnets = aws.ec2.get_subnets(
     filters=[aws.ec2.GetSubnetsFilterArgs(name="vpc-id", values=[default_vpc.id])],
 )
 
+# Single subnet used for VPC endpoints and the ASG — keeps all traffic within one AZ
+# and avoids per-AZ endpoint charges for the remaining two AZs (~$43/month saving).
+primary_subnet_id = default_vpc_subnets.ids.apply(lambda ids: ids[0])
+
 # -----------------------------------------------------------------------------
 # Dedicated EC2 Security Group
 # -----------------------------------------------------------------------------
@@ -70,7 +74,7 @@ ssm_endpoint = aws.ec2.VpcEndpoint(
     vpc_id=default_vpc.id,
     service_name=f"com.amazonaws.{config.aws_region}.ssm",
     vpc_endpoint_type="Interface",
-    subnet_ids=default_vpc_subnets.ids,
+    subnet_ids=[primary_subnet_id],
     security_group_ids=[vpc_endpoints_sg.id],
     private_dns_enabled=True,
     tags=config.tags({"Name": f"{config.name_prefix}-endpoint-ssm", "service": "ssm"}),
@@ -81,7 +85,7 @@ ssm_messages_endpoint = aws.ec2.VpcEndpoint(
     vpc_id=default_vpc.id,
     service_name=f"com.amazonaws.{config.aws_region}.ssmmessages",
     vpc_endpoint_type="Interface",
-    subnet_ids=default_vpc_subnets.ids,
+    subnet_ids=[primary_subnet_id],
     security_group_ids=[vpc_endpoints_sg.id],
     private_dns_enabled=True,
     tags=config.tags(
@@ -94,7 +98,7 @@ ec2_messages_endpoint = aws.ec2.VpcEndpoint(
     vpc_id=default_vpc.id,
     service_name=f"com.amazonaws.{config.aws_region}.ec2messages",
     vpc_endpoint_type="Interface",
-    subnet_ids=default_vpc_subnets.ids,
+    subnet_ids=[primary_subnet_id],
     security_group_ids=[vpc_endpoints_sg.id],
     private_dns_enabled=True,
     tags=config.tags(
