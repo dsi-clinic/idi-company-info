@@ -22,6 +22,8 @@ pulumi.export("ec2_sg_id", networking.ec2_sg.id)
 pulumi.export("ec2_sg_name", networking.ec2_sg.name)
 pulumi.export("default_vpc_id", networking.default_vpc.id)
 
+pulumi.export("s3_endpoint_id", networking.s3_endpoint.id)
+
 pulumi.export("ssm_endpoint_id", networking.ssm_endpoint.id)
 pulumi.export("ssm_endpoint_dns_entries", networking.ssm_endpoint.dns_entries)
 pulumi.export("ssm_messages_endpoint_id", networking.ssm_messages_endpoint.id)

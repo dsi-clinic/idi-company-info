@@ -11,6 +11,9 @@ default_vpc = aws.ec2.get_vpc(default=True)
 default_vpc_subnets = aws.ec2.get_subnets(
     filters=[aws.ec2.GetSubnetsFilterArgs(name="vpc-id", values=[default_vpc.id])],
 )
+default_vpc_route_tables = aws.ec2.get_route_tables(
+    filters=[aws.ec2.GetRouteTablesFilterArgs(name="vpc-id", values=[default_vpc.id])],
+)
 
 # Single subnet used for VPC endpoints and the ASG — keeps all traffic within one AZ
 # and avoids per-AZ endpoint charges for the remaining two AZs (~$43/month saving).
@@ -67,7 +70,19 @@ vpc_endpoints_sg = aws.ec2.SecurityGroup(
 )
 
 # -----------------------------------------------------------------------------
-# VPC Endpoints (SSM for Session Manager)
+# VPC Endpoints — S3 (Gateway, free)
+# -----------------------------------------------------------------------------
+s3_endpoint = aws.ec2.VpcEndpoint(
+    "idi-endpoint-s3",
+    vpc_id=default_vpc.id,
+    service_name=f"com.amazonaws.{config.aws_region}.s3",
+    vpc_endpoint_type="Gateway",
+    route_table_ids=default_vpc_route_tables.ids,
+    tags=config.tags({"Name": f"{config.name_prefix}-endpoint-s3", "service": "s3"}),
+)
+
+# -----------------------------------------------------------------------------
+# VPC Endpoints — SSM (Interface, for Session Manager)
 # -----------------------------------------------------------------------------
 ssm_endpoint = aws.ec2.VpcEndpoint(
     "idi-endpoint-ssm",
