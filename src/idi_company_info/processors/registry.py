@@ -2,13 +2,21 @@
 
 # Standard library imports
 from dataclasses import dataclass
-
-from idi_company_info.processors.identifier import IdentifierPipeline
-from idi_company_info.processors.identifier_cik import IdentifierCik
-from idi_company_info.processors.identifier_cusip import IdentifierCusip
+from enum import StrEnum
 
 # Application imports
-from idi_company_info.processors.types import IdentifierType, QueryType
+from idi_company_info.processors.types import QueryType
+from idi_company_info.processors.identifier import IdentifierPipeline
+from idi_company_info.processors.IdentifierCik import IdentifierCik
+from idi_company_info.processors.IdentifierCusip import IdentifierCusip
+
+
+class IdentifierType(StrEnum):
+    """Supported identifier types."""
+    CIK = "cik"
+    CIK_MATCH = "cik-match"
+    CUSIP = "cusip"
+    TICKER = "ticker"
 
 
 @dataclass
@@ -18,7 +26,6 @@ class IdentifierSpec:
     Adding a new type requires only a new entry in IDENTIFIER_REGISTRY —
     no other code needs to change.
     """
-
     cls: type[IdentifierPipeline]
     query_type: QueryType
     permid_filename: str

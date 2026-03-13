@@ -47,11 +47,10 @@ def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
     Args:
         file_path: The path to the JSON file.
         data: The JSON data to save to the file as a dictionary or list.
-        mode: File open mode (e.g. "w" for write, "a" for append). S3 always overwrites.
     """
     if "s3://" in file_path:
         with tempfile.NamedTemporaryFile() as tmp:
-            tp = {"writebuffer": tmp}
+            tp = {'writebuffer': tmp}
             with smart_open.open(file_path, "w", transport_params=tp) as fout:
                 json.dump(data, fout, indent=2)
     else:
