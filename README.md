@@ -4,333 +4,187 @@ Automated pipeline for resolving investor identifiers (CIK, CUSIP, Ticker) to Pe
 
 ## Pipeline Overview
 
-Each run performs two stages back-to-back:
+Each run performs two stages:
 
-1. **PermID Retrieval** — resolve identifiers to PermID URLs
-   - CIK / CUSIP: one Entity Search API call per identifier
-   - CIK Match / Ticker: one Record Match API call per batch of up to 1,000 rows
-   - Entities already resolved in a previous run are skipped (no redundant API calls)
+1. **PermID Retrieval** — resolve identifiers to PermID URLs via Entity Search or Record Match
 2. **Company Info Lookup** — one Entity Lookup API call per PermID, plus optional Geonames calls for country fields
 
-Processing is resumable: if a run is interrupted, the next run picks up where it left off. Stale records can be automatically re-queried via `--threshold-days`.
+Processing is resumable: interrupted runs pick up where they left off. Stale records can be re-queried via `--threshold-days`.
 
 ### Identifier Types
 
-| Type | API strategy | Input columns | Default batch size |
-|------|-------------|--------------|-------------------|
-| `cik` | Entity Search | `investor_name`, `investor_cik` | 2,450 |
-| `cik-match` | Record Match | `investor_name`, `investor_cik` | 2,450 |
-| `cusip` | Entity Search | `issuer_name`, `security_cusip` | 2,450 |
-| `ticker` | Record Match | `issuer_name`, `stock_ticker` | 2,450 |
+| Type | API strategy | Input columns |
+|---|---|---|
+| `cik` | Entity Search | `investor_name`, `investor_cik` |
+| `cik-match` | Record Match | `investor_name`, `investor_cik` |
+| `cusip` | Entity Search | `issuer_name`, `security_cusip` |
+| `ticker` | Record Match | `issuer_name`, `stock_ticker` |
 
 ### Output Layout
 
-Output paths support local directories or S3 URLs (`s3://bucket/path`). Buffered files (permid, result, failures) are written via smart_open.
-
 ```
 {output_dir}/
-  company_info/
-    company_info_cik.json
-    company_info_cik_match.json
-    company_info_cusip.json
-    company_info_ticker.json
-  permid_data/
-    permid_tracking_cik.json
-    permid_tracking_cik_match.json
-    permid_tracking_cusip.json
-    permid_tracking_ticker.json
-  failures/
-    failures_cik.json
-    failures_cik_match.json
-    failures_cusip.json
-    failures_ticker.json
+  company_info/   company_info_{type}.json
+  permid_data/    permid_tracking_{type}.json
+  failures/       failures_{type}.json
 ```
+
+Paths support local directories or S3 URLs (`s3://bucket/path`).
+
+---
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-uv pip install -e .           # Production
-uv pip install -e ".[dev]"    # Development (includes tests)
+uv sync              # Production
+uv sync --all-groups # Development (includes tests)
 ```
 
-### API Credentials
-
-| Credential | Source |
-|-----------|--------|
-| PermID API key | [LSEG Developer Portal](https://developers.lseg.com/en/api-catalog/open-perm-id/permid-entity-search) |
-| Geonames username | [geonames.org](https://www.geonames.org/login) (free) |
+### Credentials
 
 ```bash
 export PERMID_API_KEY='your-key'
 export GEONAMES_USER='your-username'
 ```
 
-### Run the Orchestrator
+| Credential | Source |
+|---|---|
+| PermID API key | [LSEG Developer Portal](https://developers.lseg.com/en/api-catalog/open-perm-id/permid-entity-search) |
+| Geonames username | [geonames.org](https://www.geonames.org/login) (free) |
+
+### Run
 
 ```bash
-# CIK mode (investors, Entity Search)
-python -m idi_company_info.processors.orchestrator \
-  --input-file /path/to/investors.parquet \
+uv run python -m idi_company_info.processors.orchestrator \
+  --input-file path/to/input.parquet \
   --output-directory data/output \
-  --type cik \
-  --batch-size 2450
-
-# CIK Match mode (investors, Record Match) — bulk CIK submission
-python -m idi_company_info.processors.orchestrator \
-  --input-file /path/to/investors.parquet \
-  --output-directory data/output \
-  --type cik-match \
-  --batch-size 2450 \
-  --match-score-threshold 1
-
-# CUSIP mode (securities, Entity Search)
-python -m idi_company_info.processors.orchestrator \
-  --input-file /path/to/securities.parquet \
-  --output-directory data/output \
-  --type cusip \
-  --batch-size 2450
-
-# Ticker mode (securities, Record Match) — manual only
-python -m idi_company_info.processors.orchestrator \
-  --input-file /path/to/securities.parquet \
-  --output-directory data/output \
-  --type ticker \
-  --batch-size 2450 \
-  --match-score-threshold 1
-
-# Re-query records older than 30 days
-python -m idi_company_info.processors.orchestrator \
-  --input-file /path/to/investors.parquet \
-  --output-directory data/output \
-  --type cik \
-  --threshold-days 30
+  --type cik
 ```
 
-### Makefile Shortcuts
-
-```bash
-make install
-make run-cik   INPUT_PARQUET=data/investors.parquet   OUTPUT_DIR=data/output
-make run-cusip INPUT_PARQUET=data/securities.parquet  OUTPUT_DIR=data/output
-make run-ticker INPUT_PARQUET=data/securities.parquet OUTPUT_DIR=data/output
-
-make help   # Full option listing
-```
-
-## CLI Reference
+### CLI Reference
 
 | Flag | Required | Default | Description |
-|------|----------|---------|-------------|
-| `--input-file` | Yes | — | Path to input parquet file (local or s3:// URL) |
-| `--output-directory` | Yes | — | Root directory for output files (local path or s3:// URL) |
-| `--type` | Yes | — | `cik`, `cik-match`, `cusip`, or `ticker` |
+|---|---|---|---|
+| `--input-file` | Yes | — | Local path or `s3://` URL |
+| `--output-directory` | Yes | — | Local path or `s3://` URL |
+| `--type` | Yes | — | `cik`, `cik-match`, `cusip`, `ticker` |
 | `--permid-api-key` | Env/CLI | `$PERMID_API_KEY` | LSEG PermID access token |
-| `--geonames-user` | Env/CLI | `$GEONAMES_USER` | Geonames API username |
-| `--batch-size` | No | `2450` | Max entities (PermID) and max entity-lookups (company info) per run |
-| `--buffer-size` | No | `500` | Write-buffer size before flushing to disk |
-| `--threshold-days` | No | `None` | Re-process records not updated in the last N days |
-| `--match-score-threshold` | No | `1` | Minimum Record Match score (cik-match/ticker only; `1` = 100%) |
+| `--geonames-user` | Env/CLI | `$GEONAMES_USER` | Geonames username |
+| `--batch-size` | No | `2450` | Max entities per run |
+| `--buffer-size` | No | `500` | Write-buffer flush size |
+| `--threshold-days` | No | `None` | Re-process records older than N days |
+| `--match-score-threshold` | No | `1` | Minimum Record Match score (cik-match/ticker only) |
 
-Credentials can be supplied via CLI flags or environment variables; the CLI flag takes priority.
+---
 
 ## Architecture
 
 ```
 orchestrator.py
   └── PipelineOrchestrator.run()
-        └── IdentifierFactory.build()  ← selects class from IDENTIFIER_REGISTRY
-              ├── IdentifierCik        (cik, cik-match)
-              └── IdentifierCusip      (cusip, ticker)
-                    ├── Identifier.run()
-                    │     ├── BatchProcessing.get_unprocessed_entities()
-                    │     ├── BatchProcessing.filter_stale_entities()
-                    │     └── Identifier.process_entities()
-                    │           ├── PermidRetriever.retrieve()   [stage 1]
-                    │           │     ├── EntitySearchRetriever  (cik, cusip)
-                    │           │     └── RecordMatchRetriever   (cik-match, ticker)
-                    │           └── Identifier.generate_company_info()  [stage 2]
-                    └── common/
-                          ├── api.py       — LSEG + Geonames API clients
-                          ├── batch.py     — stale/unprocessed entity tracking
-                          ├── buffer.py    — write-buffering to JSON files
-                          ├── failures.py  — permanent-failure registry
-                          ├── logs.py      — structured logging
-                          └── storage.py   — JSON load/save helpers
+        └── IdentifierFactory.build()   ← selects class from IDENTIFIER_REGISTRY
+              ├── IdentifierCik         (cik, cik-match)
+              └── IdentifierCusip       (cusip, ticker)
+                    └── IdentifierPipeline.run()
+                          ├── BatchProcessing          — unprocessed/stale entity tracking
+                          ├── PermidRetriever          — Stage 1: PermID API calls
+                          │     ├── EntitySearchRetriever   (cik, cusip)
+                          │     └── RecordMatchRetriever    (cik-match, ticker)
+                          └── generate_company_info()  — Stage 2: Entity Lookup + Geonames
 ```
 
-**Adding a new identifier type**: add one entry to `IDENTIFIER_REGISTRY` in `registry.py` in addition to creating a new `Identifier` subclass.
+**Object composition**: `IdentifierFactory.build()` reads the matching `IdentifierSpec` from `IDENTIFIER_REGISTRY`, which bundles the concrete class (`IdentifierCik` or `IdentifierCusip`), the `QueryType`, and all output filenames. `IdentifierFactory` then translates the `OrchestratorConfig` into the three typed dataclasses (`FilePaths`, `BatchConfig`, `ApiCredentials`) and instantiates the class. Inside `IdentifierPipeline.__init__`, the `query_type` drives which `PermidRetriever` strategy is injected: `EntitySearchRetriever` for `cik`/`cusip`, or `RecordMatchRetriever` for `cik-match`/`ticker`. All four API clients are always constructed and held in an `ApiClients` dataclass regardless of type.
 
-### PermidRetriever vs IdentifierPipeline — division of responsibility
+**Adding a new identifier type**: add one entry to `IDENTIFIER_REGISTRY` in `registry.py`. No other code changes needed.
 
-`PermidRetriever` (and its subclasses in `permid_retriever.py`) is a strategy that is for **Stage 1 only**: fetching PermID URLs from the API, writing raw PermID results to the intermediate buffer, and tracking per-entity failures. It receives a reference to the `IdentifierPipeline` instance (its context) so it can access shared state like file paths, API clients, and the failure registry — but it does not touch the company info buffer or produce final output records.
+**Common modules** (`src/idi_company_info/common/`):
 
-`IdentifierPipeline` (`identifier.py`) is for **Stage 2 and orchestration**: it calls `PermidRetriever.retrieve()` for Stage 1, then drives the company info lookup loop (`generate_company_info`), parses raw API responses into `CompanyInfo` dataclasses, writes results to the company info buffer, and prints the final batch stats.
+| Module | Purpose |
+|---|---|
+| `api.py` | LSEG + Geonames API clients |
+| `batch.py` | Stale/unprocessed entity tracking |
+| `buffer.py` | Write-buffering to JSON files |
+| `failures.py` | Permanent-failure registry (do-not-retry) |
+| `logs.py` | Structured logging + CloudWatch |
+| `storage.py` | JSON load/save (local + S3) |
 
-Since there is only one way to search for company info a separate strategy class is not needed and the functionality is implemented in the `IdentifierPipeline`.
-
-Both stages interact with `Buffer`, which can make the boundary feel blurry when reading the two files. A quick mental model:
-
-| Concern | Owner |
-|---------|-------|
-| PermID API calls + raw PermID buffer writes | `PermidRetriever` |
-| Company info API calls + result buffer writes | `IdentifierPipeline` |
-| Parsing raw PermID response → PermID URL list | `IdentifierPipeline._parse_permid_entities()` (called by retriever via context) |
-| Parsing company info response → `CompanyInfo` | `IdentifierPipeline._parse_company_info()` |
-| Failure registry updates | Both (PermID failures in retriever; company info failures in identifier) |
-
-**Batch size behaviour**:
-- PermID stage: processes up to `batch_size` entities per run; already-resolved entities are skipped
-- Company info stage: processes entities until the cumulative PermID lookup count reaches `batch_size`; entities cut off by the batch threshold are picked up automatically on the next run
-- Record Match (cik-match, ticker): CSV payload is further chunked at 1,000 rows per API request to stay within the API size limit
+---
 
 ## Testing
 
 ```bash
-uv pip install -e ".[dev]"
-make test                  # Run all tests
-make test-verbose          # Verbose output
-make test-coverage         # With HTML coverage report
+make test            # Run all tests
+make test-verbose    # Verbose output
+make test-coverage   # With HTML coverage report
 ```
 
-Test modules:
-
-| File | Coverage |
-|------|---------|
+| Test file | Coverage |
+|---|---|
 | `test_api.py` | API client classes |
-| `test_batch.py` | BatchProcessing (stale, unprocessed) |
+| `test_batch.py` | BatchProcessing |
 | `test_identifier_cik.py` | IdentifierCik unit tests |
 | `test_identifier_cusip.py` | IdentifierCusip unit tests |
-| `test_permid_retriever.py` | EntitySearchRetriever, RecordMatchRetriever |
-| `test_orchestrator_integration.py` | End-to-end orchestrator (all 3 types) |
+| `test_permid_retriever.py` | EntitySearch + RecordMatch retrievers |
+| `test_orchestrator_integration.py` | End-to-end orchestrator |
 | `test_storage.py` | JSON helpers |
 | `test_logging.py` | Logger setup |
 
-## Docker Deployment
+---
 
-### Setup
+## Docker
 
 ```bash
-# 1. Configure environment
-cp .env.example .env
-# Edit .env — set PERMID_API_KEY, GEONAMES_USER, and input file paths
-
-# 2. Create output and log directories
+cp .env.example .env          # Set PERMID_API_KEY, GEONAMES_USER, and input paths
 mkdir -p data/output logs
-
-# 3. Start scheduler (runs CIK at 2 AM, CUSIP at 2:30 AM by default)
-docker compose up -d
-
-# 4. Confirm scheduler is running
-docker compose ps
-docker compose logs -f scheduler
+docker compose up -d          # Start scheduler (CIK at 2 AM, CUSIP at 2:30 AM)
 ```
 
-### Manual Runs
+Manual runs:
 
 ```bash
-# Run CIK pipeline immediately
 docker compose run --rm orchestrator-cik
-
-# Run CIK Match pipeline (manual only — no schedule)
 docker compose run --rm orchestrator-cik-match
-
-# Run CUSIP pipeline immediately
 docker compose run --rm orchestrator-cusip
-
-# Run Ticker pipeline (manual only — no schedule)
 docker compose run --rm orchestrator-ticker
 ```
 
-### Management
-
-```bash
-docker compose logs -f scheduler              # Tail scheduler logs
-docker compose restart scheduler              # Apply .env / schedule changes
-docker compose up -d --build                  # Rebuild after code changes
-docker compose down                           # Stop all services
-```
-
-### Configuration
-
-Edit [.env](.env) to customize:
+Key `.env` variables:
 
 | Variable | Default | Description |
-|---------|---------|-------------|
+|---|---|---|
 | `PERMID_API_KEY` | — | Required |
 | `GEONAMES_USER` | — | Required |
-| `INPUT_FILE_CIK` | `./data/input/investors_cik.parquet` | Input for CIK and CIK Match tracks |
-| `INPUT_FILE_CUSIP` | `./data/input/securities_cusip.parquet` | Input for CUSIP track |
-| `INPUT_FILE_TICKER` | `./data/input/securities_ticker.parquet` | Input for Ticker track (manual) |
+| `INPUT_FILE_CIK` | `./data/input/investors_cik.parquet` | CIK + CIK Match input |
+| `INPUT_FILE_CUSIP` | `./data/input/securities_cusip.parquet` | CUSIP input |
+| `INPUT_FILE_TICKER` | `./data/input/securities_ticker.parquet` | Ticker input |
 | `OUTPUT_DIR` | `./data/output` | Root output directory |
-| `LOG_DIR` | `./logs` | Log file directory |
-| `BATCH_SIZE_CIK` | `2450` | Batch size for CIK track |
-| `BATCH_SIZE_CIK_MATCH` | `2450` | Batch size for CIK Match track |
-| `BATCH_SIZE_CUSIP` | `2450` | Batch size for CUSIP track |
-| `BATCH_SIZE_TICKER` | `2450` | Batch size for Ticker track |
-| `BUFFER_SIZE` | `500` | Write-buffer size |
 | `THRESHOLD_DAYS` | `30` | Re-query threshold |
-| `MATCH_SCORE_THRESHOLD` | `1` | Record Match score floor (cik-match, ticker) |
-| `SCHEDULE_CIK` | `0 0 2 * * *` | Cron: CIK track (2:00 AM) |
-| `SCHEDULE_CUSIP` | `0 30 2 * * *` | Cron: CUSIP track (2:30 AM) |
+| `SCHEDULE_CIK` | `0 0 2 * * *` | Cron: CIK (2:00 AM) |
+| `SCHEDULE_CUSIP` | `0 30 2 * * *` | Cron: CUSIP (2:30 AM) |
 
-Changes to `.env` require restarting the scheduler:
-```bash
-docker compose restart scheduler
-```
+---
 
-### Docker Compose as systemd Service
+## Branching Strategy
 
-To start the stack automatically on boot:
+The CI pipeline (`ci.yml`) triggers on push to `main`, `dev`, and `release/**`.
 
-```ini
-# /etc/systemd/system/idi-pipeline-docker.service
-[Unit]
-Description=IDI Company Information Pipeline (Docker Compose)
-After=docker.service network-online.target
-Requires=docker.service
+| Branch | Version bump | Deploy target | Notes |
+|---|---|---|---|
+| `dev` | `patch` + `alpha` pre-release | `dev` | Feature development |
+| `release/**` | `rc` pre-release | `dev` | Release candidates |
+| `main` | Stable (drops pre-release tag) | `prod` | Production releases |
 
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=/opt/idi-company-info
-ExecStart=/usr/bin/docker compose up -d
-ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=300
+Each push to a tracked branch runs in order:
 
-[Install]
-WantedBy=multi-user.target
-```
+1. **Lint** — `ruff check` + `ruff format`
+2. **Tests** — `pytest` with coverage
+3. **Security** — `pip-audit` + CodeQL
+4. **Pulumi preview** — validates infra changes without deploying
+5. **Version bump** — updates `pyproject.toml`, commits, and tags
+6. **Docker build + push** — builds and pushes to GHCR
+7. **Pulumi deploy** — `pulumi up` against the target stack
+8. **ECR sync** — re-tags and pushes the GHCR image to ECR
 
-```bash
-sudo cp -r . /opt/idi-company-info
-sudo nano /opt/idi-company-info/.env   # Set credentials + paths
-sudo systemctl daemon-reload
-sudo systemctl enable idi-pipeline-docker
-sudo systemctl start idi-pipeline-docker
-sudo systemctl status idi-pipeline-docker
-```
-
-## Monitoring
-
-```bash
-# Scheduler container logs
-docker logs -f idi-company-info-scheduler
-
-# Orchestrator run logs (timestamped files)
-tail -f logs/orchestrator_cik_*.log
-tail -f logs/orchestrator_cik_match_*.log
-tail -f logs/orchestrator_cusip_*.log
-tail -f logs/orchestrator_ticker_*.log
-ls -lth logs/
-
-# Output files
-ls -lth data/output/company_info/
-ls -lth data/output/permid_data/
-ls -lth data/output/failures/
-```
-
-## License
-
-MIT
+**Issue branches** (e.g. `issue-123-my-feature`) are used for all feature and bug-fix work. They do not trigger CI automatically — open a PR to `dev` to run the full pipeline. The Pulumi deploy step will run against the `dev` stack if triggered manually via `workflow_dispatch`.
