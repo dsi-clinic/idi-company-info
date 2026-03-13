@@ -18,8 +18,9 @@ pulumi.export("instance_profile_arn", iam.instance_profile.arn)
 
 pulumi.export("vpc_endpoints_sg_id", networking.vpc_endpoints_sg.id)
 pulumi.export("vpc_endpoints_sg_name", networking.vpc_endpoints_sg.name)
+pulumi.export("ec2_sg_id", networking.ec2_sg.id)
+pulumi.export("ec2_sg_name", networking.ec2_sg.name)
 pulumi.export("default_vpc_id", networking.default_vpc.id)
-pulumi.export("default_sg_id", networking.default_sg.id)
 
 pulumi.export("ssm_endpoint_id", networking.ssm_endpoint.id)
 pulumi.export("ssm_endpoint_dns_entries", networking.ssm_endpoint.dns_entries)

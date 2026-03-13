@@ -55,7 +55,7 @@ launch_template_args = {
     "iam_instance_profile": aws.ec2.LaunchTemplateIamInstanceProfileArgs(
         arn=iam.instance_profile.arn
     ),
-    "vpc_security_group_ids": [networking.default_sg.id],
+    "vpc_security_group_ids": [networking.ec2_sg.id],
     "block_device_mappings": [
         aws.ec2.LaunchTemplateBlockDeviceMappingArgs(
             device_name="/dev/xvda",
