@@ -7,8 +7,8 @@ from enum import StrEnum
 # Application imports
 from idi_company_info.processors.types import QueryType
 from idi_company_info.processors.identifier import IdentifierPipeline
-from idi_company_info.processors.IdentifierCik import IdentifierCik
-from idi_company_info.processors.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.identifier_cik import IdentifierCik
+from idi_company_info.processors.identifier_cusip import IdentifierCusip
 
 
 class IdentifierType(StrEnum):
