@@ -1,0 +1,151 @@
+# Pre-merge validation: runs on every PR and must pass before merge.
+# Each job is a separate required status check for granular visibility.
+name: PR
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+      - release
+      - 'release/**'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_DIR: .
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --all-groups
+
+      - name: Lint (ruff)
+        run: uv run ruff check . --output-format=concise
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --all-groups
+
+      - name: Run tests with coverage
+        run: uv run pytest --cov=idi_company_info --cov-report=xml:coverage.xml --cov-report=term -v
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --all-groups
+
+      - name: Dependency vulnerability scan (pip-audit)
+        run: |
+          uv pip install pip-audit
+          uv run pip-audit --desc
+
+      - name: CodeQL Analysis Init
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python
+
+      - name: CodeQL Analysis Analyze
+        uses: github/codeql-action/analyze@v4
+
+  pulumi-preview:
+    name: Pulumi Preview
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    env:
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+      PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+      EC2_INSTANCE_TYPE: ${{ secrets.EC2_INSTANCE_TYPE }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
+      GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
+      CRON_CIK: ${{ secrets.CRON_CIK }}
+      CRON_CUSIP: ${{ secrets.CRON_CUSIP }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          python-version: "3.13"
+
+      - name: Install Pulumi dependencies
+        run: uv sync --group pulumi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-2' }}
+
+      - name: Pulumi preview (dev stack)
+        run: |
+          cd pulumi
+          pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
+          pulumi stack select dev 2>/dev/null || pulumi stack init dev
+          pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
+          pulumi config set idi:instance_type ${EC2_INSTANCE_TYPE:-t2.small}
+          pulumi config set idi:use_s3_output true
+          [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
+          [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
+          [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
+          [ -n "$CRON_CIK" ] && pulumi config set idi:cron_cik "$CRON_CIK"
+          [ -n "$CRON_CUSIP" ] && pulumi config set idi:cron_cusip "$CRON_CUSIP"
+          uv run pulumi preview --non-interactive

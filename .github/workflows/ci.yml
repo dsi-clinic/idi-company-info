@@ -1,4 +1,5 @@
-# Main CI/CD pipeline: build, test, scan, release, deploy, and publish containers
+# Post-merge pipeline: version bump, release, Docker publish, and deploy.
+# Validation (lint, tests, security, pulumi preview) runs in pr.yml before merge.
 name: CI
 
 on:
@@ -19,7 +20,6 @@ concurrency:
 
 permissions:
   contents: write
-  security-events: write
   packages: read
 
 env:
@@ -28,8 +28,8 @@ env:
   IMAGE_PREFIX: idi-company-info
 
 jobs:
-  build:
-    name: Build, Test, Verify
+  version:
+    name: Version, Tag & Release
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -85,59 +85,27 @@ jobs:
           V=$(uv version --dry-run 2>/dev/null | awk '{print $2}')
           echo "version=$V" >> $GITHUB_OUTPUT
 
-      - name: Lint and format (ruff)
+      - name: Commit version bump
         run: |
-          uv run ruff check . --output-format=concise
-          uv run ruff format --check .
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git add pyproject.toml uv.lock 2>/dev/null || true
+          git diff --staged --quiet || (git commit -m "chore: bump version to ${{ steps.set-version.outputs.version }}" && git push)
 
-      - name: Run tests with coverage
+      - name: Push tag
         run: |
-          uv run pytest --cov=idi_company_info --cov-report=xml:coverage.xml --cov-report=term -v
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git tag -a "v${{ steps.set-version.outputs.version }}" -m "Version ${{ steps.set-version.outputs.version }}"
+          git push origin "v${{ steps.set-version.outputs.version }}"
 
-      - name: Configure AWS credentials (Pulumi)
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION || 'us-east-2' }}
-
-      - name: Validate Pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
-          EC2_INSTANCE_TYPE: ${{ secrets.EC2_INSTANCE_TYPE }}
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
-          GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
-          CRON_CIK: ${{ secrets.CRON_CIK }}
-          CRON_CUSIP: ${{ secrets.CRON_CUSIP }}
-        run: |
-          uv sync --group pulumi
-          cd pulumi
-          pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
-          pulumi stack select dev 2>/dev/null || pulumi stack init dev
-          pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
-          pulumi config set idi:instance_type ${EC2_INSTANCE_TYPE:-t2.small}
-          pulumi config set idi:use_s3_output true
-          [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
-          [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
-          [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
-          [ -n "$CRON_CIK" ] && pulumi config set idi:cron_cik "$CRON_CIK"
-          [ -n "$CRON_CUSIP" ] && pulumi config set idi:cron_cusip "$CRON_CUSIP"
-          uv run pulumi preview --non-interactive
-
-      - name: Dependency vulnerability scan (pip-audit)
-        run: |
-          uv pip install pip-audit
-          uv run pip-audit --desc
-
-      - name: CodeQL Analysis Init
-        uses: github/codeql-action/init@v4
-        with:
-          languages: python
-
-      - name: CodeQL Analysis Analyze
-        uses: github/codeql-action/analyze@v4
+          generateReleaseNotes: true
+          name: v${{ steps.set-version.outputs.version }}
+          tag: v${{ steps.set-version.outputs.version }}
+          prerelease: ${{ github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/heads/release') }}
 
       - name: Save outputs
         id: output
@@ -152,44 +120,10 @@ jobs:
           PULUMI_PROJECT=$(grep '^name:' pulumi/Pulumi.yaml | awk '{print $2}')
           echo "pulumi_project=$PULUMI_PROJECT" >> $GITHUB_OUTPUT
 
-      - name: Commit version bump
-        if: |
-          github.ref == 'refs/heads/main' ||
-          github.ref == 'refs/heads/dev' ||
-          startsWith(github.ref, 'refs/heads/release')
-        run: |
-          git config user.name "${GITHUB_ACTOR}"
-          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-          git add pyproject.toml uv.lock 2>/dev/null || true
-          git diff --staged --quiet || (git commit -m "chore: bump version to ${{ steps.set-version.outputs.version }}" && git push)
-
-      - name: Push tag
-        if: |
-          github.ref == 'refs/heads/main' ||
-          github.ref == 'refs/heads/dev' ||
-          startsWith(github.ref, 'refs/heads/release')
-        run: |
-          git config user.name "${GITHUB_ACTOR}"
-          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-          git tag -a "v${{ steps.set-version.outputs.version }}" -m "Version ${{ steps.set-version.outputs.version }}"
-          git push origin "v${{ steps.set-version.outputs.version }}"
-
-      - name: Create GitHub Release
-        if: |
-          github.ref == 'refs/heads/main' ||
-          github.ref == 'refs/heads/dev' ||
-          startsWith(github.ref, 'refs/heads/release')
-        uses: ncipollo/release-action@v1
-        with:
-          generateReleaseNotes: true
-          name: v${{ steps.set-version.outputs.version }}
-          tag: v${{ steps.set-version.outputs.version }}
-          prerelease: ${{ github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/heads/release') }}
-
   docker:
     name: Build & Push to GHCR
     runs-on: ubuntu-latest
-    needs: build
+    needs: version
     permissions:
       contents: read
       packages: write
@@ -215,7 +149,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PREFIX }}-orchestrator
           tags: |
-            type=raw,value=${{ needs.build.outputs.version }}
+            type=raw,value=${{ needs.version.outputs.version }}
             type=raw,value=latest
 
       - name: Build and push orchestrator
@@ -230,12 +164,11 @@ jobs:
   deploy-pulumi:
     name: Deploy Pulumi
     runs-on: ubuntu-latest
-    needs: [build, docker]
+    needs: [version, docker]
     if: |
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/dev' ||
-      startsWith(github.ref, 'refs/heads/release') ||
-      startsWith(github.ref, 'refs/heads/issue-')
+      startsWith(github.ref, 'refs/heads/release')
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}/pulumi
@@ -272,7 +205,7 @@ jobs:
         run: |
           cd ${{ github.workspace }}/${{ env.PROJECT_DIR }}/pulumi
           pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
-          pulumi stack select ${{ needs.build.outputs.deploy_env }} 2>/dev/null || pulumi stack init ${{ needs.build.outputs.deploy_env }}
+          pulumi stack select ${{ needs.version.outputs.deploy_env }} 2>/dev/null || pulumi stack init ${{ needs.version.outputs.deploy_env }}
           pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
           pulumi config set idi:instance_type ${EC2_INSTANCE_TYPE:-t2.small}
           pulumi config set idi:use_s3_output true
@@ -290,12 +223,11 @@ jobs:
   sync-ecr:
     name: Sync GHCR to ECR
     runs-on: ubuntu-latest
-    needs: [build, docker, deploy-pulumi]
+    needs: [version, docker, deploy-pulumi]
     if: |
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/dev' ||
-      startsWith(github.ref, 'refs/heads/release') ||
-      startsWith(github.ref, 'refs/heads/issue-')
+      startsWith(github.ref, 'refs/heads/release')
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
@@ -322,11 +254,11 @@ jobs:
 
       - name: Re-tag and push orchestrator to ECR
         run: |
-          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-company-info', needs.build.outputs.pulumi_project, needs.build.outputs.deploy_env) }}-orchestrator"
+          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-company-info', needs.version.outputs.pulumi_project, needs.version.outputs.deploy_env) }}-orchestrator"
           ECR_URI="${{ steps.ecr-login.outputs.registry }}/$ECR_REPO"
           GHCR_IMG="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PREFIX }}-orchestrator"
-          docker pull ${GHCR_IMG}:${{ needs.build.outputs.version }}
-          docker tag ${GHCR_IMG}:${{ needs.build.outputs.version }} ${ECR_URI}:${{ needs.build.outputs.version }}
-          docker tag ${GHCR_IMG}:${{ needs.build.outputs.version }} ${ECR_URI}:latest
-          docker push ${ECR_URI}:${{ needs.build.outputs.version }}
+          docker pull ${GHCR_IMG}:${{ needs.version.outputs.version }}
+          docker tag ${GHCR_IMG}:${{ needs.version.outputs.version }} ${ECR_URI}:${{ needs.version.outputs.version }}
+          docker tag ${GHCR_IMG}:${{ needs.version.outputs.version }} ${ECR_URI}:latest
+          docker push ${ECR_URI}:${{ needs.version.outputs.version }}
           docker push ${ECR_URI}:latest
