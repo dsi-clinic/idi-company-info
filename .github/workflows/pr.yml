@@ -135,6 +135,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: idi-github-ci
           aws-region: ${{ secrets.AWS_REGION || 'us-east-2' }}
 
       - name: Pulumi preview (dev stack)
