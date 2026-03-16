@@ -1,6 +1,6 @@
-# Pre-merge validation: runs on every PR and must pass before merge.
+# Quality checks: runs on every PR and must pass before merge.
 # Each job is a separate required status check for granular visibility.
-name: Lint, format, test, & security checks
+name: Checks
 
 on:
   pull_request:

@@ -171,7 +171,8 @@ jobs:
     if: |
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/dev' ||
-      startsWith(github.ref, 'refs/heads/release')
+      startsWith(github.ref, 'refs/heads/release') ||
+      startsWith(github.ref, 'refs/heads/issue-')
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}/pulumi
@@ -233,7 +234,8 @@ jobs:
     if: |
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/dev' ||
-      startsWith(github.ref, 'refs/heads/release')
+      startsWith(github.ref, 'refs/heads/release') ||
+      startsWith(github.ref, 'refs/heads/issue-')
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
