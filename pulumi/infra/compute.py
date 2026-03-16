@@ -10,9 +10,7 @@ from . import config, ecr, iam, networking, secrets, storage, user_data
 # Config
 # -----------------------------------------------------------------------------
 instance_type = config.config.get("instance_type") or "t2.small"
-_key_name = config.config.get("key_name") or "idi-acct-REMOVED"
-# Omit key_name if placeholder (use SSM Session Manager for access)
-key_name = None if _key_name == "idi-acct-REMOVED" else _key_name
+key_name = config.config.get("key_name")
 
 # -----------------------------------------------------------------------------
 # AMI
