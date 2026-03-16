@@ -86,6 +86,7 @@ jobs:
           echo "version=$V" >> $GITHUB_OUTPUT
 
       - name: Commit version bump
+        if: "!startsWith(github.ref, 'refs/heads/issue-')"
         run: |
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
@@ -93,6 +94,7 @@ jobs:
           git diff --staged --quiet || (git commit -m "chore: bump version to ${{ steps.set-version.outputs.version }}" && git push)
 
       - name: Push tag
+        if: "!startsWith(github.ref, 'refs/heads/issue-')"
         run: |
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
@@ -100,6 +102,7 @@ jobs:
           git push origin "v${{ steps.set-version.outputs.version }}"
 
       - name: Create GitHub Release
+        if: "!startsWith(github.ref, 'refs/heads/issue-')"
         uses: ncipollo/release-action@v1
         with:
           generateReleaseNotes: true
