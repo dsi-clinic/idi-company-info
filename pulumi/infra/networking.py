@@ -8,10 +8,10 @@ from . import config
 # Default VPC
 # -----------------------------------------------------------------------------
 default_vpc = aws.ec2.get_vpc(default=True)
-default_vpc_subnets = aws.ec2.get_subnets(
+default_vpc_subnets = aws.ec2.get_subnets_output(
     filters=[aws.ec2.GetSubnetsFilterArgs(name="vpc-id", values=[default_vpc.id])],
 )
-default_vpc_route_tables = aws.ec2.get_route_tables(
+default_vpc_route_tables = aws.ec2.get_route_tables_output(
     filters=[aws.ec2.GetRouteTablesFilterArgs(name="vpc-id", values=[default_vpc.id])],
 )
 
