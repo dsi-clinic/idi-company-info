@@ -13,8 +13,8 @@ from . import ecr
 # EC2 Role
 # -----------------------------------------------------------------------------
 ec2_role = aws.iam.Role(
-    "idi-role-ssm-agent",
-    name=f"{config.name_prefix}-role-ssm-agent",
+    "idi-role-ec2",
+    name=f"{config.name_prefix}-role-ec2",
     description="IAM role for EC2 instances with ssm agent access",
     assume_role_policy=json.dumps(
         {
