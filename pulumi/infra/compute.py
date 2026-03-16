@@ -37,7 +37,6 @@ user_data_script = pulumi.Output.all(
 ).apply(
     lambda args: user_data.build_user_data(
         name_prefix=config.name_prefix,
-        has_secrets=bool(secrets.permid_api_key or secrets.geonames_user),
         orch_img=args[0],
         processor_bucket=args[1],
         use_s3_output=use_s3_output,

@@ -51,19 +51,15 @@ def _load_template(name: str, **replacements: str) -> str:
 
 def build_user_data(
     name_prefix: str,
-    has_secrets: bool,
     orch_img: str,
     processor_bucket: str,
     use_s3_output: bool = True,
 ) -> str:
     """Build EC2 user data script from templates (matches .env.example structure)."""
-    if has_secrets:
-        secret_retrieval = _load_template(
-            "secret_retrieval_secrets_manager.sh",
-            name_prefix=name_prefix,
-        )
-    else:
-        secret_retrieval = _load_template("secret_retrieval_placeholders.sh")
+    secret_retrieval = _load_template(
+        "secret_retrieval_secrets_manager.sh",
+        name_prefix=name_prefix,
+    )
 
     compose_content = _load_compose_for_ec2()
 
