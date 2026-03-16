@@ -66,9 +66,7 @@ launch_template_args = {
             ),
         )
     ],
-    "user_data": user_data_script.apply(
-        lambda s: base64.b64encode(s.encode()).decode()
-    ),
+    "user_data": user_data_script.apply(lambda s: base64.b64encode(s.encode()).decode()),
     "tag_specifications": [
         aws.ec2.LaunchTemplateTagSpecificationArgs(
             resource_type="instance",
