@@ -1,6 +1,6 @@
 # Post-merge pipeline: version bump, release, Docker publish, and deploy.
 # Validation (lint, tests, security, pulumi preview) runs in pr.yml before merge.
-name: CI
+name: Deploy
 
 on:
   push:
