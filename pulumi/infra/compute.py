@@ -4,7 +4,7 @@ import pulumi_aws as aws
 
 import pulumi
 
-from . import config, ecr, iam, networking, secrets, storage, user_data
+from . import config, ecr, iam, networking, storage, user_data
 
 # -----------------------------------------------------------------------------
 # Config

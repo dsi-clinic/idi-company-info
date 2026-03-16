@@ -4,6 +4,8 @@ import json
 
 import pulumi_aws as aws
 
+import pulumi
+
 from . import config, iam
 
 # -----------------------------------------------------------------------------
@@ -12,8 +14,10 @@ from . import config, iam
 processor_bucket = aws.s3.BucketV2(
     "idi-processor-s3",
     bucket=f"{config.name_prefix}-processor-s3",
-    force_destroy=True,
     tags=config.tags({"Name": f"{config.name_prefix}-processor-s3"}),
+    opts=pulumi.ResourceOptions(
+        retain_on_delete=True,  # Bucket is removed from Pulumi state but not from AWS; requires re-import to recreate
+    ),
 )
 
 processor_bucket_public_access_block = aws.s3.BucketPublicAccessBlock(

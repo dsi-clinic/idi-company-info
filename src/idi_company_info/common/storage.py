@@ -47,6 +47,7 @@ def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
     Args:
         file_path: The path to the JSON file.
         data: The JSON data to save to the file as a dictionary or list.
+        mode: File open mode ("w" to overwrite, "a" to append). S3 paths always overwrite.
     """
     if "s3://" in file_path:
         with tempfile.NamedTemporaryFile() as tmp:

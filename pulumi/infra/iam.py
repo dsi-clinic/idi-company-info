@@ -4,10 +4,7 @@ import json
 
 import pulumi_aws as aws
 
-import pulumi
-
-from . import config
-from . import ecr
+from . import config, ecr
 
 # -----------------------------------------------------------------------------
 # EC2 Role
