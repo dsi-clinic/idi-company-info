@@ -117,13 +117,7 @@ processor_asg = aws.autoscaling.Group(
         "capacity_reservation_preference": "default",
     },
     tags=[
-        {
-            "key": "Name",
-            "value": f"{config.name_prefix}-processor-asg",
-            "propagate_at_launch": True,
-        },
-        {"key": "project", "value": config.project_name, "propagate_at_launch": True},
-        {"key": "environment", "value": config.stack_name, "propagate_at_launch": True},
-        {"key": "managed_by", "value": "Pulumi", "propagate_at_launch": True},
+        {"key": k, "value": v, "propagate_at_launch": True}
+        for k, v in config.tags({"Name": f"{config.name_prefix}-processor-asg"}).items()
     ],
 )
