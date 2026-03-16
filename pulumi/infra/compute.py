@@ -1,5 +1,7 @@
 """Compute: AMI, launch template, Auto Scaling Group."""
 
+import base64
+
 import pulumi_aws as aws
 
 import pulumi
@@ -65,7 +67,7 @@ launch_template_args = {
         )
     ],
     "user_data": user_data_script.apply(
-        lambda s: __import__("base64").b64encode(s.encode()).decode()
+        lambda s: base64.b64encode(s.encode()).decode()
     ),
     "tag_specifications": [
         aws.ec2.LaunchTemplateTagSpecificationArgs(
