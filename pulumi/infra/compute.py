@@ -4,7 +4,7 @@ import pulumi_aws as aws
 
 import pulumi
 
-from . import config, ecr, iam, networking, storage, user_data
+from . import config, ecr, iam, networking, secrets, storage, user_data
 
 # -----------------------------------------------------------------------------
 # Config
@@ -119,4 +119,7 @@ processor_asg = aws.autoscaling.Group(
         {"key": k, "value": v, "propagate_at_launch": True}
         for k, v in config.tags({"Name": f"{config.name_prefix}-processor-asg"}).items()
     ],
+    opts=pulumi.ResourceOptions(
+        depends_on=[secrets.secrets_policy],
+    ),
 )
