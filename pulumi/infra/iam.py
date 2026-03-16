@@ -7,6 +7,7 @@ import pulumi_aws as aws
 import pulumi
 
 from . import config
+from . import ecr
 
 # -----------------------------------------------------------------------------
 # EC2 Role
@@ -77,13 +78,11 @@ instance_profile = aws.iam.InstanceProfile(
 # -----------------------------------------------------------------------------
 # ECR IAM Policy (CI-pushed orchestrator image)
 # -----------------------------------------------------------------------------
-ecr_orchestrator_repo = f"{config.name_prefix}-company-info-orchestrator"
-
 ecr_policy = aws.iam.RolePolicy(
     "idi-policy-ecr-pull",
     role=ec2_role.id,
-    policy=pulumi.Output.from_input(config.caller.account_id).apply(
-        lambda aid: json.dumps(
+    policy=ecr.ecr_repo.arn.apply(
+        lambda arn: json.dumps(
             {
                 "Version": "2012-10-17",
                 "Statement": [
@@ -98,9 +97,7 @@ ecr_policy = aws.iam.RolePolicy(
                             "ecr:BatchGetImage",
                             "ecr:GetDownloadUrlForLayer",
                         ],
-                        "Resource": [
-                            f"arn:aws:ecr:{config.aws_region}:{aid}:repository/{ecr_orchestrator_repo}",
-                        ],
+                        "Resource": [arn],
                     },
                 ],
             }
