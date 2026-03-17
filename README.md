@@ -135,27 +135,45 @@ make test-coverage   # With HTML coverage report
 
 ## Docker
 
+### Compose file layout
+
+Two Compose files are used together:
+
+| File | Purpose |
+|---|---|
+| `docker-compose.yml` | Base config — image references, volumes, env vars. Used as-is on EC2. |
+| `docker-compose.override.yml` | Local dev override — adds `build` blocks so services build from source. |
+
+`docker compose` automatically merges both files when run locally. On EC2, only
+`docker-compose.yml` is deployed (no build blocks), so services pull from ECR
+via `ORCHESTRATOR_IMAGE`. This means no Dockerfile or source code is needed on
+the instance.
+
+### Local development
+
 ```bash
 cp .env.example .env          # Set PERMID_API_KEY, GEONAMES_USER, and input paths
 mkdir -p data/output logs
-docker compose up -d          # Start scheduler (CIK at 2 AM, CUSIP at 2:30 AM)
-```
-
-Manual runs:
-
-```bash
+docker compose build          # Build from source (uses override file automatically)
 docker compose run --rm orchestrator-cik
 docker compose run --rm orchestrator-cik-match
 docker compose run --rm orchestrator-cusip
 docker compose run --rm orchestrator-ticker
 ```
 
-Key `.env` variables:
+To run against a pre-built registry image instead of building locally:
+
+```bash
+docker compose -f docker-compose.yml run --rm orchestrator-cik
+```
+
+### Key `.env` variables
 
 | Variable | Default | Description |
 |---|---|---|
 | `PERMID_API_KEY` | — | Required |
 | `GEONAMES_USER` | — | Required |
+| `ORCHESTRATOR_IMAGE` | `ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest` | Image to pull (EC2 / registry runs) |
 | `INPUT_FILE_CIK` | `./data/input/investors_cik.parquet` | CIK + CIK Match input |
 | `INPUT_FILE_CUSIP` | `./data/input/securities_cusip.parquet` | CUSIP input |
 | `INPUT_FILE_TICKER` | `./data/input/securities_ticker.parquet` | Ticker input |

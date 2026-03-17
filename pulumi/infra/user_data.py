@@ -1,7 +1,5 @@
 """User data and template loading for EC2 launch."""
 
-import yaml
-
 from . import config
 
 _OFELIA_SCHEDULE_PARTS = 4
@@ -30,16 +28,6 @@ def _parse_cron(raw: str | None, default_ofelia: str) -> str:
     return raw.strip()
 
 
-def _load_compose_for_ec2() -> str:
-    """Load docker-compose.yml for EC2: remove build blocks (EC2 pulls from ECR)."""
-    compose = yaml.safe_load(config.COMPOSE_PATH.read_text())
-    services = compose.get("services", {})
-    for svc in services:
-        if "build" in services[svc]:
-            del services[svc]["build"]
-    return yaml.dump(compose, default_flow_style=False, sort_keys=False)
-
-
 def _load_template(name: str, **replacements: str) -> str:
     """Load a template file and apply string replacements."""
     path = config.TEMPLATES_DIR / name
@@ -61,7 +49,7 @@ def build_user_data(
         name_prefix=name_prefix,
     )
 
-    compose_content = _load_compose_for_ec2()
+    compose_content = config.COMPOSE_PATH.read_text()
 
     # ECR registry for pull-and-run script (host cron pulls before each run)
     ecr_registry = orch_img.split("/")[0] if "/" in orch_img else ""

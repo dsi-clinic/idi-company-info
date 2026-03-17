@@ -1,0 +1,24 @@
+# Local development override — automatically merged by `docker compose` when running locally.
+# Adds build blocks so services are built from source instead of pulled from the registry.
+# On EC2, only docker-compose.yml is used (no build blocks, pulls from ECR via ORCHESTRATOR_IMAGE).
+# See: https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/
+services:
+  orchestrator-cik:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.orchestrator
+
+  orchestrator-cusip:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.orchestrator
+
+  orchestrator-cik-match:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.orchestrator
+
+  orchestrator-ticker:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.orchestrator

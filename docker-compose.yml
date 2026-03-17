@@ -5,9 +5,6 @@ services:
   # ---------------------------------------------------------------------------
   orchestrator-cik:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.orchestrator
     container_name: idi-company-info-orchestrator-cik
 
     profiles:
@@ -57,9 +54,6 @@ services:
   # ---------------------------------------------------------------------------
   orchestrator-cusip:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.orchestrator
     container_name: idi-company-info-orchestrator-cusip
 
     profiles:
@@ -109,9 +103,6 @@ services:
   # ---------------------------------------------------------------------------
   orchestrator-cik-match:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.orchestrator
     container_name: idi-company-info-orchestrator-cik-match
 
     profiles:
@@ -162,9 +153,6 @@ services:
   # ---------------------------------------------------------------------------
   orchestrator-ticker:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.orchestrator
     container_name: idi-company-info-orchestrator-ticker
 
     profiles:
