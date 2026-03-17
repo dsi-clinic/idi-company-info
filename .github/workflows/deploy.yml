@@ -90,7 +90,7 @@ jobs:
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git add pyproject.toml uv.lock 2>/dev/null || true
-          git diff --staged --quiet || (git commit -m "chore: bump version to ${{ steps.set-version.outputs.version }}" && git push)
+          git diff --staged --quiet || (git commit -m "chore: bump version to ${{ steps.set-version.outputs.version }} [skip ci]" && git push)
 
       - name: Push tag
         if: "!startsWith(github.ref, 'refs/heads/issue-')"
