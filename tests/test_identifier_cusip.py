@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.processors.IdentifierCusip
-"""
+"""Unit tests for idi_company_info.processors.identifier_cusip."""
+
+from unittest.mock import MagicMock
 
 import pandas as pd
-import pytest
-from unittest.mock import MagicMock, patch
 
-from idi_company_info.processors.IdentifierCusip import IdentifierCusip
+from idi_company_info.processors.identifier_cusip import IdentifierCusip
 
 
 def make_cusip_instance():
@@ -99,21 +97,55 @@ class TestExtractFilterParquetTicker:
     def test_groups_tickers_by_issuer_name(self):
         """Test that tickers are grouped by issuer_name."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A", "Corp A", "Corp B"],
-            "stock_ticker": ["AAPL", "MSFT", "GOOG"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp A", "Corp B"],
+                "stock_ticker": ["AAPL", "MSFT", "GOOG"],
+            }
+        )
         result = instance._extract_filter_parquet_ticker(df)
         assert set(result.keys()) == {"Corp A", "Corp B"}
         assert set(result["Corp A"]) == {"ticker:AAPL", "ticker:MSFT"}
 
+    def test_record_data_has_issuer_name_and_list_of_tickers(self):
+        """Record data is created correctly: issuer_name as key, list of parsed tickers as value."""
+        instance = make_cusip_instance()
+        df = pd.DataFrame(
+            {
+                "issuer_name": [
+                    "Active Biotech AB",
+                    "Active Biotech AB",
+                    "Active Biotech AB",
+                    "Apple Inc",
+                ],
+                "stock_ticker": [
+                    "AAPL",
+                    "ACTI SS",
+                    "AAPL",
+                    "MSFT",
+                ],  # duplicate (Active Biotech AB, AAPL)
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        # Structure: {issuer_name: [ticker1, ticker2, ...]}
+        assert isinstance(result, dict)
+        assert "Active Biotech AB" in result
+        assert "Apple Inc" in result
+        assert isinstance(result["Active Biotech AB"], list)
+        assert len(result["Active Biotech AB"]) == 2
+        assert "ticker:AAPL" in result["Active Biotech AB"]
+        assert "ticker:ACTI&&mic:XSTO" in result["Active Biotech AB"]
+        assert result["Apple Inc"] == ["ticker:MSFT"]
+
     def test_filters_out_null_tickers(self):
         """Test that rows with null stock_ticker are dropped."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A", "Corp B"],
-            "stock_ticker": [None, "GOOG"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp B"],
+                "stock_ticker": [None, "GOOG"],
+            }
+        )
         result = instance._extract_filter_parquet_ticker(df)
         assert "Corp A" not in result
         assert "Corp B" in result
@@ -121,20 +153,24 @@ class TestExtractFilterParquetTicker:
     def test_filters_out_empty_tickers(self):
         """Test that rows with empty stock_ticker are dropped."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A", "Corp B"],
-            "stock_ticker": ["", "GOOG"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp B"],
+                "stock_ticker": ["", "GOOG"],
+            }
+        )
         result = instance._extract_filter_parquet_ticker(df)
         assert "Corp A" not in result
 
     def test_filters_out_null_issuer_name(self):
         """Test that rows with null issuer_name are dropped."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": [None, "Corp B"],
-            "stock_ticker": ["AAPL", "GOOG"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": [None, "Corp B"],
+                "stock_ticker": ["AAPL", "GOOG"],
+            }
+        )
         result = instance._extract_filter_parquet_ticker(df)
         assert None not in result
         assert "Corp B" in result
@@ -142,20 +178,24 @@ class TestExtractFilterParquetTicker:
     def test_filters_out_bond_securities(self):
         """Test that bond security tickers are removed."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A", "Corp A"],
-            "stock_ticker": ["AAPL", "WEC 4.375 06/01/29"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp A"],
+                "stock_ticker": ["AAPL", "WEC 4.375 06/01/29"],
+            }
+        )
         result = instance._extract_filter_parquet_ticker(df)
         assert result["Corp A"] == ["ticker:AAPL"]
 
     def test_deduplicates_name_ticker_pairs(self):
         """Test that duplicate issuer_name/stock_ticker pairs are removed."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A", "Corp A"],
-            "stock_ticker": ["AAPL", "AAPL"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp A"],
+                "stock_ticker": ["AAPL", "AAPL"],
+            }
+        )
         result = instance._extract_filter_parquet_ticker(df)
         assert result["Corp A"] == ["ticker:AAPL"]
 
@@ -173,10 +213,12 @@ class TestExtractFilterParquetCusip:
     def test_groups_cusips_by_issuer_name(self):
         """Test that CUSIPs are grouped by issuer_name."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A", "Corp A", "Corp B"],
-            "security_cusip": ["037833100", "037833101", "594918104"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp A", "Corp B"],
+                "security_cusip": ["037833100", "037833101", "594918104"],
+            }
+        )
         result = instance._extract_filter_parquet_cusip(df)
         assert set(result["Corp A"]) == {"037833100", "037833101"}
         assert result["Corp B"] == ["594918104"]
@@ -184,30 +226,36 @@ class TestExtractFilterParquetCusip:
     def test_filters_out_null_cusips(self):
         """Test that rows with null security_cusip are dropped."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A", "Corp B"],
-            "security_cusip": [None, "037833100"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp B"],
+                "security_cusip": [None, "037833100"],
+            }
+        )
         result = instance._extract_filter_parquet_cusip(df)
         assert "Corp A" not in result
 
     def test_deduplicates_name_cusip_pairs(self):
         """Test that duplicate issuer_name/security_cusip pairs are removed."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A", "Corp A"],
-            "security_cusip": ["037833100", "037833100"],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp A"],
+                "security_cusip": ["037833100", "037833100"],
+            }
+        )
         result = instance._extract_filter_parquet_cusip(df)
         assert result["Corp A"] == ["037833100"]
 
     def test_cusip_values_are_strings(self):
         """Test that CUSIP values are cast to string."""
         instance = make_cusip_instance()
-        df = pd.DataFrame({
-            "issuer_name": ["Corp A"],
-            "security_cusip": [37833100],
-        })
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A"],
+                "security_cusip": [37833100],
+            }
+        )
         result = instance._extract_filter_parquet_cusip(df)
         assert all(isinstance(v, str) for v in result["Corp A"])
 

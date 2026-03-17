@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.common.storage
-"""
+"""Unit tests for idi_company_info.common.storage."""
 
 import io
 import json
@@ -20,11 +18,12 @@ class TestLoadJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=True):
-            with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
-                result = load_json("/fake/path/data.json")
-                assert result == data
-                mock_open.assert_called_once_with("/fake/path/data.json", mode="r")
+        with patch(
+            "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
+        ) as mock_open:
+            result = load_json("/fake/path/data.json")
+            assert result == data
+            mock_open.assert_called_once_with("/fake/path/data.json")
 
     def test_loads_list_from_local_file(self):
         """Test loading a JSON array (list) from a local file path."""
@@ -33,10 +32,9 @@ class TestLoadJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=True):
-            with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream):
-                result = load_json("/fake/path/list.json")
-                assert result == data
+        with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream):
+            result = load_json("/fake/path/list.json")
+            assert result == data
 
     def test_passes_file_path_to_smart_open(self):
         """Test that the file path is passed correctly to smart_open."""
@@ -44,20 +42,27 @@ class TestLoadJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=True):
-            with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
-                load_json("/my/custom/path.json")
-                mock_open.assert_called_once_with("/my/custom/path.json", mode="r")
+        with patch(
+            "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
+        ) as mock_open:
+            load_json("/my/custom/path.json")
+            mock_open.assert_called_once_with("/my/custom/path.json")
 
     def test_returns_empty_dict_when_file_does_not_exist(self):
         """Test that load_json returns empty dict when file does not exist."""
-        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=False):
+        with patch(
+            "idi_company_info.common.storage.smart_open.open",
+            side_effect=FileNotFoundError(),
+        ):
             result = load_json("/nonexistent/path.json", return_type="dict")
             assert result == {}
 
     def test_returns_empty_list_when_file_does_not_exist(self):
         """Test that load_json returns empty list when file does not exist."""
-        with patch("idi_company_info.common.storage.pathlib.Path.exists", return_value=False):
+        with patch(
+            "idi_company_info.common.storage.smart_open.open",
+            side_effect=FileNotFoundError(),
+        ):
             result = load_json("/nonexistent/path.json", return_type="list")
             assert result == []
 
@@ -73,12 +78,16 @@ class TestSaveJson:
         class CaptureWriter:
             def write(self, s):
                 written.append(s)
+
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 return False
 
-        with patch("idi_company_info.common.storage.smart_open.open", return_value=CaptureWriter()) as mock_open:
+        with patch(
+            "idi_company_info.common.storage.smart_open.open", return_value=CaptureWriter()
+        ) as mock_open:
             save_json("/fake/local/path.json", data)
             mock_open.assert_called_once_with("/fake/local/path.json", "w")
             assert json.loads("".join(written)) == data
@@ -91,8 +100,10 @@ class TestSaveJson:
         class CaptureWriter:
             def write(self, s):
                 written.append(s)
+
             def __enter__(self):
                 return self
+
             def __exit__(self, *args):
                 return False
 
@@ -107,7 +118,9 @@ class TestSaveJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+        with patch(
+            "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
+        ) as mock_open:
             with patch("idi_company_info.common.storage.json.dump") as mock_dump:
                 save_json("/local/path.json", data)
                 mock_open.assert_called_once_with("/local/path.json", "w")
@@ -120,7 +133,9 @@ class TestSaveJson:
         mock_stream.__enter__ = MagicMock(return_value=mock_stream)
         mock_stream.__exit__ = MagicMock(return_value=False)
 
-        with patch("idi_company_info.common.storage.smart_open.open", return_value=mock_stream) as mock_open:
+        with patch(
+            "idi_company_info.common.storage.smart_open.open", return_value=mock_stream
+        ) as mock_open:
             with patch("idi_company_info.common.storage.tempfile.NamedTemporaryFile") as mock_tmp:
                 mock_tmp_file = MagicMock()
                 mock_tmp.return_value.__enter__ = MagicMock(return_value=mock_tmp_file)

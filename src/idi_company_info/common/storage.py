@@ -3,38 +3,42 @@
 # Standard library imports
 import json
 import tempfile
-import pathlib
 
 # Third party imports
 import smart_open
+from botocore.exceptions import ClientError
 
 
-def load_json(file_path: str, mode: str = "r", return_type: str = "dict") -> dict | list:
-    """Loads a JSON file from the given path.
+def _empty_for_return_type(return_type: str) -> dict | list:
+    """Return empty dict or list per return_type."""
+    if return_type == "dict":
+        return {}
+    if return_type == "list":
+        return []
+    raise ValueError(f"Invalid return type: {return_type}")
 
-    Args:
-        file_path: The path to the JSON file.
-        mode: The mode to open the file in.
-        return_type: The type to return the data as.
 
-    Returns:
-        The JSON data loaded from the file as a dictionary or list.
+def load_json(file_path: str, return_type: str = "dict") -> dict | list:
+    """Load a JSON file from the given path.
+
+    Supports local paths and s3:// URLs.
+    Returns empty dict/list if file does not exist; raises on other errors.
     """
-    if not pathlib.Path(file_path).exists():
-        if return_type == "dict":
-            return {}
-        elif return_type == "list":
-            return []
-        else:
-            raise ValueError(f"Invalid return type: {return_type}")
+    try:
+        with smart_open.open(file_path) as f:
+            return json.load(f)
 
-    with smart_open.open(file_path, mode=mode) as f:
-        json_data = json.load(f)
-    return json_data
+    except (FileNotFoundError, OSError):
+        return _empty_for_return_type(return_type)
+
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "NoSuchKey":
+            return _empty_for_return_type(return_type)
+        raise
 
 
 def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
-    """Saves a JSON file to the given path.
+    """Save a JSON file to the given path.
 
     Efficient writing: https://github.com/piskvorky/smart_open/blob/develop/howto.md#how-to-write-to-s3-efficiently
 
@@ -43,10 +47,11 @@ def save_json(file_path: str, data: dict | list, mode: str = "w") -> None:
     Args:
         file_path: The path to the JSON file.
         data: The JSON data to save to the file as a dictionary or list.
+        mode: File open mode ("w" to overwrite, "a" to append). S3 paths always overwrite.
     """
     if "s3://" in file_path:
         with tempfile.NamedTemporaryFile() as tmp:
-            tp = {'writebuffer': tmp}
+            tp = {"writebuffer": tmp}
             with smart_open.open(file_path, "w", transport_params=tp) as fout:
                 json.dump(data, fout, indent=2)
     else:

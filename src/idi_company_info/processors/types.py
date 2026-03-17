@@ -1,12 +1,15 @@
 """Shared dataclasses and enums for the identifier processing pipeline."""
 
 # Standard library imports
+import pathlib
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum
 
 
 @dataclass
 class FilePaths:
+    """File paths for pipeline input and output."""
+
     input_file: str
     result_file: str
     permid_file: str
@@ -15,6 +18,8 @@ class FilePaths:
 
 @dataclass
 class BatchConfig:
+    """Configuration for batch processing behaviour."""
+
     batch_size: int = 2450
     buffer_size: int = 500
     threshold_days: int = 30
@@ -22,12 +27,16 @@ class BatchConfig:
 
 @dataclass
 class ApiCredentials:
+    """API credentials required by pipeline clients."""
+
     api_key: str
     geonames_user: str
 
 
 @dataclass
 class CompanyInfo:
+    """Resolved company information record written to the result buffer."""
+
     investor_name: str | None
     original_entity_name: str
     identifier: str
@@ -49,6 +58,8 @@ class CompanyInfo:
 
 @dataclass
 class BatchStats:
+    """Counters accumulated during a single pipeline run for reporting."""
+
     total_entities: int = 0
     total_records: int = 0
     total_ids: int = 0
@@ -59,6 +70,42 @@ class BatchStats:
     duplicates_ids_removed: int = 0
 
 
+class IdentifierType(StrEnum):
+    """Supported identifier types."""
+
+    CIK = "cik"
+    CIK_MATCH = "cik-match"
+    CUSIP = "cusip"
+    TICKER = "ticker"
+
+
 class QueryType(StrEnum):
+    """Strategy used to look up PermIDs for an identifier batch."""
+
     ENTITY_SEARCH = "entity_search"
     RECORD_MATCH = "record_match"
+
+
+class StageStatus(Enum):
+    """Execution status for pipeline stages."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+@dataclass
+class OrchestratorConfig:
+    """Configuration for a single orchestrator run."""
+
+    input_file: str | pathlib.Path
+    output_dir: str | pathlib.Path
+    identifier_type: IdentifierType
+    api_key: str
+    geonames_user: str
+    batch_size: int = 2450
+    buffer_size: int = 500
+    threshold_days: int | None = None
+    match_score_threshold: int = 1

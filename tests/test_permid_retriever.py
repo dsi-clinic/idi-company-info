@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.processors.permid_retriever
-"""
+"""Unit tests for idi_company_info.processors.permid_retriever."""
 
 from unittest.mock import MagicMock
 

@@ -1,0 +1,23 @@
+#!/bin/bash
+# Pull latest image and run orchestrator (EC2 host cron, runs as ec2-user)
+# Usage: pull_and_run.sh <orchestrator-cik|orchestrator-cusip>
+set -e
+
+SERVICE=$1
+VALID_SERVICES="orchestrator-cik orchestrator-cusip orchestrator-cik-match orchestrator-ticker"
+if [[ ! " $VALID_SERVICES " =~ " $SERVICE " ]]; then
+  echo "Usage: $0 orchestrator-cik|orchestrator-cusip|orchestrator-cik-match|orchestrator-ticker"
+  exit 1
+fi
+
+APP_DIR=/home/ec2-user/idi-company-info
+cd "$APP_DIR"
+
+# ECR login (ec2-user has instance IAM role; cron has minimal PATH)
+REGION=$(/usr/bin/ec2-metadata --availability-zone 2>/dev/null | cut -d " " -f 2 | sed 's/[a-z]$//' || echo "{AWS_REGION}")
+ECR_REGISTRY="{ECR_REGISTRY}"
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+# Pull latest image, then run (full paths for cron's minimal PATH)
+/usr/local/bin/docker-compose pull "$SERVICE"
+/usr/local/bin/docker-compose run --rm "$SERVICE"

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Pipeline Orchestrator - Runs the identifier processing pipeline for a specified input file.
+"""Pipeline Orchestrator - Runs the identifier processing pipeline for a specified input file.
 
 Supports three identifier types:
   cik    — CIK-based Entity Search (IdentifierCik)
@@ -14,110 +13,13 @@ import argparse
 import os
 import pathlib
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict
 from datetime import datetime
-from enum import Enum
 
 from idi_company_info.common.logs import get_logger
-from idi_company_info.processors.identifier import IdentifierPipeline
-from idi_company_info.processors.types import ApiCredentials, BatchConfig, FilePaths, QueryType
-from idi_company_info.processors.registry import IDENTIFIER_REGISTRY, IdentifierSpec, IdentifierType
+from idi_company_info.processors.factory import IdentifierFactory
+from idi_company_info.processors.types import IdentifierType, OrchestratorConfig
 
-
-# ---------------------------------------------------------------------------
-# Status
-# ---------------------------------------------------------------------------
-
-class StageStatus(Enum):
-    """Execution status for pipeline stages."""
-    PENDING = "pending"
-    RUNNING = "running"
-    SUCCESS = "success"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-@dataclass
-class OrchestratorConfig:
-    """Configuration for a single orchestrator run."""
-    input_file: pathlib.Path
-    output_dir: pathlib.Path
-    identifier_type: IdentifierType
-    api_key: str
-    geonames_user: str
-    batch_size: int = 2450
-    buffer_size: int = 500
-    threshold_days: int | None = None
-    match_score_threshold: int = 1
-
-
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
-
-class IdentifierFactory:
-    """Builds a configured IdentifierPipeline instance from an OrchestratorConfig.
-
-    Single responsibility: translate orchestrator-level config into the
-    dataclasses expected by the IdentifierPipeline base class, then instantiate the
-    correct subclass.
-    """
-
-    @staticmethod
-    def build(config: OrchestratorConfig) -> IdentifierPipeline:
-        """Build and return the appropriate IdentifierPipeline for the given config.
-
-        Args:
-            config: Orchestrator configuration.
-
-        Returns:
-            A fully configured IdentifierPipeline subclass instance.
-
-        Raises:
-            KeyError: If config.identifier_type is not in IDENTIFIER_REGISTRY.
-        """
-        spec = IDENTIFIER_REGISTRY[config.identifier_type]
-
-        file_paths = FilePaths(
-            input_file=str(config.input_file),
-            result_file=str(
-                config.output_dir / "company_info" / spec.result_filename
-            ),
-            permid_file=str(
-                config.output_dir / "permid_data" / spec.permid_filename
-            ),
-            failure_file=str(
-                config.output_dir / "failures" / spec.failure_filename
-            ),
-        )
-
-        batch_config = BatchConfig(
-            batch_size=config.batch_size,
-            buffer_size=config.buffer_size,
-            threshold_days=config.threshold_days,
-        )
-
-        api_credentials = ApiCredentials(
-            api_key=config.api_key,
-            geonames_user=config.geonames_user,
-        )
-
-        return spec.cls(
-            file_paths=file_paths,
-            batch_config=batch_config,
-            api_credentials=api_credentials,
-            query_type=spec.query_type,
-            match_score_threshold=config.match_score_threshold,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Orchestrator
-# ---------------------------------------------------------------------------
 
 class PipelineOrchestrator:
     """Orchestrates identifier processing for a single input file.
@@ -141,24 +43,32 @@ class PipelineOrchestrator:
         self.logger.info(message)
         self.logger.info("=" * 60)
 
+    def _log_config(self) -> None:
+        config_safe = {}
+        for k, v in asdict(self.config).items():
+            if k in ("api_key", "geonames_user"):
+                config_safe[k] = "***"
+            else:
+                config_safe[k] = str(v) if isinstance(v, pathlib.Path) else v
+        for k, v in config_safe.items():
+            self.logger.info(f"{k}: {v}")
+
     def run(self) -> bool:
         """Execute the identifier pipeline.
 
         Returns:
             True if processing completed successfully, False otherwise.
         """
-        if not self.config.input_file.exists():
-            self.logger.error("Input file does not exist: %s", self.config.input_file)
+        input_str = str(self.config.input_file)
+        if not input_str.startswith("s3://") and not pathlib.Path(input_str).exists():
+            self.logger.error("Input file does not exist: %s", input_str)
             return False
 
+        input_display = input_str.split("/")[-1] if "/" in input_str else input_str
         self._log_banner(
-            f"Starting pipeline | type={self.config.identifier_type} | "
-            f"input={self.config.input_file.name}"
+            f"Starting pipeline | type={self.config.identifier_type} | input={input_display}"
         )
-        self.logger.info("Output directory:       %s", self.config.output_dir)
-        self.logger.info("Batch size:             %d", self.config.batch_size)
-        self.logger.info("Threshold days:         %s", self.config.threshold_days)
-        self.logger.info("Match score threshold:  %d", self.config.match_score_threshold)
+        self._log_config()
 
         start_time = datetime.now()
 
@@ -179,10 +89,6 @@ class PipelineOrchestrator:
         return True
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
 def get_args() -> argparse.Namespace:
     """Parse and return command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -194,15 +100,15 @@ def get_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--input-file",
-        type=pathlib.Path,
+        type=str,
         required=True,
-        help="Path to input parquet file",
+        help="Path to input parquet file (local or s3:// URL)",
     )
     parser.add_argument(
         "--output-directory",
-        type=pathlib.Path,
+        type=str,
         required=True,
-        help="Root directory for output files",
+        help="Root directory for output files (local path or s3:// URL)",
     )
     parser.add_argument(
         "--type",

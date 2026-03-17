@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""
-Unit tests for idi_company_info.common.batch.BatchProcessing
-"""
+"""Unit tests for idi_company_info.common.batch.BatchProcessing."""
 
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
-
-import pytest
 
 from idi_company_info.common.batch import BatchProcessing
 

@@ -1,0 +1,34 @@
+name: idi
+runtime: python
+description: AWS infrastructure for IDI Company Information Pipeline
+
+config:
+  aws:region:
+    description: AWS region to deploy to
+    value: us-east-2
+
+  idi:instance_type:
+    description: EC2 instance type for processing instances
+    default: t2.small
+
+  idi:key_name:
+    description: SSH key pair name for EC2 instances (omit or leave default to use SSM Session Manager only)
+
+  idi:permid_api_key:
+    description: PermID API key (stored as secret in AWS Secrets Manager)
+    secret: true
+
+  idi:geonames_user:
+    description: GeoNames username for geocoding
+
+  idi:cron_cik:
+    description: Cron schedule for orchestrator-cik (min hour day month wday, or ofelia format)
+    default: "0 2 * * *"
+
+  idi:cron_cusip:
+    description: Cron schedule for orchestrator-cusip (min hour day month wday, or ofelia format)
+    default: "30 2 * * *"
+
+  idi:use_s3_output:
+    description: Use S3 for buffered output files on EC2 (true) or local disk (false)
+    default: "true"

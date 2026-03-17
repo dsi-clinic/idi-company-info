@@ -4,12 +4,18 @@
 import re
 from typing import Any
 
+# Third party imports
+import pandas as pd
+
 # Application imports
 from idi_company_info.processors.identifier import IdentifierPipeline, QueryType
+
+_TICKER_WITH_EXCHANGE_PARTS = 2
 
 
 class IdentifierCusip(IdentifierPipeline):
     """Processes CUSIP identifiers for company information."""
+
     EXCHANGE_TO_MIC = {
         "SS": "XSTO",  # Stockholm Stock Exchange
     }
@@ -23,7 +29,7 @@ class IdentifierCusip(IdentifierPipeline):
         """
         return "ticker" if self.query_type == QueryType.RECORD_MATCH else "cusip"
 
-    def _extract_filter_parquet_ticker(self, df):
+    def _extract_filter_parquet_ticker(self, df: pd.DataFrame) -> dict[str, list[str]]:
         """Extract issuer_name and stock_ticker pairs (ticker mode for Record Match).
 
         Keeps only rows with both issuer_name and stock_ticker. Discards rows without both.
@@ -38,8 +44,10 @@ class IdentifierCusip(IdentifierPipeline):
 
         # Filter: keep only rows where both issuer_name and stock_ticker are non-null and non-empty
         subset = subset[
-            subset["issuer_name"].notna() & (subset["issuer_name"] != "")
-            & subset["stock_ticker"].notna() & (subset["stock_ticker"] != "")
+            subset["issuer_name"].notna()
+            & (subset["issuer_name"] != "")
+            & subset["stock_ticker"].notna()
+            & (subset["stock_ticker"] != "")
         ]
         self.logger.info("Found %s rows with issuer_name and ticker", len(subset))
 
@@ -53,7 +61,9 @@ class IdentifierCusip(IdentifierPipeline):
             lambda x: IdentifierCusip._parse_ticker_and_mic(x)
         )
         subset = subset[subset["stock_ticker"] != ""]
-        self.logger.info("After parsing and filtering: %s unique issuer_name/ticker pairs", len(subset))
+        self.logger.info(
+            "After parsing and filtering: %s unique issuer_name/ticker pairs", len(subset)
+        )
 
         # Group by issuer_name and aggregate tickers into a list
         result = subset.groupby("issuer_name")["stock_ticker"].apply(list).to_dict()
@@ -61,8 +71,7 @@ class IdentifierCusip(IdentifierPipeline):
 
     @staticmethod
     def _parse_ticker_and_mic(ticker_str: str) -> str:
-        """
-        Parse stock_ticker into ticker symbol and MIC code.
+        """Parse stock_ticker into ticker symbol and MIC code.
 
         Args:
             ticker_str: Stock ticker string (e.g., "ACTI SS" or "AAPL")
@@ -88,7 +97,7 @@ class IdentifierCusip(IdentifierPipeline):
             # US ticker with no suffix - no MIC specified (let API determine)
             return f"ticker:{parts[0]}"
 
-        elif len(parts) == 2:
+        elif len(parts) == _TICKER_WITH_EXCHANGE_PARTS:
             # Ticker with exchange suffix
             ticker = parts[0]
             exchange = parts[1]
@@ -105,8 +114,7 @@ class IdentifierCusip(IdentifierPipeline):
 
     @staticmethod
     def _is_bond_security(ticker_str: str) -> bool:
-        """
-        Determine if a stock_ticker value represents a bond security.
+        """Determine if a stock_ticker value represents a bond security.
 
         Bond securities have numeric values (coupon rates) or date patterns.
         Examples: "WEC 4.375 06/01/29", "MET F PERP A"
@@ -124,10 +132,10 @@ class IdentifierCusip(IdentifierPipeline):
         # Check for numeric values (coupon rates) or date patterns
         for part in parts[1:]:  # Skip first part (ticker symbol)
             # Check for decimal numbers (coupon rates like "4.375", "7.5")
-            if re.match(r'^\d+(\.\d+)?$', part):
+            if re.match(r"^\d+(\.\d+)?$", part):
                 return True
             # Check for date patterns (MM/DD/YY)
-            if re.match(r'^\d{1,2}/\d{1,2}/\d{2,4}$', part):
+            if re.match(r"^\d{1,2}/\d{1,2}/\d{2,4}$", part):
                 return True
             # Check for "PERP" (perpetual bonds)
             if part.upper() == "PERP":
@@ -135,7 +143,7 @@ class IdentifierCusip(IdentifierPipeline):
 
         return False
 
-    def _extract_filter_parquet_cusip(self, df):
+    def _extract_filter_parquet_cusip(self, df: pd.DataFrame) -> dict[str, list[str]]:
         """Extract issuer_name and security_cusip pairs (CUSIP mode).
 
         Args:
@@ -156,7 +164,9 @@ class IdentifierCusip(IdentifierPipeline):
 
         # Remove duplicates AFTER normalization to catch formatting differences
         subset = subset.drop_duplicates(subset=["issuer_name", "security_cusip"])
-        self.logger.info("After normalization and deduplication: %s unique issuer_name/CUSIP pairs", len(subset))
+        self.logger.info(
+            "After normalization and deduplication: %s unique issuer_name/CUSIP pairs", len(subset)
+        )
 
         # Group by issuer_name and aggregate CUSIPs into a list
         result = subset.groupby("issuer_name")["security_cusip"].apply(list).to_dict()

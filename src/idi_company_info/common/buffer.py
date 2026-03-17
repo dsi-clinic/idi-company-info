@@ -1,17 +1,16 @@
 """Buffer for storing data that flushes to file when threshold is reached."""
 
 # Standard library imports
-from abc import ABC, abstractmethod
-from typing import Any, TYPE_CHECKING
 
 # Application imports
-from idi_company_info.common.storage import load_json, save_json
 from idi_company_info.common.logs import get_logger
+from idi_company_info.common.storage import load_json, save_json
+
 
 class Buffer:
     """PermidBuffer for storing permid data in a sync buffer."""
 
-    def __init__(self, file_path: str, buffer_size: int = 500, mode: str = "dict"):
+    def __init__(self, file_path: str, buffer_size: int = 500, mode: str = "dict") -> None:
         """Initialize the PermidBuffer.
 
         Args:
@@ -91,4 +90,6 @@ class Buffer:
             The merged data.
         """
         self.flush()
-        return load_json(self.file_path, return_type=self.mode) or ({} if self.mode == "dict" else [])
+        return load_json(self.file_path, return_type=self.mode) or (
+            {} if self.mode == "dict" else []
+        )

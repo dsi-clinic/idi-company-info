@@ -1,0 +1,7 @@
+# Pulumi files
+*.pyc
+venv/
+__pycache__/
+
+# Pulumi state files (use Pulumi backend instead)
+Pulumi.*.yaml

@@ -3,10 +3,15 @@
 # Standard library imports
 from typing import Any
 
+# Third party imports
+import pandas as pd
+
 # Application imports
 from idi_company_info.processors.identifier import IdentifierPipeline
 
+
 class IdentifierCik(IdentifierPipeline):
+    """Processes CIK identifiers through the PermID entity search pipeline."""
 
     @property
     def identifier_type(self) -> str:
@@ -17,7 +22,7 @@ class IdentifierCik(IdentifierPipeline):
         """
         return "cik"
 
-    def _extract_filter_parquet_cik(self,df):
+    def _extract_filter_parquet_cik(self, df: pd.DataFrame) -> dict[str, list[str]]:
         """Extract investor_name and investor_cik pairs (CIK mode).
 
         Args:
@@ -41,7 +46,9 @@ class IdentifierCik(IdentifierPipeline):
 
         # Remove duplicates AFTER normalization to catch formatting differences
         subset = subset.drop_duplicates(subset=["investor_name", "investor_cik"])
-        self.logger.info("After normalization and deduplication: %s unique investor_name/CIK pairs", len(subset))
+        self.logger.info(
+            "After normalization and deduplication: %s unique investor_name/CIK pairs", len(subset)
+        )
 
         # Group by investor_name and aggregate CIKs into a list
         result = subset.groupby("investor_name")["investor_cik"].apply(list).to_dict()
@@ -54,8 +61,9 @@ class IdentifierCik(IdentifierPipeline):
         Returns:
             A dictionary with investor_name as key and a list of investor_cik as value.
         """
-
-        df = self.read_parquet(self.file_paths.input_file, required_columns=["investor_name", "investor_cik"])
+        df = self.read_parquet(
+            self.file_paths.input_file, required_columns=["investor_name", "investor_cik"]
+        )
         self.logger.info("Loaded %s rows", len(df))
 
         result = self._extract_filter_parquet_cik(df)
@@ -63,10 +71,11 @@ class IdentifierCik(IdentifierPipeline):
 
     def _build_query_params(self, identifier: str) -> dict[str, Any]:
         """Build the query parameters.
-            Args:
-                identifier: The identifier.
 
-            Returns:
-                The query parameters.
+        Args:
+            identifier: The identifier.
+
+        Returns:
+            The query parameters.
         """
         return {"q": f"cik:{identifier}", "format": "json"}

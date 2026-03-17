@@ -12,13 +12,14 @@ if TYPE_CHECKING:
 
 
 class BatchProcessing:
+    """Tracks and manages batch processing state for entity pipelines."""
 
     def __init__(
         self,
         result_data: list[dict[str, Any]],
         threshold_days: int = 30,
         failure_registry: "FailureRegistry | None" = None,
-    ):
+    ) -> None:
         """Initialize the BatchProcessing.
 
         Args:
@@ -32,8 +33,7 @@ class BatchProcessing:
         self.logger = get_logger("BatchProcessing")
 
     def get_unprocessed_entities(self, entity_data: dict[str, list[Any]]) -> dict[str, Any]:
-        """
-        Get list of entities that haven't been processed yet.
+        """Get list of entities that haven't been processed yet.
 
         Args:
             entity_data: Dict of entity_name -> list of identifiers (strings)
@@ -41,10 +41,9 @@ class BatchProcessing:
         Returns:
             Dict of entity_name -> list of identifiers
         """
-        processed_entities = set([
-            (entity["original_entity_name"], entity["identifier"])
-            for entity in self.result_data
-        ])
+        processed_entities = {
+            (entity["original_entity_name"], entity["identifier"]) for entity in self.result_data
+        }
 
         new_entities = [
             (entity_name, identifier)
@@ -69,8 +68,7 @@ class BatchProcessing:
         return unprocessed_identifiers
 
     def _remove_failed_entities(self, entities: list[tuple[str, str]]) -> list[tuple[str, str]]:
-        """
-        Remove entities that are in the do-not-retry registry from the list.
+        """Remove entities that are in the do-not-retry registry from the list.
 
         Args:
             entities: List of (entity_name, identifier) tuples.
@@ -95,8 +93,7 @@ class BatchProcessing:
         return result
 
     def _get_identifier_dict(self, entities: list[tuple[str, str]]) -> dict[str, list[str]]:
-        """
-        Get identifier dictionary from entities.
+        """Get identifier dictionary from entities.
 
         Args:
             entities: List of (entity_name, identifier) tuples.
@@ -110,8 +107,7 @@ class BatchProcessing:
         return identifiers
 
     def filter_stale_entities(self) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
-        """
-        Identify and process stale entities based on threshold.
+        """Identify and process stale entities based on threshold.
 
         Returns:
             Tuple of (filtered_results, stale_identifiers) where:
@@ -136,8 +132,7 @@ class BatchProcessing:
         return filtered_results, stale_identifiers
 
     def _get_stale_entities(self) -> tuple[set[tuple[str, str]], list[datetime]]:
-        """
-        Get stale entities based on threshold.
+        """Get stale entities based on threshold.
 
         Returns:
             Tuple of (set of stale entity names and identifiers tuples, list of stale dates)
@@ -167,8 +162,7 @@ class BatchProcessing:
         return stale_entries, stale_dates
 
     def _remove_stale_records(self, stale_entities: set[tuple[str, str]]) -> list[dict[str, Any]]:
-        """
-        Remove records for stale entities so they can be re-processed.
+        """Remove records for stale entities so they can be re-processed.
 
         Args:
             stale_entities: Set of (entity_name, identifier) tuples to remove
@@ -180,8 +174,10 @@ class BatchProcessing:
             return self.result_data
 
         filtered_results = [
-            record for record in self.result_data
-            if record and (record["original_entity_name"], record["identifier"]) not in stale_entities
+            record
+            for record in self.result_data
+            if record
+            and (record["original_entity_name"], record["identifier"]) not in stale_entities
         ]
 
         removed_count = len(self.result_data) - len(filtered_results)
