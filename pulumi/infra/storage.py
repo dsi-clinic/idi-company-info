@@ -11,7 +11,7 @@ from . import config, iam
 # -----------------------------------------------------------------------------
 # Processor S3 Bucket
 # -----------------------------------------------------------------------------
-processor_bucket = aws.s3.BucketV2(
+processor_bucket = aws.s3.Bucket(
     "idi-processor-s3",
     bucket=f"{config.name_prefix}-processor-s3",
     tags=config.tags({"Name": f"{config.name_prefix}-processor-s3"}),
@@ -37,12 +37,12 @@ processor_bucket_ownership_controls = aws.s3.BucketOwnershipControls(
     ),
 )
 
-processor_bucket_encryption = aws.s3.BucketServerSideEncryptionConfigurationV2(
+processor_bucket_encryption = aws.s3.BucketServerSideEncryptionConfiguration(
     "idi-processor-s3-encryption",
     bucket=processor_bucket.id,
     rules=[
-        aws.s3.BucketServerSideEncryptionConfigurationV2RuleArgs(
-            apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationV2RuleApplyServerSideEncryptionByDefaultArgs(
+        aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+            apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                 sse_algorithm="AES256",
             ),
             bucket_key_enabled=True,
