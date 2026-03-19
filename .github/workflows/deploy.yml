@@ -60,7 +60,12 @@ jobs:
 
       - name: Bump alpha version (dev branch)
         if: github.ref == 'refs/heads/dev'
-        run: uv version --bump alpha
+        run: |
+          if echo "${{ steps.get-version.outputs.current_version }}" | grep -qE 'a[0-9]'; then
+            uv version --bump alpha
+          else
+            uv version --bump patch --bump alpha
+          fi
 
       - name: Bump rc version (release branch)
         if: startsWith(github.ref, 'refs/heads/release')
