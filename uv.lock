@@ -453,7 +453,11 @@ wheels = [
 
 [[package]]
 name = "idi-company-info"
+<<<<<<< Updated upstream
 version = "0.1.3a1"
+=======
+version = "0.1.0"
+>>>>>>> Stashed changes
 source = { virtual = "." }
 dependencies = [
     { name = "pandas" },

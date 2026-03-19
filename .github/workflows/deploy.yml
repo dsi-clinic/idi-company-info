@@ -60,18 +60,15 @@ jobs:
 
       - name: Bump alpha version (dev branch)
         if: github.ref == 'refs/heads/dev'
-        run: uv version --bump patch --bump alpha
+        run: uv version --bump alpha
 
       - name: Bump rc version (release branch)
         if: startsWith(github.ref, 'refs/heads/release')
         run: |
-          RELEASE_VER="${GITHUB_REF#refs/heads/release/}"
           if echo "${{ steps.get-version.outputs.current_version }}" | grep -q rc; then
             uv version --bump rc
-          elif [ -n "$RELEASE_VER" ] && [ "$RELEASE_VER" != "$GITHUB_REF" ]; then
-            uv version "${RELEASE_VER}rc1"
           else
-            uv version --bump patch --bump rc
+            uv version "${GITHUB_REF#refs/heads/release/}rc1"
           fi
 
       - name: Bump stable version (main branch)
