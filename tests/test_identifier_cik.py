@@ -102,19 +102,3 @@ class TestExtractFilterParquetCik:
         )
         result = instance._extract_filter_parquet_cik(df)
         assert all(isinstance(v, str) for v in result["Firm A"])
-
-
-class TestBuildQueryParamsCik:
-    """Tests for IdentifierCik._build_query_params."""
-
-    def test_formats_cik_query(self):
-        """Test that the query param is formatted with cik: prefix."""
-        instance = make_cik_instance()
-        result = instance._build_query_params("0001234567")
-        assert result == {"q": "cik:0001234567", "format": "json"}
-
-    def test_format_key_is_json(self):
-        """Test that format is always json."""
-        instance = make_cik_instance()
-        result = instance._build_query_params("9876543210")
-        assert result["format"] == "json"

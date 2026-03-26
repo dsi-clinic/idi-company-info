@@ -1,79 +1,51 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.processors.permid_retriever."""
+"""Unit tests for idi_company_info.processors.retrieval_permid."""
 
 from unittest.mock import MagicMock
 
 import pytest
-from idi_company_info.processors.permid_retriever import RecordMatchRetriever
+
+from idi_company_info.processors.retrieval_permid import PermidRetrieval
 
 
-def make_retriever(match_score_threshold=1, identifier_type="ticker"):
-    """Create a RecordMatchRetriever with a mocked context."""
-    context = MagicMock()
-    context.identifier_type = identifier_type
-    retriever = RecordMatchRetriever(context=context, match_score_threshold=match_score_threshold)
-    return retriever
+def make_retriever(
+    match_score_threshold: float = 1,
+    identifier_type: str = "cik",
+    std_ticker_map: dict | None = None,
+) -> PermidRetrieval:
+    """Create a PermidRetrieval with mocked dependencies."""
+    return PermidRetrieval(
+        file_paths=MagicMock(),
+        batch_config=MagicMock(),
+        api_clients=MagicMock(),
+        identifier_type=identifier_type,
+        match_score_threshold=match_score_threshold,
+        std_ticker_map=std_ticker_map,
+    )
 
 
 class TestParseScore:
-    """Tests for RecordMatchRetriever._parse_score (static method)."""
+    """Tests for PermidRetrieval._parse_score (static method)."""
 
     def test_parses_percentage_string(self):
         """A percentage string like '100%' returns 1.0."""
-        assert RecordMatchRetriever._parse_score({"Match Score": "100%"}) == pytest.approx(1.0)
+        assert PermidRetrieval._parse_score({"Match Score": "100%"}) == pytest.approx(1.0)
 
     def test_parses_partial_percentage(self):
         """'75%' returns 0.75."""
-        assert RecordMatchRetriever._parse_score({"Match Score": "75%"}) == pytest.approx(0.75)
+        assert PermidRetrieval._parse_score({"Match Score": "75%"}) == pytest.approx(0.75)
 
     def test_returns_zero_when_no_score(self):
         """Missing Match Score returns 0."""
-        assert RecordMatchRetriever._parse_score({}) == 0
+        assert PermidRetrieval._parse_score({}) == 0
 
     def test_returns_zero_for_none_score(self):
         """None Match Score returns 0."""
-        assert RecordMatchRetriever._parse_score({"Match Score": None}) == 0
-
-
-class TestFilterRecordMatchResponse:
-    """Tests for RecordMatchRetriever._filter_record_match_response."""
-
-    def test_keeps_records_at_or_above_threshold(self):
-        """Records with score >= threshold are kept."""
-        retriever = make_retriever(match_score_threshold=1)
-        response = [
-            {"Match Score": "100%", "Input_Name": "Corp A"},
-            {"Match Score": "50%", "Input_Name": "Corp B"},
-        ]
-        result = retriever._filter_record_match_response(response)
-        assert len(result) == 1
-        assert result[0]["Input_Name"] == "Corp A"
-
-    def test_filters_out_records_below_threshold(self):
-        """Records below threshold are excluded."""
-        retriever = make_retriever(match_score_threshold=1)
-        response = [{"Match Score": "90%", "Input_Name": "Corp A"}]
-        result = retriever._filter_record_match_response(response)
-        assert result == []
-
-    def test_all_pass_when_threshold_is_zero(self):
-        """With threshold=0, all records pass."""
-        retriever = make_retriever(match_score_threshold=0)
-        response = [
-            {"Match Score": "0%", "Input_Name": "Corp A"},
-            {"Match Score": "100%", "Input_Name": "Corp B"},
-        ]
-        result = retriever._filter_record_match_response(response)
-        assert len(result) == 2
-
-    def test_empty_response_returns_empty(self):
-        """Empty response returns empty list."""
-        retriever = make_retriever()
-        assert retriever._filter_record_match_response([]) == []
+        assert PermidRetrieval._parse_score({"Match Score": None}) == 0
 
 
 class TestParseRecordMatchResponse:
-    """Tests for RecordMatchRetriever._parse_record_match_response."""
+    """Tests for PermidRetrieval._parse_record_match_response."""
 
     def test_maps_name_to_identifier_and_permid(self):
         """Test that response maps Input_Name -> [{Input_LocalID: [permid]}]."""
@@ -81,13 +53,13 @@ class TestParseRecordMatchResponse:
         response = [
             {
                 "Input_Name": "Corp A",
-                "Input_LocalID": "AAPL",
+                "Input_LocalID": "037833100",
                 "Match OpenPermID": "https://permid.org/1-4297529501",
             }
         ]
         result = retriever._parse_record_match_response(response)
         assert "Corp A" in result
-        assert result["Corp A"] == [{"AAPL": ["https://permid.org/1-4297529501"]}]
+        assert result["Corp A"] == [{"037833100": ["https://permid.org/1-4297529501"]}]
 
     def test_multiple_records_for_same_entity_accumulates_all(self):
         """Multiple records for the same entity are all preserved."""
@@ -118,26 +90,41 @@ class TestParseRecordMatchResponse:
 
 
 class TestBuildRecords:
-    """Tests for RecordMatchRetriever._build_records."""
-
-    def test_builds_records_for_ticker_identifier(self):
-        """Ticker identifiers are used as-is in Standard Identifier."""
-        retriever = make_retriever(identifier_type="ticker")
-        batch_entities = [("Corp A", ["ticker:AAPL"])]
-        records = retriever._build_records(batch_entities)
-        assert len(records) == 1
-        assert records[0]["LocalID"] == "ticker:AAPL"
-        assert records[0]["Standard Identifier"] == "ticker:AAPL"
-        assert records[0]["Name"] == "Corp A"
+    """Tests for PermidRetrieval._build_records."""
 
     def test_builds_records_for_cik_identifier(self):
         """CIK identifiers are prefixed with 'Cik:' in Standard Identifier."""
         retriever = make_retriever(identifier_type="cik")
         batch_entities = [("Investor B", ["0001234567"])]
         records = retriever._build_records(batch_entities)
+        assert len(records) == 1
         assert records[0]["LocalID"] == "0001234567"
         assert records[0]["Standard Identifier"] == "Cik:0001234567"
         assert records[0]["Name"] == "Investor B"
+
+    def test_builds_records_for_cusip_identifier(self):
+        """CUSIP is used as LocalID; formatted ticker from std_ticker_map is Standard Identifier."""
+        std_ticker_map = {"037833100": "ticker:AAPL"}
+        retriever = make_retriever(identifier_type="cusip", std_ticker_map=std_ticker_map)
+        batch_entities = [("Corp A", ["037833100"])]
+        records = retriever._build_records(batch_entities)
+        assert len(records) == 1
+        assert records[0]["LocalID"] == "037833100"
+        assert records[0]["Standard Identifier"] == "ticker:AAPL"
+        assert records[0]["Name"] == "Corp A"
+
+    def test_builds_records_for_cusip_with_mic(self):
+        """CUSIP with exchange-qualified ticker formats correctly."""
+        std_ticker_map = {"037833100": "ticker:ACTI&&mic:XSTO"}
+        retriever = make_retriever(identifier_type="cusip", std_ticker_map=std_ticker_map)
+        records = retriever._build_records([("Corp A", ["037833100"])])
+        assert records[0]["Standard Identifier"] == "ticker:ACTI&&mic:XSTO"
+
+    def test_cusip_missing_from_std_ticker_map_raises_key_error(self):
+        """A CUSIP absent from std_ticker_map raises KeyError."""
+        retriever = make_retriever(identifier_type="cusip", std_ticker_map={})
+        with pytest.raises(KeyError):
+            retriever._build_records([("Corp A", ["037833100"])])
 
     def test_raises_for_unknown_identifier_type(self):
         """Unknown identifier_type raises ValueError."""
@@ -147,21 +134,21 @@ class TestBuildRecords:
 
     def test_multiple_identifiers_per_entity(self):
         """Multiple identifiers for one entity produce one record each."""
-        retriever = make_retriever(identifier_type="ticker")
-        batch_entities = [("Corp A", ["ticker:AAPL", "ticker:MSFT"])]
+        retriever = make_retriever(identifier_type="cik")
+        batch_entities = [("Corp A", ["0001234567", "0009876543"])]
         records = retriever._build_records(batch_entities)
         assert len(records) == 2
         ids = {r["LocalID"] for r in records}
-        assert ids == {"ticker:AAPL", "ticker:MSFT"}
+        assert ids == {"0001234567", "0009876543"}
 
     def test_multiple_entities(self):
         """Multiple entities each produce their own records."""
-        retriever = make_retriever(identifier_type="ticker")
+        retriever = make_retriever(identifier_type="cik")
         batch_entities = [
-            ("Corp A", ["ticker:AAPL"]),
-            ("Corp B", ["ticker:GOOG"]),
+            ("Firm A", ["0001234567"]),
+            ("Firm B", ["0009876543"]),
         ]
         records = retriever._build_records(batch_entities)
         assert len(records) == 2
         names = {r["Name"] for r in records}
-        assert names == {"Corp A", "Corp B"}
+        assert names == {"Firm A", "Firm B"}
