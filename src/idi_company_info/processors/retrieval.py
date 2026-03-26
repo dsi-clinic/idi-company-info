@@ -1,3 +1,5 @@
+"""Base class for retrieval operations."""
+
 # Standard library imports
 from typing import TYPE_CHECKING
 

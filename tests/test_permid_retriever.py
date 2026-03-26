@@ -4,7 +4,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from idi_company_info.processors.permid_retriever import RecordMatchRetriever
 
 

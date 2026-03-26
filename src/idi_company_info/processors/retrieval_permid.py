@@ -66,7 +66,9 @@ class PermidRetrieval(Retrieval):
             The permid data.
         """
         items = list(entities_to_process.keys())[:batch_size]
-        all_records, total_records, total_batches = self._retrieve_records(items, entities_to_process)
+        all_records, total_records, total_batches = self._retrieve_records(
+            items, entities_to_process
+        )
 
         buffer = Buffer(
             file_path=self.file_paths.permid_file,
@@ -79,7 +81,9 @@ class PermidRetrieval(Retrieval):
             batch_records = all_records[batch_start : batch_start + self.RECORD_BATCH_SIZE]
             batch_num = batch_start // self.RECORD_BATCH_SIZE + 1
 
-            batch_permid_data = self._record_match_batch(batch_records, batch_num, total_batches, batch_stats, buffer)
+            batch_permid_data = self._record_match_batch(
+                batch_records, batch_num, total_batches, batch_stats, buffer
+            )
             for entity_name, permids in batch_permid_data.items():
                 permid_data.setdefault(entity_name, []).extend(permids)
 
@@ -89,7 +93,9 @@ class PermidRetrieval(Retrieval):
         batch_stats.total_permids += sum(len(permid_list) for permid_list in permid_data.values())
         return permid_data
 
-    def _retrieve_records(self, items: list[str], entities_to_process: dict[str, Any]) -> tuple[list[dict[str, Any]], int, int]:
+    def _retrieve_records(
+        self, items: list[str], entities_to_process: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], int, int]:
         """Retrieve records from the Record Match API.
 
         Args:
@@ -147,7 +153,14 @@ class PermidRetrieval(Retrieval):
                 )
         return records
 
-    def _record_match_batch(self, batch_records: list[dict[str, Any]], batch_num: int, total_batches: int, batch_stats: BatchStats, buffer: Buffer) -> dict[str, Any]:
+    def _record_match_batch(
+        self,
+        batch_records: list[dict[str, Any]],
+        batch_num: int,
+        total_batches: int,
+        batch_stats: BatchStats,
+        buffer: Buffer,
+    ) -> dict[str, Any]:
         """Send records to the Record Match API and parse the response.
 
         Args:
@@ -209,7 +222,9 @@ class PermidRetrieval(Retrieval):
 
         return parsed_response
 
-    def _parse_response(self, response: dict[str, Any], records: list[dict[str, Any]], batch_stats: BatchStats) -> dict[str, Any]:
+    def _parse_response(
+        self, response: dict[str, Any], records: list[dict[str, Any]], batch_stats: BatchStats
+    ) -> dict[str, Any]:
         """Parse the response from the Record Match API.
 
         Args:
@@ -233,7 +248,11 @@ class PermidRetrieval(Retrieval):
 
         # Log the number of records removed due to low score or no match
         removed_records = len(low_score) + len(no_match_records)
-        self.logger.info("Removed %d records with score less than %s", len(low_score), self._match_score_threshold)
+        self.logger.info(
+            "Removed %d records with score less than %s",
+            len(low_score),
+            self._match_score_threshold,
+        )
         self.logger.info("Removed %d records with no match", len(no_match_records))
 
         # If there are any removed records, add them to the batch stats and handle failures

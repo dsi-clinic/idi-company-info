@@ -166,13 +166,13 @@ class IdentifierPipeline(ABC):
         }
         has_permid_count = len(entities_to_process) - len(needs_permid)
 
-        shared = dict(
-            file_paths=self.file_paths,
-            batch_config=self.batch_config,
-            api_clients=self.api_clients,
-            failure_registry=self.failure_registry,
-            identifier_type=self.identifier_type,
-        )
+        shared = {
+            "file_paths": self.file_paths,
+            "batch_config": self.batch_config,
+            "api_clients": self.api_clients,
+            "failure_registry": self.failure_registry,
+            "identifier_type": self.identifier_type,
+        }
 
         # Retrieve the PermIDs for the entities that need them
         if needs_permid:
@@ -205,7 +205,9 @@ class IdentifierPipeline(ABC):
         # Retrieve the company info for the entities that have PermIDs
         all_entities = list(entities_to_process.keys())
         company_info_retriever = CompInfoRetrieval(**shared, raw_ticker_map=self.raw_ticker_map)
-        company_info_retriever.retrieve(permid_data, all_entities, num_existing_entities, batch_stats)
+        company_info_retriever.retrieve(
+            permid_data, all_entities, num_existing_entities, batch_stats
+        )
         return batch_stats
 
     def _log_permid_retrieval_stats(

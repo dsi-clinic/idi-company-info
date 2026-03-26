@@ -29,6 +29,11 @@ class IdentifierCusip(IdentifierPipeline):
 
     @property
     def identifier_type(self) -> str:
+        """The identifier type.
+
+        Returns:
+            The identifier type. "cusip".
+        """
         return "cusip"
 
     @property
@@ -77,7 +82,9 @@ class IdentifierCusip(IdentifierPipeline):
 
         subset["stock_ticker"] = subset["stock_ticker"].astype(str)
         subset = subset.drop_duplicates(subset=["issuer_name", "security_cusip", "stock_ticker"])
-        self.logger.info("After deduplication: %s unique issuer_name/cusip/ticker pairs", len(subset))
+        self.logger.info(
+            "After deduplication: %s unique issuer_name/cusip/ticker pairs", len(subset)
+        )
         return subset
 
     def _build_ticker_maps(self, subset: pd.DataFrame) -> None:
@@ -142,11 +149,7 @@ class IdentifierCusip(IdentifierPipeline):
         self.logger.info(
             "After parsing and filtering: %s unique issuer_name/cusip pairs", len(formatted)
         )
-        return (
-            formatted.groupby("issuer_name")["security_cusip"]
-            .apply(list)
-            .to_dict()
-        )
+        return formatted.groupby("issuer_name")["security_cusip"].apply(list).to_dict()
 
     @staticmethod
     def _parse_ticker_and_mic(ticker_str: str) -> str:

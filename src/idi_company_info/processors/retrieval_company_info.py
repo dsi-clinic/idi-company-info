@@ -122,7 +122,9 @@ class CompInfoRetrieval(Retrieval):
         remaining = self.batch_config.batch_size
         for entity in entities_to_process:
             # Count the number of PermIDs for the entity
-            permid_count = sum(len(permids) for item in permid_data.get(entity, []) for permids in item.values())
+            permid_count = sum(
+                len(permids) for item in permid_data.get(entity, []) for permids in item.values()
+            )
             if permid_count == 0:
                 continue
 
@@ -164,11 +166,18 @@ class CompInfoRetrieval(Retrieval):
                     if response.get("status_code") != self._HTTP_OK:
                         self.logger.error(
                             "Company info query error for entity %s with PermID %s: %s",
-                            entity_name, permid, response.get("error"),
+                            entity_name,
+                            permid,
+                            response.get("error"),
                         )
                         batch_stats.total_company_info_failed += 1
                         if self.failure_registry:
-                            self._handle_failures(response=response, entity_name=entity_name, identifier=identifier, company_data=None)
+                            self._handle_failures(
+                                response=response,
+                                entity_name=entity_name,
+                                identifier=identifier,
+                                company_data=None,
+                            )
                         continue
 
                     # Parse the company info from the response
@@ -176,11 +185,17 @@ class CompInfoRetrieval(Retrieval):
                     if not data:
                         self.logger.warning(
                             "No company data found for entity %s with PermID %s",
-                            entity_name, permid,
+                            entity_name,
+                            permid,
                         )
                         batch_stats.total_company_info_failed += 1
                         if self.failure_registry:
-                            self._handle_failures(response=response, entity_name=entity_name, identifier=identifier, company_data=None)
+                            self._handle_failures(
+                                response=response,
+                                entity_name=entity_name,
+                                identifier=identifier,
+                                company_data=None,
+                            )
                         continue
 
                     # Parse the company info from the response

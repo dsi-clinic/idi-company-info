@@ -37,5 +37,5 @@ IDENTIFIER_REGISTRY: dict[IdentifierType, IdentifierSpec] = {
         permid_filename="permid_tracking_cusip.json",
         result_filename="company_info_cusip.json",
         failure_filename="failures_cusip.json",
-    )
+    ),
 }
