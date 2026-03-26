@@ -228,7 +228,7 @@ class PermidRetrieval(Retrieval):
             (passed if self._parse_score(r) >= self._match_score_threshold else low_score).append(r)
 
         # Separate records that were not matched by the API from the original records
-        api_ids = {(r["Input_Name"], r["Input_LocalID"]) for r in full_response}
+        api_ids = {(r.get("Input_Name"), r.get("Input_LocalID")) for r in full_response}
         no_match_records = [r for r in records if (r["Name"], r["LocalID"]) not in api_ids]
 
         # Log the number of records removed due to low score or no match
@@ -272,8 +272,8 @@ class PermidRetrieval(Retrieval):
         """
         permid_data: dict[str, list] = {}
         for record in response:
-            permid_data.setdefault(record["Input_Name"], []).append(
-                {record["Input_LocalID"]: [record["Match OpenPermID"]]}
+            permid_data.setdefault(record.get("Input_Name"), []).append(
+                {record.get("Input_LocalID"): [record.get("Match OpenPermID")]}
             )
         return permid_data
 

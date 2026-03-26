@@ -54,7 +54,6 @@ class IdentifierPipeline(ABC):
             file_paths: The file paths.
             batch_config: The batch config.
             api_credentials: The API credentials.
-            identifier_type: The identifier type.
             match_score_threshold: The match score threshold.
         """
         self.file_paths = file_paths
@@ -266,14 +265,6 @@ class IdentifierPipeline(ABC):
         )
         self.logger.info("=" * 50)
 
-    def save_company_info(self, company_info: list[dict[str, Any]]) -> None:
-        """Save the company information.
-
-        Args:
-            company_info: The company information.
-        """
-        save_json(self.file_paths.result_file, company_info)
-
     def run(self) -> None:
         """Run the identifier pipeline."""
         # Load identifier data
@@ -290,7 +281,9 @@ class IdentifierPipeline(ABC):
         )
         unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
         filtered_results, stale_identifiers = batch_processing.filter_stale_entities()
-        unprocessed_entities.update(stale_identifiers)
+
+        for entity, ids in stale_identifiers.items():
+            unprocessed_entities.setdefault(entity, []).extend(ids)
         to_process = sum(len(v) for v in unprocessed_entities.values())
         self.logger.info("To process: %d | Not to process: %d", to_process, len(filtered_results))
 
