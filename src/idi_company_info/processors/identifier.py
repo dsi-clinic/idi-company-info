@@ -2,9 +2,7 @@
 
 # Standard library imports
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,25 +17,18 @@ from idi_company_info.common.api import (
     LsegRecordMatch,
 )
 from idi_company_info.common.batch import BatchProcessing
-from idi_company_info.common.buffer import Buffer
-from idi_company_info.common.failures import FailureClassifier, FailureRegistry
+from idi_company_info.common.failures import FailureRegistry
 from idi_company_info.common.logs import get_logger
 from idi_company_info.common.storage import load_json, save_json
-from idi_company_info.processors.permid_retriever import (
-    EntitySearchRetriever,
-    PermidRetriever,
-    RecordMatchRetriever,
-)
+from idi_company_info.processors.retrieval_company_info import CompInfoRetrieval
+from idi_company_info.processors.retrieval_permid import PermidRetrieval
 from idi_company_info.processors.types import (
     ApiCredentials,
     BatchConfig,
     BatchStats,
-    CompanyInfo,
     FilePaths,
     QueryType,
 )
-
-_HTTP_OK = 200
 
 
 @dataclass
@@ -91,9 +82,7 @@ class IdentifierPipeline(ABC):
         )
 
         self.query_type = query_type
-        self.permid_retriever: PermidRetriever = self._create_permid_retriever(
-            query_type, match_score_threshold
-        )  # Strategy pattern
+        self.match_score_threshold = match_score_threshold
 
         self.logger = get_logger("IdentifierPipeline")
 
@@ -106,25 +95,6 @@ class IdentifierPipeline(ABC):
         ):
             if path and not path.startswith("s3://"):
                 Path(path).parent.mkdir(parents=True, exist_ok=True)
-
-    def _create_permid_retriever(
-        self, query_type: QueryType, match_score_threshold: int = 1
-    ) -> PermidRetriever:
-        """Create the PermID retriever.
-
-        Args:
-            query_type: The query type.
-            match_score_threshold: The match score threshold.
-
-        Returns:
-            The PermID retriever.
-        """
-        return {
-            QueryType.ENTITY_SEARCH: EntitySearchRetriever(context=self),
-            QueryType.RECORD_MATCH: RecordMatchRetriever(
-                context=self, match_score_threshold=match_score_threshold
-            ),
-        }[query_type]
 
     @property
     @abstractmethod
@@ -199,6 +169,14 @@ class IdentifierPipeline(ABC):
         }
         has_permid_count = len(entities_to_process) - len(needs_permid)
 
+        shared = dict(
+            file_paths=self.file_paths,
+            batch_config=self.batch_config,
+            api_clients=self.api_clients,
+            failure_registry=self.failure_registry,
+            identifier_type=self.identifier_type,
+        )
+
         # Retrieve the PermIDs for the entities that need them
         if needs_permid:
             retrieval_count = min(len(needs_permid), self.batch_config.batch_size)
@@ -208,7 +186,10 @@ class IdentifierPipeline(ABC):
                 retrieval_count,
                 has_permid_count,
             )
-            self.permid_retriever.retrieve(needs_permid, self.batch_config.batch_size, batch_stats)
+            permid_retriever = PermidRetrieval(
+                **shared, match_score_threshold=self.match_score_threshold
+            )
+            permid_retriever.retrieve(needs_permid, self.batch_config.batch_size, batch_stats)
         else:
             self.logger.info(
                 "All %d entities already have PermIDs — skipping PermID retrieval",
@@ -222,9 +203,10 @@ class IdentifierPipeline(ABC):
         if needs_permid:
             self._log_permid_retrieval_stats(needs_permid, permid_data)
 
-        # Pass all entities (both groups) — _build_company_info_batch will filter by batch threshold
+        # Retrieve the company info for the entities that have PermIDs
         all_entities = list(entities_to_process.keys())
-        self.generate_company_info(permid_data, all_entities, num_existing_entities, batch_stats)
+        company_info_retriever = CompInfoRetrieval(**shared)
+        company_info_retriever.retrieve(permid_data, all_entities, num_existing_entities, batch_stats)
         return batch_stats
 
     def _log_permid_retrieval_stats(
@@ -245,292 +227,6 @@ class IdentifierPipeline(ABC):
             resolved_this_run,
             retrieved_count,
         )
-
-    def generate_company_info(
-        self,
-        permid_data: dict[str, Any],
-        entities_to_process: list[dict[str, Any]],
-        num_existing_entities: int,
-        batch_stats: BatchStats,
-    ) -> None:
-        """Generate the company information.
-
-        Args:
-            permid_data: The PermID data.
-            entities_to_process: The entities to process.
-            num_existing_entities: The number of existing entities.
-            batch_stats: The batch stats.
-        """
-        batch = self._build_company_info_batch(entities_to_process, permid_data)
-        total_lookups = sum(
-            len(permids)
-            for e in batch
-            for item in permid_data[e]
-            for permids in item.values()
-            if permids
-        )
-        self.logger.info(
-            "Generating company info for %d entities (%d entity-lookup requests)",
-            len(batch),
-            total_lookups,
-        )
-
-        buffer = Buffer(
-            file_path=self.file_paths.result_file,
-            buffer_size=self.batch_config.buffer_size,
-            mode="list",
-        )
-
-        for idx, entity_name in enumerate(batch, 1):
-            self.logger.info(
-                "[%d/%d] Processing: %s (%d)",
-                idx,
-                len(batch),
-                entity_name,
-                len(permid_data[entity_name]),
-            )
-            company = self.retrieve_company_info(entity_name, permid_data[entity_name], batch_stats)
-
-            buffer.add(data=company)  # LO troubleshooting this line
-            batch_stats.total_entities += 1
-
-        batch_stats.total_records = len(buffer.load_all()) - num_existing_entities
-
-    def _build_company_info_batch(
-        self, entities_to_process: list[str], permid_data: dict[str, Any]
-    ) -> list[str]:
-        """Select entities to process, capped at batch_size total entity-lookup API calls.
-
-        Each entity can have multiple PermIDs; every PermID costs one API request.
-        We stop adding entities as soon as the next entity would push the total over
-        batch_size, ensuring we never exceed the API request budget.
-
-        Args:
-            entities_to_process: Ordered list of entity names to consider.
-            permid_data: Mapping of entity name → list of {identifier: [permid, ...]} items.
-
-        Returns:
-            The subset of entities that fits within the request budget.
-        """
-        batch: list[str] = []
-        remaining = self.batch_config.batch_size
-        for entity in entities_to_process:
-            if entity not in permid_data:
-                continue
-            permid_count = sum(
-                len(permids) for item in permid_data[entity] for permids in item.values() if permids
-            )
-            if permid_count == 0:
-                continue
-            if permid_count > remaining:
-                self.logger.info(
-                    "Stopping company info batch: adding '%s' (%d PermID(s)) would exceed the "
-                    "%d-request limit (%d remaining)",
-                    entity,
-                    permid_count,
-                    self.batch_config.batch_size,
-                    remaining,
-                )
-                break
-            batch.append(entity)
-            remaining -= permid_count
-        return batch
-
-    def retrieve_company_info(
-        self, entity_name: str, permid_data: dict[str, Any], batch_stats: BatchStats
-    ) -> list[dict[str, Any]]:
-        """Retrieve the company information.
-
-        Args:
-            entity_name: The entity name.
-            permid_data: The PermID data.
-            batch_stats: The batch stats.
-
-        Returns:
-            A list of company information.
-        """
-        company_info = []
-        for list_item in permid_data:
-            for identifier, permid_list in list_item.items():
-                for permid in permid_list:
-                    response = self.api_clients.entity_lookup.query_endpoint(permid_url=permid)
-
-                    success, company_data = self._handle_api_response(
-                        response,
-                        entity_name,
-                        permid,
-                        parse_fn=self._parse_company_data(entity_name, identifier, permid),
-                        error_msg="Company info query error for entity %s with PermID %s: %s",
-                        no_match_msg="No company data found for entity %s with PermID %s",
-                    )
-
-                    if success:
-                        company_info.append(company_data)
-                        batch_stats.total_company_info += 1
-                    else:
-                        batch_stats.total_company_info_failed += 1
-                        if self.failure_registry:
-                            self._handle_failures(response, entity_name, identifier, company_data)
-
-        return company_info
-
-    def _handle_api_response(
-        self,
-        response: dict,
-        entity_name: str,
-        identifier: str,
-        parse_fn: Callable[[dict], Any],
-        error_msg: str = "API error for entity %s with %s: %s",
-        no_match_msg: str = "No data found for entity %s with %s",
-    ) -> tuple[bool, Any]:
-        """Parse API response and handle success/failure logging.
-
-        Args:
-            response: The API response.
-            entity_name: The entity name.
-            identifier: The identifier.
-            parse_fn: The parse function.
-            error_msg: The error message.
-            no_match_msg: The no match message.
-
-        Returns:
-            A tuple of (success, data).
-                success: True if the API response is successful, False otherwise.
-                data: The data from the API response.
-        """
-        if response.get("status_code") != _HTTP_OK:
-            self.logger.error(error_msg, entity_name, identifier, response.get("error"))
-            return False, None
-
-        data = parse_fn(response)
-        if not data:
-            self.logger.warning(no_match_msg, entity_name, identifier)
-            return False, None
-
-        return True, data
-
-    def _parse_permid_entities(self, response: dict) -> list[str]:
-        """Parse the PermID entities.
-
-        Args:
-            response: The API response.
-
-        Returns:
-            The PermID entities.
-        """
-        entities = (
-            response.get("data", {}).get("result", {}).get("organizations", {}).get("entities", [])
-        )
-        return [e.get("@id") for e in entities if e.get("@id")]
-
-    def _parse_company_data(
-        self, entity_name: str, identifier: str, permid: str
-    ) -> Callable[[dict], dict]:
-        """Return a parse fn that closes over entity_name, cik, permid.
-
-        Args:
-            entity_name: The entity name.
-            identifier: The identifier.
-            permid: The PermID.
-
-        Returns:
-            The company data.
-        """
-
-        def _parse(response: dict) -> dict:
-            data = response.get("data")
-            if not data:
-                return None
-            return asdict(
-                self._parse_company_info(
-                    entity_name, identifier, self.identifier_type, permid, data
-                )
-            )
-
-        return _parse
-
-    def _parse_company_info(
-        self,
-        entity_name: str,
-        identifier: list[str],
-        identifier_type: str,
-        permid_id: str,
-        response: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Parse the company information.
-
-        Args:
-            entity_name: The entity name.
-            identifier: The identifier.
-            identifier_type: The identifier type.
-            permid_id: The PermID.
-            response: The API response.
-
-        Returns:
-            A CompanyInfo object.
-        """
-        company_info = CompanyInfo(
-            investor_name=response.get("vcard:organization-name"),
-            original_entity_name=entity_name,
-            identifier=identifier,
-            identifier_type=identifier_type,
-            permid_id=response.get("tr-common:hasPermId")
-            if response.get("tr-common:hasPermId")
-            else permid_id.split("/")[-1],
-            permid_url=response.get("@id") if response.get("@id") else permid_id,
-            hq_address=response.get("mdaas:HeadquartersAddress"),
-            registered_address=response.get("mdaas:RegisteredAddress"),
-            fax_number=response.get("tr-org:hasHeadquartersFaxNumber"),
-            phone_number=response.get("tr-org:hasHeadquartersPhoneNumber"),
-            lei=response.get("tr-org:hasLEI"),
-            founded_date=response.get("hasLatestOrganizationFoundedDate"),
-            incorporated_in=self._query_geonames_location(response.get("isIncorporatedIn")),
-            domiciled_in=self._query_geonames_location(response.get("isDomiciledIn")),
-            url=response.get("hasURL"),
-            activity_status=response.get("hasActivityStatus"),
-            last_processed=datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
-        )
-        return company_info
-
-    def _query_geonames_location(self, url: str) -> str:
-        """Query the Geonames API to get the location information.
-
-        Args:
-            url: The URL to query.
-
-        Returns:
-            The location information.
-        """
-        if not url:
-            return None
-
-        response = self.api_clients.geonames_api.query_endpoint(url)
-        if response.get("status_code") == _HTTP_OK:
-            return (
-                response.get("data").get("name")
-                or response.get("data").get("asciiName")
-                or response.get("data").get("countryName")
-            )
-        else:
-            return None
-
-    def _handle_failures(
-        self, response: dict, entity_name: str, identifier: str, company_data: dict[str, Any]
-    ) -> None:
-        """Handle the failures.
-
-        Args:
-            response: The response.
-            entity_name: The entity name.
-            identifier: The identifier.
-            company_data: The company data.
-        """
-        empty_data = company_data is None
-        failure_type = FailureClassifier.classify_from_response(
-            response, empty_data=empty_data, category="company_info"
-        )
-        if not FailureClassifier.is_retryable(failure_type):
-            self.failure_registry.add(entity_name, identifier, reason=str(failure_type))
 
     def print_stats(self, batch_stats: BatchStats) -> None:
         """Print the stats.
