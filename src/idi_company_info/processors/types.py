@@ -22,7 +22,7 @@ class BatchConfig:
 
     batch_size: int = 2450
     buffer_size: int = 500
-    threshold_days: int = 30
+    threshold_days: int | None = None
 
 
 @dataclass
@@ -41,6 +41,7 @@ class CompanyInfo:
     original_entity_name: str
     identifier: str
     identifier_type: str
+    ticker: str | None
     permid_id: str
     permid_url: str | None
     hq_address: str | None
@@ -75,13 +76,6 @@ class IdentifierType(StrEnum):
 
     CIK = "cik"
     CUSIP = "cusip"
-
-
-class QueryType(StrEnum):
-    """Strategy used to look up PermIDs for an identifier batch."""
-
-    ENTITY_SEARCH = "entity_search"
-    RECORD_MATCH = "record_match"
 
 
 class StageStatus(Enum):

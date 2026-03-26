@@ -29,6 +29,7 @@ class PermidRetrieval(Retrieval):
         identifier_type: str,
         failure_registry: FailureRegistry | None = None,
         match_score_threshold: float = 1.0,
+        std_ticker_map: dict[str, str] | None = None,
     ) -> None:
         """Initialize the PermidRetrieval.
 
@@ -36,13 +37,17 @@ class PermidRetrieval(Retrieval):
             file_paths: The file paths.
             batch_config: The batch configuration.
             api_clients: The constructed API client instances.
-            identifier_type: The identifier type (e.g. 'cik', 'ticker').
+            identifier_type: The identifier type (e.g. 'cik', 'cusip').
             failure_registry: Optional registry for permanent failures.
             match_score_threshold: Minimum match score (0–1) to accept a result.
+            std_ticker_map: Optional CUSIP → formatted Standard Identifier map used
+                when identifier_type is 'cusip' to supply the ticker search term
+                while keeping CUSIP as LocalID.
         """
         super().__init__(file_paths, batch_config, api_clients, failure_registry)
         self.identifier_type = identifier_type
         self._match_score_threshold = match_score_threshold
+        self._std_ticker_map: dict[str, str] = std_ticker_map or {}
 
     def retrieve(
         self,
@@ -125,14 +130,17 @@ class PermidRetrieval(Retrieval):
         for entity_name, identifier_list in batch_entities:
             for identifier in identifier_list:
                 if self.identifier_type == "cusip":
-                    standard_identifier = identifier
+                    local_id = identifier  # CUSIP is the stable LocalID
+                    standard_identifier = self._std_ticker_map[identifier]
                 elif self.identifier_type == "cik":
+                    local_id = identifier
                     standard_identifier = f"Cik:{identifier}"
                 else:
                     raise ValueError(f"Invalid identifier type: {self.identifier_type}")
+
                 records.append(
                     {
-                        "LocalID": identifier,
+                        "LocalID": local_id,
                         "Standard Identifier": standard_identifier,
                         "Name": entity_name,
                     }

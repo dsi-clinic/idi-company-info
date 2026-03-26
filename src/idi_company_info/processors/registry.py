@@ -2,14 +2,13 @@
 
 # Standard library imports
 from dataclasses import dataclass
-from enum import StrEnum
 
 from idi_company_info.processors.identifier import IdentifierPipeline
 from idi_company_info.processors.identifier_cik import IdentifierCik
 from idi_company_info.processors.identifier_cusip import IdentifierCusip
 
 # Application imports
-from idi_company_info.processors.types import IdentifierType, QueryType
+from idi_company_info.processors.types import IdentifierType
 
 
 @dataclass
@@ -21,7 +20,6 @@ class IdentifierSpec:
     """
 
     cls: type[IdentifierPipeline]
-    query_type: QueryType
     permid_filename: str
     result_filename: str
     failure_filename: str
@@ -30,14 +28,12 @@ class IdentifierSpec:
 IDENTIFIER_REGISTRY: dict[IdentifierType, IdentifierSpec] = {
     IdentifierType.CIK: IdentifierSpec(
         cls=IdentifierCik,
-        query_type=QueryType.ENTITY_SEARCH,
         permid_filename="permid_tracking_cik.json",
         result_filename="company_info_cik.json",
         failure_filename="failures_cik.json",
     ),
     IdentifierType.CUSIP: IdentifierSpec(
         cls=IdentifierCusip,
-        query_type=QueryType.ENTITY_SEARCH,
         permid_filename="permid_tracking_cusip.json",
         result_filename="company_info_cusip.json",
         failure_filename="failures_cusip.json",

@@ -24,7 +24,7 @@ from idi_company_info.processors.identifier_cik import IdentifierCik
 from idi_company_info.processors.identifier_cusip import IdentifierCusip
 from idi_company_info.processors.orchestrator import PipelineOrchestrator
 from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
-from idi_company_info.processors.types import IdentifierType, OrchestratorConfig, QueryType
+from idi_company_info.processors.types import IdentifierType, OrchestratorConfig
 
 # ---------------------------------------------------------------------------
 # Shared mock API responses
@@ -154,27 +154,6 @@ class TestIdentifierFactory:
         identifier = IdentifierFactory.build(config)
 
         assert isinstance(identifier, IdentifierCusip)
-        assert identifier.query_type == QueryType.RECORD_MATCH
-
-    def test_cik_uses_entity_search(self, tmp_path):
-        parquet = tmp_path / "data.parquet"
-        pd.DataFrame({"investor_name": ["Firm A"], "investor_cik": ["123"]}).to_parquet(parquet)
-        config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
-
-        identifier = IdentifierFactory.build(config)
-
-        assert identifier.query_type == QueryType.ENTITY_SEARCH
-
-    def test_cusip_uses_entity_search(self, tmp_path):
-        parquet = tmp_path / "data.parquet"
-        pd.DataFrame({"issuer_name": ["Corp A"], "security_cusip": ["037833100"]}).to_parquet(
-            parquet
-        )
-        config = _make_config(parquet, tmp_path / "out", IdentifierType.CUSIP)
-
-        identifier = IdentifierFactory.build(config)
-
-        assert identifier.query_type == QueryType.ENTITY_SEARCH
 
     def test_file_paths_derived_from_output_dir(self, tmp_path):
         out = tmp_path / "output"
@@ -492,7 +471,6 @@ class TestCikMatchPipelineIntegration:
         identifier = IdentifierFactory.build(config)
 
         assert isinstance(identifier, IdentifierCik)
-        assert identifier.query_type == QueryType.RECORD_MATCH
 
 
 # ---------------------------------------------------------------------------

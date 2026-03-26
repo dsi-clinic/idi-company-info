@@ -29,7 +29,7 @@ class Buffer:
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
-    def add(self, data: dict[str, list[tuple[str, list[str]]]]) -> None:
+    def add(self, data: dict[str, list[tuple[str, list[str]]]] | list[dict]) -> None:
         """Merge permid_data into sync buffer; flush if threshold reached.
 
         Args:

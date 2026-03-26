@@ -70,6 +70,5 @@ class IdentifierFactory:
             file_paths=file_paths,
             batch_config=batch_config,
             api_credentials=api_credentials,
-            query_type=spec.query_type,
             match_score_threshold=config.match_score_threshold,
         )

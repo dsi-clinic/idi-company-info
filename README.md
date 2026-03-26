@@ -95,7 +95,7 @@ orchestrator.py
                           └── generate_company_info()  — Stage 2: Entity Lookup + Geonames
 ```
 
-**Object composition**: `IdentifierFactory.build()` reads the matching `IdentifierSpec` from `IDENTIFIER_REGISTRY`, which bundles the concrete class (`IdentifierCik` or `IdentifierCusip`), the `QueryType`, and all output filenames. `IdentifierFactory` then translates the `OrchestratorConfig` into the three typed dataclasses (`FilePaths`, `BatchConfig`, `ApiCredentials`) and instantiates the class. Inside `IdentifierPipeline.__init__`, the `query_type` drives which `PermidRetriever` strategy is injected: `EntitySearchRetriever` for `cik`/`cusip`, or `RecordMatchRetriever` for `cik-match`/`ticker`. All four API clients are always constructed and held in an `ApiClients` dataclass regardless of type.
+**Object composition**: `IdentifierFactory.build()` reads the matching `IdentifierSpec` from `IDENTIFIER_REGISTRY`, which bundles the concrete class (`IdentifierCik` or `IdentifierCusip`), and all output filenames. `IdentifierFactory` then translates the `OrchestratorConfig` into the three typed dataclasses (`FilePaths`, `BatchConfig`, `ApiCredentials`) and instantiates the class. Inside `IdentifierPipeline.__init__`, the `query_type` drives which `PermidRetriever` strategy is injected: `EntitySearchRetriever` for `cik`/`cusip`, or `RecordMatchRetriever` for `cik-match`/`ticker`. All four API clients are always constructed and held in an `ApiClients` dataclass regardless of type.
 
 **Adding a new identifier type**: add one entry to `IDENTIFIER_REGISTRY` in `registry.py`. No other code changes needed.
 

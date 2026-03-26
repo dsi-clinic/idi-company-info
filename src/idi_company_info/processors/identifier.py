@@ -13,7 +13,6 @@ import pandas as pd
 from idi_company_info.common.api import (
     GeonamesApi,
     LSEGEntityLookup,
-    LsegEntitySearch,
     LsegRecordMatch,
 )
 from idi_company_info.common.batch import BatchProcessing
@@ -27,7 +26,6 @@ from idi_company_info.processors.types import (
     BatchConfig,
     BatchStats,
     FilePaths,
-    QueryType,
 )
 
 
@@ -35,7 +33,6 @@ from idi_company_info.processors.types import (
 class ApiClients:
     """Grouping of all API client instances used by the pipeline."""
 
-    entity_search: LsegEntitySearch
     record_match: LsegRecordMatch
     entity_lookup: LSEGEntityLookup
     geonames_api: GeonamesApi
@@ -49,7 +46,6 @@ class IdentifierPipeline(ABC):
         file_paths: FilePaths,
         batch_config: BatchConfig,
         api_credentials: ApiCredentials,
-        query_type: QueryType = QueryType.ENTITY_SEARCH,
         match_score_threshold: int = 1,
     ) -> None:
         """Initialize the Identifier.
@@ -59,7 +55,6 @@ class IdentifierPipeline(ABC):
             batch_config: The batch config.
             api_credentials: The API credentials.
             identifier_type: The identifier type.
-            query_type: The query type.
             match_score_threshold: The match score threshold.
         """
         self.file_paths = file_paths
@@ -73,7 +68,6 @@ class IdentifierPipeline(ABC):
 
         self.api_credentials = api_credentials
         self.api_clients = ApiClients(
-            entity_search=LsegEntitySearch(api_key=api_credentials.api_key),
             record_match=LsegRecordMatch(api_key=api_credentials.api_key),
             entity_lookup=LSEGEntityLookup(api_key=api_credentials.api_key),
             geonames_api=GeonamesApi(
@@ -81,7 +75,6 @@ class IdentifierPipeline(ABC):
             ),
         )
 
-        self.query_type = query_type
         self.match_score_threshold = match_score_threshold
 
         self.logger = get_logger("IdentifierPipeline")
@@ -110,6 +103,23 @@ class IdentifierPipeline(ABC):
             The data from the input file.
         """
         ...
+
+    @property
+    def std_ticker_map(self) -> dict[str, str]:
+        """Formatted Standard Identifier strings keyed by local ID.
+
+        Overridden by subclasses that need to supply auxiliary search identifiers
+        to PermidRetrieval (e.g. IdentifierCusip supplies CUSIP → ticker string).
+        """
+        return {}
+
+    @property
+    def raw_ticker_map(self) -> dict[str, str]:
+        """Raw ticker symbols keyed by local ID, stored in company info output.
+
+        Overridden by IdentifierCusip; returns empty dict for all other types.
+        """
+        return {}
 
     @staticmethod
     def read_parquet(input_file: str, required_columns: list[str]) -> pd.DataFrame:
@@ -175,7 +185,9 @@ class IdentifierPipeline(ABC):
                 has_permid_count,
             )
             permid_retriever = PermidRetrieval(
-                **shared, match_score_threshold=self.match_score_threshold
+                **shared,
+                match_score_threshold=self.match_score_threshold,
+                std_ticker_map=self.std_ticker_map,
             )
             permid_retriever.retrieve(needs_permid, self.batch_config.batch_size, batch_stats)
         else:
@@ -193,7 +205,7 @@ class IdentifierPipeline(ABC):
 
         # Retrieve the company info for the entities that have PermIDs
         all_entities = list(entities_to_process.keys())
-        company_info_retriever = CompInfoRetrieval(**shared)
+        company_info_retriever = CompInfoRetrieval(**shared, raw_ticker_map=self.raw_ticker_map)
         company_info_retriever.retrieve(permid_data, all_entities, num_existing_entities, batch_stats)
         return batch_stats
 

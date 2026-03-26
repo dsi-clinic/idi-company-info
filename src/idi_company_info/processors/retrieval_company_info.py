@@ -30,6 +30,7 @@ class CompInfoRetrieval(Retrieval):
         api_clients: "ApiClients",
         identifier_type: str,
         failure_registry: FailureRegistry | None = None,
+        raw_ticker_map: dict[str, str] | None = None,
     ) -> None:
         """Initialize the CompInfoRetrieval.
 
@@ -37,11 +38,15 @@ class CompInfoRetrieval(Retrieval):
             file_paths: The file paths.
             batch_config: The batch configuration.
             api_clients: The constructed API client instances.
-            identifier_type: The identifier type (e.g. 'cik', 'ticker').
+            identifier_type: The identifier type (e.g. 'cik', 'cusip').
             failure_registry: Optional registry for permanent failures.
+            raw_ticker_map: Optional CUSIP → raw ticker symbol map.  When supplied
+                (CUSIP mode), the raw ticker is stored in ``CompanyInfo.ticker`` so
+                the search term used for the Record Match call is retained in output.
         """
         super().__init__(file_paths, batch_config, api_clients, failure_registry)
         self.identifier_type = identifier_type
+        self._raw_ticker_map: dict[str, str] = raw_ticker_map or {}
 
     def retrieve(
         self,
@@ -180,7 +185,14 @@ class CompInfoRetrieval(Retrieval):
 
                     # Parse the company info from the response
                     company_data = asdict(
-                        self._parse_company_info(entity_name, identifier, self.identifier_type, permid, data)
+                        self._parse_company_info(
+                            entity_name,
+                            identifier,
+                            self.identifier_type,
+                            permid,
+                            data,
+                            ticker=self._raw_ticker_map.get(identifier),
+                        )
                     )
                     company_info.append(company_data)
                     batch_stats.total_company_info += 1
@@ -194,6 +206,7 @@ class CompInfoRetrieval(Retrieval):
         identifier_type: str,
         permid_id: str,
         response: dict[str, Any],
+        ticker: str | None = None,
     ) -> CompanyInfo:
         """Map a raw entity-lookup response to a CompanyInfo dataclass.
 
@@ -203,6 +216,8 @@ class CompInfoRetrieval(Retrieval):
             identifier_type: The identifier type string.
             permid_id: The PermID URL used in the request.
             response: The ``data`` payload from the entity-lookup response.
+            ticker: Raw ticker symbol used during the Record Match search (CUSIP
+                mode only).  Stored verbatim in the output; ``None`` for CIK mode.
 
         Returns:
             A populated CompanyInfo dataclass instance.
@@ -212,6 +227,7 @@ class CompInfoRetrieval(Retrieval):
             original_entity_name=entity_name,
             identifier=identifier,
             identifier_type=identifier_type,
+            ticker=ticker,
             permid_id=response.get("tr-common:hasPermId") or permid_id.split("/")[-1],
             permid_url=response.get("@id") or permid_id,
             hq_address=response.get("mdaas:HeadquartersAddress"),
