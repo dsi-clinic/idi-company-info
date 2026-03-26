@@ -191,8 +191,6 @@ jobs:
       CRON_CUSIP: ${{ secrets.CRON_CUSIP }}
       INPUT_FILE_CIK: ${{ secrets.INPUT_FILE_CIK }}
       INPUT_FILE_CUSIP: ${{ secrets.INPUT_FILE_CUSIP }}
-      INPUT_FILE_CIK_MATCH: ${{ secrets.INPUT_FILE_CIK_MATCH }}
-      INPUT_FILE_TICKER: ${{ secrets.INPUT_FILE_TICKER }}
     steps:
       - uses: actions/checkout@v4
 
@@ -228,8 +226,6 @@ jobs:
           [ -n "$CRON_CUSIP" ] && pulumi config set idi:cron_cusip "$CRON_CUSIP"
           [ -n "$INPUT_FILE_CIK" ] && pulumi config set idi:input_file_cik "$INPUT_FILE_CIK"
           [ -n "$INPUT_FILE_CUSIP" ] && pulumi config set idi:input_file_cusip "$INPUT_FILE_CUSIP"
-          [ -n "$INPUT_FILE_CIK_MATCH" ] && pulumi config set idi:input_file_cik_match "$INPUT_FILE_CIK_MATCH"
-          [ -n "$INPUT_FILE_TICKER" ] && pulumi config set idi:input_file_ticker "$INPUT_FILE_TICKER"
 
       - name: Pulumi deploy
         run: |

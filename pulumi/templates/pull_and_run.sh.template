@@ -4,9 +4,9 @@
 set -e
 
 SERVICE=$1
-VALID_SERVICES="orchestrator-cik orchestrator-cusip orchestrator-cik-match orchestrator-ticker"
+VALID_SERVICES="orchestrator-cik orchestrator-cusip"
 if [[ ! " $VALID_SERVICES " =~ " $SERVICE " ]]; then
-  echo "Usage: $0 orchestrator-cik|orchestrator-cusip|orchestrator-cik-match|orchestrator-ticker"
+  echo "Usage: $0 orchestrator-cik|orchestrator-cusip"
   exit 1
 fi
 

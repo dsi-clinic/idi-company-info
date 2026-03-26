@@ -66,11 +66,14 @@ def build_user_data(
         f"s3://{processor_bucket}/output/" if use_s3_output else "/home/ec2-user/data/output"
     )
 
-    default_input = f"s3://{processor_bucket}/input/data.parquet"
-    input_cik = config.config.get("input_file_cik") or default_input
-    input_cusip = config.config.get("input_file_cusip") or default_input
-    input_cik_match = config.config.get("input_file_cik_match") or default_input
-    input_ticker = config.config.get("input_file_ticker") or default_input
+    input_cik = (
+        config.config.get("input_file_cik")
+        or f"s3://{processor_bucket}/input/investors_cik.parquet"
+    )
+    input_cusip = (
+        config.config.get("input_file_cusip")
+        or f"s3://{processor_bucket}/input/securities_cusip.parquet"
+    )
 
     return _load_template(
         "user_data.sh.template",
@@ -85,6 +88,4 @@ def build_user_data(
         AWS_REGION=config.aws_region,
         INPUT_FILE_CIK=input_cik,
         INPUT_FILE_CUSIP=input_cusip,
-        INPUT_FILE_CIK_MATCH=input_cik_match,
-        INPUT_FILE_TICKER=input_ticker,
     )
