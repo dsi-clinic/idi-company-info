@@ -12,13 +12,3 @@ services:
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile.orchestrator
-
-  orchestrator-cik-match:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.orchestrator
-
-  orchestrator-ticker:
-    build:
-      context: .
-      dockerfile: dockerfiles/Dockerfile.orchestrator

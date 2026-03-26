@@ -1,7 +1,7 @@
 services:
 
   # ---------------------------------------------------------------------------
-  # CIK pipeline — Entity Search (EC2: host cron; local: docker compose run)
+  # CIK pipeline
   # ---------------------------------------------------------------------------
   orchestrator-cik:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
@@ -17,6 +17,7 @@ services:
       - BATCH_SIZE_CIK=${BATCH_SIZE_CIK:-2450}
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
       - INPUT_FILE_ORCHESTRATOR_CIK=${INPUT_FILE_ORCHESTRATOR_CIK:-/data/input/data.parquet}
@@ -37,6 +38,7 @@ services:
       --batch-size ${BATCH_SIZE_CIK:-2450}
       --buffer-size ${BUFFER_SIZE:-500}
       --threshold-days ${THRESHOLD_DAYS:-30}
+      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
       2>&1 | tee /logs/orchestrator_cik_$(date +%Y%m%d_%H%M%S).log"
 
     # Retry up to 3 times if the process exits with a non-zero code
@@ -50,7 +52,7 @@ services:
         compress: "true"
 
   # ---------------------------------------------------------------------------
-  # CUSIP pipeline — Entity Search, scheduled
+  # CUSIP pipeline
   # ---------------------------------------------------------------------------
   orchestrator-cusip:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
@@ -66,6 +68,7 @@ services:
       - BATCH_SIZE_CUSIP=${BATCH_SIZE_CUSIP:-2450}
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
       - INPUT_FILE_ORCHESTRATOR_CUSIP=${INPUT_FILE_ORCHESTRATOR_CUSIP:-/data/input/data.parquet}
@@ -86,110 +89,11 @@ services:
       --batch-size ${BATCH_SIZE_CUSIP:-2450}
       --buffer-size ${BUFFER_SIZE:-500}
       --threshold-days ${THRESHOLD_DAYS:-30}
+      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
       2>&1 | tee /logs/orchestrator_cusip_$(date +%Y%m%d_%H%M%S).log"
 
     # Retry up to 3 times if the process exits with a non-zero code
     restart: on-failure
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        compress: "true"
-
-  # ---------------------------------------------------------------------------
-  # CIK Match pipeline — Record Match, manual only (no schedule)
-  # ---------------------------------------------------------------------------
-  orchestrator-cik-match:
-    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
-    container_name: idi-company-info-orchestrator-cik-match
-
-    profiles:
-      - manual
-
-    environment:
-      - AWS_REGION=${AWS_REGION:-us-east-2}
-      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
-      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
-      - BATCH_SIZE_CIK_MATCH=${BATCH_SIZE_CIK_MATCH:-2450}
-      - BUFFER_SIZE=${BUFFER_SIZE:-500}
-      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
-      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
-      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
-      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
-      - INPUT_FILE_ORCHESTRATOR_CIK_MATCH=${INPUT_FILE_ORCHESTRATOR_CIK_MATCH:-${INPUT_FILE_ORCHESTRATOR_CIK:-/data/input/data.parquet}}
-
-    volumes:
-      - ${INPUT_VOLUME_SPEC_CIK_MATCH:-${INPUT_VOLUME_SPEC_CIK:-${INPUT_FILE_CIK:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}}
-      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
-      - ${LOG_DIR:-./logs}:/logs
-
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      "python -m idi_company_info.processors.orchestrator
-      --input-file $${INPUT_FILE_ORCHESTRATOR_CIK_MATCH:-/data/input/data.parquet}
-      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
-      --type cik-match
-      --permid-api-key ${PERMID_API_KEY}
-      --geonames-user ${GEONAMES_USER}
-      --batch-size ${BATCH_SIZE_CIK_MATCH:-2450}
-      --buffer-size ${BUFFER_SIZE:-500}
-      --threshold-days ${THRESHOLD_DAYS:-30}
-      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
-      2>&1 | tee /logs/orchestrator_cik_match_$(date +%Y%m%d_%H%M%S).log"
-
-    restart: "no"
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        compress: "true"
-
-  # ---------------------------------------------------------------------------
-  # Ticker pipeline — Record Match, manual + CUSIP only (no schedule)
-  # ---------------------------------------------------------------------------
-  orchestrator-ticker:
-    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
-    container_name: idi-company-info-orchestrator-ticker
-
-    profiles:
-      - manual
-
-    environment:
-      - AWS_REGION=${AWS_REGION:-us-east-2}
-      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
-      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
-      - BATCH_SIZE_TICKER=${BATCH_SIZE_TICKER:-2450}
-      - BUFFER_SIZE=${BUFFER_SIZE:-500}
-      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
-      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
-      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
-      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
-      - INPUT_FILE_ORCHESTRATOR_TICKER=${INPUT_FILE_ORCHESTRATOR_TICKER:-/data/input/data.parquet}
-
-    volumes:
-      - ${INPUT_VOLUME_SPEC_TICKER:-${INPUT_FILE_TICKER:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}
-      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
-      - ${LOG_DIR:-./logs}:/logs
-
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      "python -m idi_company_info.processors.orchestrator
-      --input-file $${INPUT_FILE_ORCHESTRATOR_TICKER:-/data/input/data.parquet}
-      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
-      --type ticker
-      --permid-api-key ${PERMID_API_KEY}
-      --geonames-user ${GEONAMES_USER}
-      --batch-size ${BATCH_SIZE_TICKER:-2450}
-      --buffer-size ${BUFFER_SIZE:-500}
-      --threshold-days ${THRESHOLD_DAYS:-30}
-      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
-      2>&1 | tee /logs/orchestrator_ticker_$(date +%Y%m%d_%H%M%S).log"
-
-    restart: "no"
 
     logging:
       driver: "json-file"
