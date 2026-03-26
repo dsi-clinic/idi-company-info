@@ -29,16 +29,6 @@ config:
     description: Cron schedule for orchestrator-cusip (min hour day month wday, or ofelia format)
     default: "30 2 * * *"
 
-  idi:input_file_cik:
-    description: >
-      S3 URL for the CIK input parquet file (investor_name, investor_cik).
-      Defaults to s3://<processor-bucket>/input/investors_cik.parquet.
-
-  idi:input_file_cusip:
-    description: >
-      S3 URL for the CUSIP input parquet file (issuer_name, security_cusip, stock_ticker).
-      Defaults to s3://<processor-bucket>/input/securities_cusip.parquet.
-
   idi:use_s3_output:
     description: Use S3 for buffered output files on EC2 (true) or local disk (false)
     default: "true"
