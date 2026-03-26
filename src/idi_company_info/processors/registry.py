@@ -9,16 +9,7 @@ from idi_company_info.processors.identifier_cik import IdentifierCik
 from idi_company_info.processors.identifier_cusip import IdentifierCusip
 
 # Application imports
-from idi_company_info.processors.types import QueryType
-
-
-class IdentifierType(StrEnum):
-    """Supported identifier types."""
-
-    CIK = "cik"
-    CIK_MATCH = "cik-match"
-    CUSIP = "cusip"
-    TICKER = "ticker"
+from idi_company_info.processors.types import IdentifierType, QueryType
 
 
 @dataclass
@@ -50,19 +41,5 @@ IDENTIFIER_REGISTRY: dict[IdentifierType, IdentifierSpec] = {
         permid_filename="permid_tracking_cusip.json",
         result_filename="company_info_cusip.json",
         failure_filename="failures_cusip.json",
-    ),
-    IdentifierType.CIK_MATCH: IdentifierSpec(
-        cls=IdentifierCik,
-        query_type=QueryType.RECORD_MATCH,
-        permid_filename="permid_tracking_cik_match.json",
-        result_filename="company_info_cik_match.json",
-        failure_filename="failures_cik_match.json",
-    ),
-    IdentifierType.TICKER: IdentifierSpec(
-        cls=IdentifierCusip,
-        query_type=QueryType.RECORD_MATCH,
-        permid_filename="permid_tracking_ticker.json",
-        result_filename="company_info_ticker.json",
-        failure_filename="failures_ticker.json",
-    ),
+    )
 }

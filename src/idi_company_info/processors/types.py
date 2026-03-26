@@ -74,9 +74,7 @@ class IdentifierType(StrEnum):
     """Supported identifier types."""
 
     CIK = "cik"
-    CIK_MATCH = "cik-match"
     CUSIP = "cusip"
-    TICKER = "ticker"
 
 
 class QueryType(StrEnum):

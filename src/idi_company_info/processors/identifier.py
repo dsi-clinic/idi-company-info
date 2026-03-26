@@ -131,18 +131,6 @@ class IdentifierPipeline(ABC):
 
         return df
 
-    @abstractmethod
-    def _build_query_params(self, identifier: str) -> dict[str, Any]:
-        """Build the query parameters.
-
-        Args:
-            identifier: The identifier.
-
-        Returns:
-            The query parameters.
-        """
-        ...
-
     def process_entities(
         self, entities_to_process: dict[str, Any], num_existing_entities: int
     ) -> list[dict[str, Any]]:

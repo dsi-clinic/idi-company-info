@@ -68,14 +68,3 @@ class IdentifierCik(IdentifierPipeline):
 
         result = self._extract_filter_parquet_cik(df)
         return result
-
-    def _build_query_params(self, identifier: str) -> dict[str, Any]:
-        """Build the query parameters.
-
-        Args:
-            identifier: The identifier.
-
-        Returns:
-            The query parameters.
-        """
-        return {"q": f"cik:{identifier}", "format": "json"}

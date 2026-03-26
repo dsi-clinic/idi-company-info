@@ -124,7 +124,7 @@ class PermidRetrieval(Retrieval):
         records = []
         for entity_name, identifier_list in batch_entities:
             for identifier in identifier_list:
-                if self.identifier_type == "ticker":
+                if self.identifier_type == "cusip":
                     standard_identifier = identifier
                 elif self.identifier_type == "cik":
                     standard_identifier = f"Cik:{identifier}"
