@@ -7,10 +7,10 @@ from typing import Any
 import pandas as pd
 
 # Application imports
-from idi_company_info.processors.identifier import IdentifierPipeline
+from idi_company_info.processors.company_pipeline import CompanyPipeline
 
 
-class IdentifierCik(IdentifierPipeline):
+class CompanyByCikPipeline(CompanyPipeline):
     """Processes CIK identifiers through the PermID entity search pipeline."""
 
     @property

@@ -13,7 +13,7 @@ from idi_company_info.processors.retrieval import Retrieval
 from idi_company_info.processors.types import BatchConfig, BatchStats, FilePaths
 
 if TYPE_CHECKING:
-    from idi_company_info.processors.identifier import ApiClients
+    from idi_company_info.processors.company_pipeline import ApiClients
 
 
 class PermidRetrieval(Retrieval):

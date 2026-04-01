@@ -19,8 +19,8 @@ from idi_company_info.common.api import (
     LsegRecordMatch,
 )
 from idi_company_info.processors.factory import IdentifierFactory
-from idi_company_info.processors.identifier_cik import IdentifierCik
-from idi_company_info.processors.identifier_cusip import IdentifierCusip
+from idi_company_info.processors.company_by_cik_pipeline import CompanyByCikPipeline
+from idi_company_info.processors.company_by_cusip_pipeline import CompanyByCusipPipeline
 from idi_company_info.processors.orchestrator import PipelineOrchestrator
 from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
 from idi_company_info.processors.types import IdentifierType, OrchestratorConfig
@@ -119,7 +119,7 @@ class TestIdentifierFactory:
 
         identifier = IdentifierFactory.build(config)
 
-        assert isinstance(identifier, IdentifierCik)
+        assert isinstance(identifier, CompanyByCikPipeline)
 
     def test_cusip_creates_identifier_cusip(self, tmp_path):
         parquet = tmp_path / "data.parquet"
@@ -134,7 +134,7 @@ class TestIdentifierFactory:
 
         identifier = IdentifierFactory.build(config)
 
-        assert isinstance(identifier, IdentifierCusip)
+        assert isinstance(identifier, CompanyByCusipPipeline)
 
     def test_file_paths_derived_from_output_dir(self, tmp_path):
         out = tmp_path / "output"

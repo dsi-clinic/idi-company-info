@@ -38,7 +38,7 @@ class ApiClients:
     geonames_api: GeonamesApi
 
 
-class IdentifierPipeline(ABC):
+class CompanyPipeline(ABC):
     """Base class for identifier types."""
 
     def __init__(
@@ -76,7 +76,7 @@ class IdentifierPipeline(ABC):
 
         self.match_score_threshold = match_score_threshold
 
-        self.logger = get_logger("IdentifierPipeline")
+        self.logger = get_logger("CompanyPipeline")
 
     def _init_dirs(self) -> None:
         """Initialize the directories. Skip for S3 paths (no local dirs needed)."""
@@ -108,7 +108,7 @@ class IdentifierPipeline(ABC):
         """Formatted Standard Identifier strings keyed by local ID.
 
         Overridden by subclasses that need to supply auxiliary search identifiers
-        to PermidRetrieval (e.g. IdentifierCusip supplies CUSIP → ticker string).
+        to PermidRetrieval (e.g. CompanyByCusipPipeline supplies CUSIP → ticker string).
         """
         return {}
 
@@ -116,7 +116,7 @@ class IdentifierPipeline(ABC):
     def raw_ticker_map(self) -> dict[str, str]:
         """Raw ticker symbols keyed by local ID, stored in company info output.
 
-        Overridden by IdentifierCusip; returns empty dict for all other types.
+        Overridden by CompanyByCusipPipeline; returns empty dict for all other types.
         """
         return {}
 

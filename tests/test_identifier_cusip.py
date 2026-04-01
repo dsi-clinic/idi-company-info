@@ -1,98 +1,98 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.processors.identifier_cusip."""
+"""Unit tests for idi_company_info.processors.company_by_cusip_pipeline."""
 
 from unittest.mock import MagicMock
 
 import pandas as pd
 
-from idi_company_info.processors.identifier_cusip import IdentifierCusip
+from idi_company_info.processors.company_by_cusip_pipeline import CompanyByCusipPipeline
 
 
 def make_cusip_instance():
-    """Create an IdentifierCusip with mocked dependencies."""
-    instance = IdentifierCusip.__new__(IdentifierCusip)
+    """Create an CompanyByCusipPipeline with mocked dependencies."""
+    instance = CompanyByCusipPipeline.__new__(CompanyByCusipPipeline)
     instance.logger = MagicMock()
     return instance
 
 
 class TestIsBondSecurity:
-    """Tests for IdentifierCusip._is_bond_security (static method)."""
+    """Tests for CompanyByCusipPipeline._is_bond_security (static method)."""
 
     def test_single_ticker_is_not_bond(self):
         """A simple ticker with no suffix is not a bond."""
-        assert IdentifierCusip._is_bond_security("AAPL") is False
+        assert CompanyByCusipPipeline._is_bond_security("AAPL") is False
 
     def test_ticker_with_exchange_suffix_is_not_bond(self):
         """Ticker with a two-letter exchange code is not a bond."""
-        assert IdentifierCusip._is_bond_security("ACTI SS") is False
+        assert CompanyByCusipPipeline._is_bond_security("ACTI SS") is False
 
     def test_coupon_rate_is_bond(self):
         """Ticker with a decimal coupon rate is a bond."""
-        assert IdentifierCusip._is_bond_security("WEC 4.375 06/01/29") is True
+        assert CompanyByCusipPipeline._is_bond_security("WEC 4.375 06/01/29") is True
 
     def test_integer_number_after_ticker_is_bond(self):
         """Ticker followed by an integer is treated as a bond."""
-        assert IdentifierCusip._is_bond_security("XYZ 7") is True
+        assert CompanyByCusipPipeline._is_bond_security("XYZ 7") is True
 
     def test_date_pattern_is_bond(self):
         """Ticker followed by a MM/DD/YY date is a bond."""
-        assert IdentifierCusip._is_bond_security("ABC 06/01/29") is True
+        assert CompanyByCusipPipeline._is_bond_security("ABC 06/01/29") is True
 
     def test_perp_suffix_is_bond(self):
         """Ticker with PERP suffix is a bond."""
-        assert IdentifierCusip._is_bond_security("MET F PERP A") is True
+        assert CompanyByCusipPipeline._is_bond_security("MET F PERP A") is True
 
     def test_perp_case_insensitive(self):
         """PERP detection is case-insensitive."""
-        assert IdentifierCusip._is_bond_security("MET perp") is True
+        assert CompanyByCusipPipeline._is_bond_security("MET perp") is True
 
     def test_empty_string_is_not_bond(self):
         """Empty string returns False."""
-        assert IdentifierCusip._is_bond_security("") is False
+        assert CompanyByCusipPipeline._is_bond_security("") is False
 
     def test_none_is_not_bond(self):
         """None returns False."""
-        assert IdentifierCusip._is_bond_security(None) is False
+        assert CompanyByCusipPipeline._is_bond_security(None) is False
 
 
 class TestParseTickerAndMic:
-    """Tests for IdentifierCusip._parse_ticker_and_mic (static method)."""
+    """Tests for CompanyByCusipPipeline._parse_ticker_and_mic (static method)."""
 
     def test_plain_us_ticker(self):
         """A single-part ticker returns ticker:<symbol>."""
-        assert IdentifierCusip._parse_ticker_and_mic("AAPL") == "ticker:AAPL"
+        assert CompanyByCusipPipeline._parse_ticker_and_mic("AAPL") == "ticker:AAPL"
 
     def test_ticker_with_known_exchange(self):
         """Ticker with a known exchange code returns ticker and mic."""
-        assert IdentifierCusip._parse_ticker_and_mic("ACTI SS") == "ticker:ACTI&&mic:XSTO"
+        assert CompanyByCusipPipeline._parse_ticker_and_mic("ACTI SS") == "ticker:ACTI&&mic:XSTO"
 
     def test_ticker_with_unknown_exchange(self):
         """Ticker with an unknown exchange code returns only ticker."""
-        assert IdentifierCusip._parse_ticker_and_mic("FOO NY") == "ticker:FOO"
+        assert CompanyByCusipPipeline._parse_ticker_and_mic("FOO NY") == "ticker:FOO"
 
     def test_bond_returns_empty_string(self):
         """A bond security string returns empty string."""
-        assert IdentifierCusip._parse_ticker_and_mic("WEC 4.375 06/01/29") == ""
+        assert CompanyByCusipPipeline._parse_ticker_and_mic("WEC 4.375 06/01/29") == ""
 
     def test_more_than_two_parts_returns_empty(self):
         """More than two non-bond parts returns empty string."""
-        assert IdentifierCusip._parse_ticker_and_mic("A B C") == ""
+        assert CompanyByCusipPipeline._parse_ticker_and_mic("A B C") == ""
 
     def test_empty_string_returns_empty(self):
         """Empty string returns empty string."""
-        assert IdentifierCusip._parse_ticker_and_mic("") == ""
+        assert CompanyByCusipPipeline._parse_ticker_and_mic("") == ""
 
     def test_none_returns_empty(self):
         """None returns empty string."""
-        assert IdentifierCusip._parse_ticker_and_mic(None) == ""
+        assert CompanyByCusipPipeline._parse_ticker_and_mic(None) == ""
 
     def test_whitespace_is_stripped(self):
         """Leading/trailing whitespace is handled."""
-        assert IdentifierCusip._parse_ticker_and_mic("  AAPL  ") == "ticker:AAPL"
+        assert CompanyByCusipPipeline._parse_ticker_and_mic("  AAPL  ") == "ticker:AAPL"
 
 
 class TestExtractFilterParquetTicker:
-    """Tests for IdentifierCusip._extract_filter_parquet_ticker.
+    """Tests for CompanyByCusipPipeline._extract_filter_parquet_ticker.
 
     The method now returns {issuer_name: [cusip, ...]} (not tickers).
     It also sets self._raw_ticker_map and self._std_ticker_map as side effects.
@@ -273,7 +273,7 @@ class TestExtractFilterParquetTicker:
 
 
 class TestWarnAmbiguousCusips:
-    """Tests for IdentifierCusip._warn_ambiguous_cusips."""
+    """Tests for CompanyByCusipPipeline._warn_ambiguous_cusips."""
 
     def test_no_warning_for_unambiguous_cusips(self):
         """No warning is emitted when each CUSIP maps to exactly one ticker."""
@@ -317,7 +317,7 @@ class TestWarnAmbiguousCusips:
 
 
 class TestGroupByIssuer:
-    """Tests for IdentifierCusip._group_by_issuer."""
+    """Tests for CompanyByCusipPipeline._group_by_issuer."""
 
     def test_returns_cusips_per_issuer(self):
         """Returns {issuer_name: [cusip, ...]} with no ticker values."""
@@ -356,7 +356,7 @@ class TestGroupByIssuer:
 
 
 class TestStdAndRawTickerMapProperties:
-    """Tests for IdentifierCusip.std_ticker_map and raw_ticker_map properties."""
+    """Tests for CompanyByCusipPipeline.std_ticker_map and raw_ticker_map properties."""
 
     def test_std_ticker_map_returns_empty_before_load(self):
         """std_ticker_map returns {} when _std_ticker_map has not been set."""

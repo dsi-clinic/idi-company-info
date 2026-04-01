@@ -3,9 +3,9 @@
 # Standard library imports
 from dataclasses import dataclass
 
-from idi_company_info.processors.identifier import IdentifierPipeline
-from idi_company_info.processors.identifier_cik import IdentifierCik
-from idi_company_info.processors.identifier_cusip import IdentifierCusip
+from idi_company_info.processors.company_pipeline import CompanyPipeline
+from idi_company_info.processors.company_by_cik_pipeline import CompanyByCikPipeline
+from idi_company_info.processors.company_by_cusip_pipeline import CompanyByCusipPipeline
 
 # Application imports
 from idi_company_info.processors.types import IdentifierType
@@ -19,7 +19,7 @@ class IdentifierSpec:
     no other code needs to change.
     """
 
-    cls: type[IdentifierPipeline]
+    cls: type[CompanyPipeline]
     permid_filename: str
     result_filename: str
     failure_filename: str
@@ -27,13 +27,13 @@ class IdentifierSpec:
 
 IDENTIFIER_REGISTRY: dict[IdentifierType, IdentifierSpec] = {
     IdentifierType.CIK: IdentifierSpec(
-        cls=IdentifierCik,
+        cls=CompanyByCikPipeline,
         permid_filename="permid_tracking_cik.json",
         result_filename="company_info_cik.json",
         failure_filename="failures_cik.json",
     ),
     IdentifierType.CUSIP: IdentifierSpec(
-        cls=IdentifierCusip,
+        cls=CompanyByCusipPipeline,
         permid_filename="permid_tracking_cusip.json",
         result_filename="company_info_cusip.json",
         failure_filename="failures_cusip.json",

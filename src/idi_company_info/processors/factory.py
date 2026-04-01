@@ -1,10 +1,10 @@
-"""Builds configured IdentifierPipeline instances from a top-level OrchestratorConfig."""
+"""Builds configured CompanyPipeline instances from a top-level OrchestratorConfig."""
 
 # Standard library imports
 import pathlib
 
 # Application imports
-from idi_company_info.processors.identifier import IdentifierPipeline
+from idi_company_info.processors.company_pipeline import CompanyPipeline
 from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
 from idi_company_info.processors.types import (
     ApiCredentials,
@@ -15,22 +15,22 @@ from idi_company_info.processors.types import (
 
 
 class IdentifierFactory:
-    """Builds a configured IdentifierPipeline instance from an OrchestratorConfig.
+    """Builds a configured CompanyPipeline instance from an OrchestratorConfig.
 
     Single responsibility: translate orchestrator-level config into the
-    dataclasses expected by the IdentifierPipeline base class, then instantiate the
+    dataclasses expected by the CompanyPipeline base class, then instantiate the
     correct subclass.
     """
 
     @staticmethod
-    def build(config: OrchestratorConfig) -> IdentifierPipeline:
-        """Build and return the appropriate IdentifierPipeline for the given config.
+    def build(config: OrchestratorConfig) -> CompanyPipeline:
+        """Build and return the appropriate CompanyPipeline for the given config.
 
         Args:
             config: Orchestrator configuration.
 
         Returns:
-            A fully configured IdentifierPipeline subclass instance.
+            A fully configured CompanyPipeline subclass instance.
 
         Raises:
             KeyError: If config.identifier_type is not in IDENTIFIER_REGISTRY.

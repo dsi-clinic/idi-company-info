@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.processors.identifier_cik."""
+"""Unit tests for idi_company_info.processors.company_by_cik_pipeline."""
 
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from idi_company_info.processors.identifier_cik import IdentifierCik
+from idi_company_info.processors.company_by_cik_pipeline import CompanyByCikPipeline
 
 
 def make_cik_instance():
-    """Create an IdentifierCik with mocked dependencies."""
-    with patch("idi_company_info.processors.identifier.Path"):
-        with patch("idi_company_info.processors.identifier.FailureRegistry"):
-            instance = IdentifierCik.__new__(IdentifierCik)
+    """Create an CompanyByCikPipeline with mocked dependencies."""
+    with patch("idi_company_info.processors.company_pipeline.Path"):
+        with patch("idi_company_info.processors.company_pipeline.FailureRegistry"):
+            instance = CompanyByCikPipeline.__new__(CompanyByCikPipeline)
             instance.logger = MagicMock()
             return instance
 
 
 class TestExtractFilterParquetCik:
-    """Tests for IdentifierCik._extract_filter_parquet_cik."""
+    """Tests for CompanyByCikPipeline._extract_filter_parquet_cik."""
 
     def test_returns_dict_grouped_by_investor_name(self):
         """Test that the result groups ciks by investor_name."""

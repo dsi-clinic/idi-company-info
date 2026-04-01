@@ -7,12 +7,12 @@ import re
 import pandas as pd
 
 # Application imports
-from idi_company_info.processors.identifier import IdentifierPipeline
+from idi_company_info.processors.company_pipeline import CompanyPipeline
 
 _TICKER_WITH_EXCHANGE_PARTS = 2
 
 
-class IdentifierCusip(IdentifierPipeline):
+class CompanyByCusipPipeline(CompanyPipeline):
     """Processes CUSIP/ticker identifiers via the PermID Record Match pipeline.
 
     load_data returns {issuer_name: [cusip, ...]} so that CUSIP is the
@@ -105,7 +105,7 @@ class IdentifierCusip(IdentifierPipeline):
 
         formatted = subset.copy()
         formatted["stock_ticker"] = formatted["stock_ticker"].apply(
-            IdentifierCusip._parse_ticker_and_mic
+            CompanyByCusipPipeline._parse_ticker_and_mic
         )
         formatted = formatted[formatted["stock_ticker"] != ""]
 
@@ -143,7 +143,7 @@ class IdentifierCusip(IdentifierPipeline):
         """
         formatted = subset.copy()
         formatted["stock_ticker"] = formatted["stock_ticker"].apply(
-            IdentifierCusip._parse_ticker_and_mic
+            CompanyByCusipPipeline._parse_ticker_and_mic
         )
         formatted = formatted[formatted["stock_ticker"] != ""]
         self.logger.info(
@@ -165,7 +165,7 @@ class IdentifierCusip(IdentifierPipeline):
         if not ticker_str or not isinstance(ticker_str, str):
             return ""
 
-        if IdentifierCusip._is_bond_security(ticker_str):
+        if CompanyByCusipPipeline._is_bond_security(ticker_str):
             return ""
 
         parts = ticker_str.strip().split()
@@ -175,7 +175,7 @@ class IdentifierCusip(IdentifierPipeline):
 
         if len(parts) == _TICKER_WITH_EXCHANGE_PARTS:
             ticker, exchange = parts[0], parts[1]
-            mic = IdentifierCusip.EXCHANGE_TO_MIC.get(exchange, "")
+            mic = CompanyByCusipPipeline.EXCHANGE_TO_MIC.get(exchange, "")
             return f"ticker:{ticker}&&mic:{mic}" if mic else f"ticker:{ticker}"
 
         return ""

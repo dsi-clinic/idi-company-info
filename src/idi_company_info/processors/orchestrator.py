@@ -2,8 +2,8 @@
 """Pipeline Orchestrator - Runs the identifier processing pipeline for a specified input file.
 
 Supports three identifier types:
-  cik    — CIK-based Record Match (IdentifierCik)
-  cusip  — CUSIP-based Record Match(IdentifierCusip)
+  cik    — CIK-based Record Match (CompanyByCikPipeline)
+  cusip  — CUSIP-based Record Match(CompanyByCusipPipeline)
 
 To add a new identifier type, register it in IDENTIFIER_REGISTRY.
 """
