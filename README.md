@@ -58,13 +58,13 @@ export GEONAMES_USER='your-username'
 
 ```bash
 # CIK pipeline
-uv run python -m idi_company_info.processors.orchestrator \
+uv run pipeline \
   --input-file path/to/investors.parquet \
   --output-directory data/output \
   --type cik
 
 # CUSIP pipeline (input must have issuer_name, security_cusip, stock_ticker)
-uv run python -m idi_company_info.processors.orchestrator \
+uv run pipeline \
   --input-file path/to/securities.parquet \
   --output-directory data/output \
   --type cusip

@@ -13,6 +13,9 @@ dependencies = [
     "watchtower>=3.4.0",
 ]
 
+[project.scripts]
+pipeline = "idi_company_info.processors.orchestrator:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
