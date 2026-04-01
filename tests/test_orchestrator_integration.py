@@ -18,9 +18,9 @@ from idi_company_info.common.api import (
     LSEGEntityLookup,
     LsegRecordMatch,
 )
-from idi_company_info.processors.factory import IdentifierFactory
 from idi_company_info.processors.company_by_cik_pipeline import CompanyByCikPipeline
 from idi_company_info.processors.company_by_cusip_pipeline import CompanyByCusipPipeline
+from idi_company_info.processors.factory import IdentifierFactory
 from idi_company_info.processors.orchestrator import PipelineOrchestrator
 from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
 from idi_company_info.processors.types import IdentifierType, OrchestratorConfig
