@@ -12,9 +12,10 @@ systemctl start docker crond
 # Add ec2-user to docker group
 usermod -aG docker ec2-user
 
-# Install Docker Compose
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+# Install Docker Compose V2 as a CLI plugin
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Create app directory (no git clone - use ECR images)
 APP_DIR=/home/ec2-user/idi-company-info
@@ -37,7 +38,7 @@ GEONAMES_USER=$GEONAMES_USER
 # ECR image URI (set by Pulumi)
 ORCHESTRATOR_IMAGE={ORCHESTRATOR_IMAGE}
 
-# Input files — S3 URLs (orchestrator reads directly; docker-compose uses /tmp dummy mount by default)
+# Input files — S3 URLs (orchestrator reads directly; docker compose uses /tmp dummy mount by default)
 INPUT_FILE_ORCHESTRATOR_CIK={INPUT_FILE_CIK}
 INPUT_FILE_ORCHESTRATOR_CUSIP={INPUT_FILE_CUSIP}
 
@@ -60,8 +61,8 @@ MATCH_SCORE_THRESHOLD=1
 
 ENVFILE_EOF
 
-# Create docker-compose.yml (orchestrator service defs for pull_and_run; no long-running services)
-cat > docker-compose.yml << '{COMPOSE_DELIM}'
+# Create compose.yml (orchestrator service defs for pull_and_run; no long-running services)
+cat > compose.yml << '{COMPOSE_DELIM}'
 {COMPOSE_CONTENT}
 {COMPOSE_DELIM}
 

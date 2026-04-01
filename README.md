@@ -148,11 +148,11 @@ Two Compose files are used together:
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | Base config — image references, volumes, env vars. Used as-is on EC2. |
-| `docker-compose.override.yml` | Local dev override — adds `build` blocks so services build from source. |
+| `compose.yml` | Base config — image references, volumes, env vars. Used as-is on EC2. |
+| `compose.override.yml` | Local dev override — adds `build` blocks so services build from source. |
 
 `docker compose` automatically merges both files when run locally. On EC2, only
-`docker-compose.yml` is deployed (no build blocks), so services pull from ECR
+`compose.yml` is deployed (no build blocks), so services pull from ECR
 via `ORCHESTRATOR_IMAGE`. This means no Dockerfile or source code is needed on
 the instance.
 
@@ -169,7 +169,7 @@ docker compose run --rm orchestrator-cusip
 To run against a pre-built registry image instead of building locally:
 
 ```bash
-docker compose -f docker-compose.yml run --rm orchestrator-cik
+docker compose -f compose.yml run --rm orchestrator-cik
 ```
 
 ### Key `.env` variables
