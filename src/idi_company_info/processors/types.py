@@ -20,9 +20,9 @@ class FilePaths:
 class BatchConfig:
     """Configuration for batch processing behaviour."""
 
-    batch_size: int = 2450
-    buffer_size: int = 500
-    threshold_days: int | None = None
+    batch_size: int = 2450  # number of records to process in a single execution
+    buffer_size: int = 500  # max size of buffer before data is written to disk
+    threshold_days: int | None = None  # number of days to look for stale entities
 
 
 @dataclass
