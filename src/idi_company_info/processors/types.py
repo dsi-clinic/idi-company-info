@@ -20,9 +20,9 @@ class FilePaths:
 class BatchConfig:
     """Configuration for batch processing behaviour."""
 
-    batch_size: int = 2450
-    buffer_size: int = 500
-    threshold_days: int = 30
+    batch_size: int = 2450  # number of records to process in a single execution
+    buffer_size: int = 500  # max size of buffer before data is written to disk
+    threshold_days: int | None = None  # number of days to look for stale entities
 
 
 @dataclass
@@ -41,6 +41,7 @@ class CompanyInfo:
     original_entity_name: str
     identifier: str
     identifier_type: str
+    ticker: str | None
     permid_id: str
     permid_url: str | None
     hq_address: str | None
@@ -74,16 +75,7 @@ class IdentifierType(StrEnum):
     """Supported identifier types."""
 
     CIK = "cik"
-    CIK_MATCH = "cik-match"
     CUSIP = "cusip"
-    TICKER = "ticker"
-
-
-class QueryType(StrEnum):
-    """Strategy used to look up PermIDs for an identifier batch."""
-
-    ENTITY_SEARCH = "entity_search"
-    RECORD_MATCH = "record_match"
 
 
 class StageStatus(Enum):

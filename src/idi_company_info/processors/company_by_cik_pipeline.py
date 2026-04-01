@@ -7,10 +7,10 @@ from typing import Any
 import pandas as pd
 
 # Application imports
-from idi_company_info.processors.identifier import IdentifierPipeline
+from idi_company_info.processors.company_pipeline import CompanyPipeline
 
 
-class IdentifierCik(IdentifierPipeline):
+class CompanyByCikPipeline(CompanyPipeline):
     """Processes CIK identifiers through the PermID entity search pipeline."""
 
     @property
@@ -68,14 +68,3 @@ class IdentifierCik(IdentifierPipeline):
 
         result = self._extract_filter_parquet_cik(df)
         return result
-
-    def _build_query_params(self, identifier: str) -> dict[str, Any]:
-        """Build the query parameters.
-
-        Args:
-            identifier: The identifier.
-
-        Returns:
-            The query parameters.
-        """
-        return {"q": f"cik:{identifier}", "format": "json"}

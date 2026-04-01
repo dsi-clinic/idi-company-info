@@ -2,9 +2,8 @@
 """Pipeline Orchestrator - Runs the identifier processing pipeline for a specified input file.
 
 Supports three identifier types:
-  cik    — CIK-based Entity Search (IdentifierCik)
-  cusip  — CUSIP-based Entity Search (IdentifierCusip)
-  ticker — Ticker-based Record Match (IdentifierCusip in RECORD_MATCH mode)
+  cik    — CIK-based Record Match (CompanyByCikPipeline)
+  cusip  — CUSIP-based Record Match(CompanyByCusipPipeline)
 
 To add a new identifier type, register it in IDENTIFIER_REGISTRY.
 """
@@ -115,7 +114,7 @@ def get_args() -> argparse.Namespace:
         type=IdentifierType,
         choices=list(IdentifierType),
         required=True,
-        help="Identifier type: cik (CIK Entity Search), cik-match (CIK Record Match), cusip (CUSIP Entity Search), ticker (Ticker Record Match)",
+        help="Identifier type: cik (CIK Record Match), cusip (Ticker Record Match)",
     )
     parser.add_argument(
         "--permid-api-key",

@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.processors.identifier_cik."""
+"""Unit tests for idi_company_info.processors.company_by_cik_pipeline."""
 
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from idi_company_info.processors.identifier_cik import IdentifierCik
+from idi_company_info.processors.company_by_cik_pipeline import CompanyByCikPipeline
 
 
 def make_cik_instance():
-    """Create an IdentifierCik with mocked dependencies."""
-    with patch("idi_company_info.processors.identifier.Path"):
-        with patch("idi_company_info.processors.identifier.FailureRegistry"):
-            instance = IdentifierCik.__new__(IdentifierCik)
+    """Create an CompanyByCikPipeline with mocked dependencies."""
+    with patch("idi_company_info.processors.company_pipeline.Path"):
+        with patch("idi_company_info.processors.company_pipeline.FailureRegistry"):
+            instance = CompanyByCikPipeline.__new__(CompanyByCikPipeline)
             instance.logger = MagicMock()
             return instance
 
 
 class TestExtractFilterParquetCik:
-    """Tests for IdentifierCik._extract_filter_parquet_cik."""
+    """Tests for CompanyByCikPipeline._extract_filter_parquet_cik."""
 
     def test_returns_dict_grouped_by_investor_name(self):
         """Test that the result groups ciks by investor_name."""
@@ -102,19 +102,3 @@ class TestExtractFilterParquetCik:
         )
         result = instance._extract_filter_parquet_cik(df)
         assert all(isinstance(v, str) for v in result["Firm A"])
-
-
-class TestBuildQueryParamsCik:
-    """Tests for IdentifierCik._build_query_params."""
-
-    def test_formats_cik_query(self):
-        """Test that the query param is formatted with cik: prefix."""
-        instance = make_cik_instance()
-        result = instance._build_query_params("0001234567")
-        assert result == {"q": "cik:0001234567", "format": "json"}
-
-    def test_format_key_is_json(self):
-        """Test that format is always json."""
-        instance = make_cik_instance()
-        result = instance._build_query_params("9876543210")
-        assert result["format"] == "json"

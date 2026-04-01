@@ -1,6 +1,6 @@
 .PHONY: help install install-dev test test-verbose test-coverage clean clean-all
-.PHONY: run-cik run-cusip run-ticker
-.PHONY: docker-build docker-up docker-down docker-run-cik docker-run-cik-match docker-run-cusip docker-run-ticker
+.PHONY: run-cik run-cusip
+.PHONY: docker-build docker-up docker-down docker-run-cik docker-run-cusip
 
 # ── Python runner ────────────────────────────────────────────────────────────
 RUN := uv run
@@ -50,9 +50,8 @@ help:
 	@echo "  make install-dev      Install dev dependencies (includes tests)"
 	@echo ""
 	@echo "Local pipeline runs:"
-	@echo "  make run-cik          CIK track   (Entity Search)"
-	@echo "  make run-cusip        CUSIP track  (Entity Search)"
-	@echo "  make run-ticker       Ticker track (Record Match)"
+	@echo "  make run-cik          CIK pipeline  (Record Match, input: investor_name + investor_cik)"
+	@echo "  make run-cusip        CUSIP pipeline (Record Match, input: issuer_name + security_cusip + stock_ticker)"
 	@echo ""
 	@echo "  Common options (pass as make args):"
 	@echo "    INPUT_PARQUET=path/to/file.parquet  (default: $(INPUT_PARQUET))"
@@ -60,7 +59,7 @@ help:
 	@echo "    BATCH_SIZE=2450                     (default: $(BATCH_SIZE))"
 	@echo "    BUFFER_SIZE=500                     (default: $(BUFFER_SIZE))"
 	@echo "    THRESHOLD_DAYS=30                   (default: unset)"
-	@echo "    MATCH_SCORE=1                       (ticker only, default: $(MATCH_SCORE))"
+	@echo "    MATCH_SCORE=1                       (default: $(MATCH_SCORE), 1=100% match required)"
 	@echo ""
 	@echo "  Credentials (env vars or make args):"
 	@echo "    PERMID_API_KEY=$${PERMID_API_KEY:-<not set>}"
@@ -75,10 +74,8 @@ help:
 	@echo "  make docker-build     Build orchestrator image"
 	@echo "  make docker-up        Start scheduler stack (runs on schedule)"
 	@echo "  make docker-down      Stop Docker Compose stack"
-	@echo "  make docker-run-cik       Manual CIK run via Docker"
-	@echo "  make docker-run-cik-match Manual CIK Record Match run via Docker"
-	@echo "  make docker-run-cusip     Manual CUSIP run via Docker"
-	@echo "  make docker-run-ticker    Manual Ticker run via Docker"
+	@echo "  make docker-run-cik   Manual CIK run via Docker"
+	@echo "  make docker-run-cusip Manual CUSIP run via Docker"
 	@echo ""
 	@echo "Utility:"
 	@echo "  make clean            Remove output and log files"
@@ -104,6 +101,7 @@ _orchestrator_args = \
 	--geonames-user $(GEONAMES_USER) \
 	--batch-size $(BATCH_SIZE) \
 	--buffer-size $(BUFFER_SIZE) \
+	--match-score-threshold $(MATCH_SCORE) \
 	$(if $(THRESHOLD_DAYS),--threshold-days $(THRESHOLD_DAYS),)
 
 run-cik:
@@ -121,15 +119,6 @@ run-cusip:
 	$(RUN) -m idi_company_info.processors.orchestrator \
 		$(_orchestrator_args) \
 		--type cusip
-
-run-ticker:
-	$(call check-creds)
-	$(call check-input)
-	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m idi_company_info.processors.orchestrator \
-		$(_orchestrator_args) \
-		--type ticker \
-		--match-score-threshold $(MATCH_SCORE)
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 test:
@@ -177,11 +166,3 @@ docker-run-cik:
 docker-run-cusip:
 	@echo "Running CUSIP pipeline via Docker..."
 	docker compose run --rm orchestrator-cusip
-
-docker-run-cik-match:
-	@echo "Running CIK Match pipeline via Docker..."
-	docker compose run --rm orchestrator-cik-match
-
-docker-run-ticker:
-	@echo "Running Ticker pipeline via Docker..."
-	docker compose run --rm orchestrator-ticker

@@ -11,7 +11,7 @@ import pulumi
 # -----------------------------------------------------------------------------
 PULUMI_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = PULUMI_DIR / "templates"
-COMPOSE_PATH = PULUMI_DIR.parent / "docker-compose.yml"
+COMPOSE_PATH = PULUMI_DIR.parent / "compose.yml"
 
 # -----------------------------------------------------------------------------
 # Configuration

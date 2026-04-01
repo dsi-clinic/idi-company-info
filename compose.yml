@@ -1,0 +1,103 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # CIK pipeline
+  # ---------------------------------------------------------------------------
+  orchestrator-cik:
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
+    container_name: idi-company-info-orchestrator-cik
+
+    profiles:
+      - manual
+
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-2}
+      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
+      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
+      - BATCH_SIZE_CIK=${BATCH_SIZE_CIK:-2450}
+      - BUFFER_SIZE=${BUFFER_SIZE:-500}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
+      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
+      - INPUT_FILE_ORCHESTRATOR_CIK=${INPUT_FILE_ORCHESTRATOR_CIK:-/data/input/data.parquet}
+
+    volumes:
+      - ${INPUT_VOLUME_SPEC_CIK:-${INPUT_FILE_CIK:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}
+      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.processors.orchestrator
+      --input-file $${INPUT_FILE_ORCHESTRATOR_CIK:-/data/input/data.parquet}
+      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      --type cik
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${BATCH_SIZE_CIK:-2450}
+      --buffer-size ${BUFFER_SIZE:-500}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
+      2>&1 | tee /logs/orchestrator_cik_$(date +%Y%m%d_%H%M%S).log"
+
+    # Retry up to 3 times if the process exits with a non-zero code
+    restart: on-failure
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+
+  # ---------------------------------------------------------------------------
+  # CUSIP pipeline
+  # ---------------------------------------------------------------------------
+  orchestrator-cusip:
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
+    container_name: idi-company-info-orchestrator-cusip
+
+    profiles:
+      - manual
+
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-2}
+      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
+      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
+      - BATCH_SIZE_CUSIP=${BATCH_SIZE_CUSIP:-2450}
+      - BUFFER_SIZE=${BUFFER_SIZE:-500}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
+      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
+      - INPUT_FILE_ORCHESTRATOR_CUSIP=${INPUT_FILE_ORCHESTRATOR_CUSIP:-/data/input/data.parquet}
+
+    volumes:
+      - ${INPUT_VOLUME_SPEC_CUSIP:-${INPUT_FILE_CUSIP:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}
+      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.processors.orchestrator
+      --input-file $${INPUT_FILE_ORCHESTRATOR_CUSIP:-/data/input/data.parquet}
+      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      --type cusip
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${BATCH_SIZE_CUSIP:-2450}
+      --buffer-size ${BUFFER_SIZE:-500}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
+      2>&1 | tee /logs/orchestrator_cusip_$(date +%Y%m%d_%H%M%S).log"
+
+    # Retry up to 3 times if the process exits with a non-zero code
+    restart: on-failure
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
