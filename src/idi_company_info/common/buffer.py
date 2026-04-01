@@ -1,10 +1,14 @@
 """Buffer for storing data that flushes to file when threshold is reached."""
 
-# Standard library imports
-
 # Application imports
 from idi_company_info.common.logs import get_logger
 from idi_company_info.common.storage import load_json, save_json
+from idi_company_info.processors.types import CompanyInfo
+
+# Maps entity name → list of (identifier, associated values) tuples
+type EntityBuffer = dict[str, list[tuple[str, list[str]]]]
+# List of resolved records
+type RecordBuffer = list[CompanyInfo]
 
 
 class Buffer:
@@ -29,7 +33,7 @@ class Buffer:
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
-    def add(self, data: dict[str, list[tuple[str, list[str]]]] | list[dict]) -> None:
+    def add(self, data: EntityBuffer | RecordBuffer) -> None:
         """Merge permid_data into sync buffer; flush if threshold reached.
 
         Args:
