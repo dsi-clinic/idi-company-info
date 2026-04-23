@@ -1,34 +1,78 @@
 name: idi
 runtime: python
-description: AWS infrastructure for IDI Company Information Pipeline
+description: AWS ECS Fargate infrastructure for IDI Company Information Pipeline
 
 config:
   aws:region:
     description: AWS region to deploy to
     value: us-east-2
 
-  idi:instance_type:
-    description: EC2 instance type for processing instances
-    default: t2.small
+  idi:app_name:
+    description: Name of the application
+    default: "company-info"
 
-  idi:key_name:
-    description: SSH key pair name for EC2 instances (omit or leave default to use SSM Session Manager only)
+  idi:bucket_name:
+    description: S3 bucket name for pipeline input, output, and failures (required — set per stack)
 
   idi:permid_api_key:
     description: PermID API key (stored as secret in AWS Secrets Manager)
     secret: true
 
   idi:geonames_user:
-    description: GeoNames username for geocoding
+    description: GeoNames username for geocoding (public, injected as env var)
+
+  idi:cpu:
+    description: Fargate task CPU units (256, 512, 1024, 2048, 4096)
+    default: "1024"
+
+  idi:memory:
+    description: Fargate task memory in MiB (must be valid for chosen CPU)
+    default: "4096"
 
   idi:cron_cik:
-    description: Cron schedule for orchestrator-cik (min hour day month wday, or ofelia format)
-    default: "0 2 * * *"
+    description: EventBridge cron for the CIK pipeline
+    default: "cron(0 2 * * ? *)"
 
   idi:cron_cusip:
-    description: Cron schedule for orchestrator-cusip (min hour day month wday, or ofelia format)
-    default: "30 2 * * *"
+    description: EventBridge cron for the CUSIP pipeline
+    default: "cron(30 2 * * ? *)"
 
-  idi:use_s3_output:
-    description: Use S3 for buffered output files on EC2 (true) or local disk (false)
-    default: "true"
+  idi:schedule_enabled:
+    description: Whether the EventBridge schedules are enabled
+    default: "false"
+
+  idi:input_file_cik:
+    description: S3 URI of the CIK pipeline input parquet
+  idi:input_file_cusip:
+    description: S3 URI of the CUSIP pipeline input parquet
+
+  idi:batch_size_cik:
+    description: Orchestrator batch size for CIK
+    default: "2450"
+
+  idi:batch_size_cusip:
+    description: Orchestrator batch size for CUSIP
+    default: "2450"
+
+  idi:buffer_size:
+    description: Orchestrator write buffer size
+    default: "500"
+
+  idi:threshold_days:
+    description: Reprocess records whose last run is older than this; empty to disable
+    default: ""
+
+  idi:match_score_threshold:
+    description: Match score threshold (1 = exact match required)
+    default: "1"
+
+  idi:log_retention_days:
+    description: CloudWatch log group retention in days
+    default: "30"
+
+  idi:ecr_image_count:
+    description: ECR image retention count
+    default: "5"
+
+  idi:shared_dlq_name:
+    description: Name of the shared scheduler DLQ owned by idi-corporate-structure

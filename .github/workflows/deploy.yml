@@ -22,6 +22,7 @@ env:
   REGISTRY: ghcr.io
   PROJECT_DIR: .
   IMAGE_PREFIX: idi-company-info
+  APP_NAME: company-info
 
 jobs:
   version:
@@ -183,14 +184,22 @@ jobs:
     env:
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
       PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
-      EC2_INSTANCE_TYPE: ${{ secrets.EC2_INSTANCE_TYPE }}
-      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
       PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
       GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
       CRON_CIK: ${{ secrets.CRON_CIK }}
       CRON_CUSIP: ${{ secrets.CRON_CUSIP }}
       INPUT_FILE_CIK: ${{ secrets.INPUT_FILE_CIK }}
       INPUT_FILE_CUSIP: ${{ secrets.INPUT_FILE_CUSIP }}
+      ECS_TASK_CPU: ${{ secrets.ECS_TASK_CPU }}
+      ECS_TASK_MEMORY: ${{ secrets.ECS_TASK_MEMORY }}
+      SCHEDULE_ENABLED: ${{ secrets.SCHEDULE_ENABLED }}
+      BATCH_SIZE_CIK: ${{ secrets.BATCH_SIZE_CIK }}
+      BATCH_SIZE_CUSIP: ${{ secrets.BATCH_SIZE_CUSIP }}
+      BUFFER_SIZE: ${{ secrets.BUFFER_SIZE }}
+      THRESHOLD_DAYS: ${{ secrets.THRESHOLD_DAYS }}
+      MATCH_SCORE_THRESHOLD: ${{ secrets.MATCH_SCORE_THRESHOLD }}
+      SHARED_DLQ_NAME: ${{ secrets.SHARED_DLQ_NAME }}
     steps:
       - uses: actions/checkout@v4
 
@@ -217,15 +226,23 @@ jobs:
           pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
           pulumi stack select ${{ needs.version.outputs.deploy_env }} 2>/dev/null || pulumi stack init ${{ needs.version.outputs.deploy_env }}
           pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
-          pulumi config set idi:instance_type ${EC2_INSTANCE_TYPE:-t2.small}
-          pulumi config set idi:use_s3_output true
-          [ -n "$EC2_SSH_KEY" ] && pulumi config set idi:key_name "$EC2_SSH_KEY"
+          pulumi config set idi:app_name ${{ env.APP_NAME }}
+          [ -n "$BUCKET_NAME" ] && pulumi config set idi:bucket_name "$BUCKET_NAME"
           [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
           [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
           [ -n "$CRON_CIK" ] && pulumi config set idi:cron_cik "$CRON_CIK"
           [ -n "$CRON_CUSIP" ] && pulumi config set idi:cron_cusip "$CRON_CUSIP"
           [ -n "$INPUT_FILE_CIK" ] && pulumi config set idi:input_file_cik "$INPUT_FILE_CIK"
           [ -n "$INPUT_FILE_CUSIP" ] && pulumi config set idi:input_file_cusip "$INPUT_FILE_CUSIP"
+          [ -n "$ECS_TASK_CPU" ] && pulumi config set idi:cpu "$ECS_TASK_CPU"
+          [ -n "$ECS_TASK_MEMORY" ] && pulumi config set idi:memory "$ECS_TASK_MEMORY"
+          [ -n "$SCHEDULE_ENABLED" ] && pulumi config set idi:schedule_enabled "$SCHEDULE_ENABLED"
+          [ -n "$BATCH_SIZE_CIK" ] && pulumi config set idi:batch_size_cik "$BATCH_SIZE_CIK"
+          [ -n "$BATCH_SIZE_CUSIP" ] && pulumi config set idi:batch_size_cusip "$BATCH_SIZE_CUSIP"
+          [ -n "$BUFFER_SIZE" ] && pulumi config set idi:buffer_size "$BUFFER_SIZE"
+          [ -n "$THRESHOLD_DAYS" ] && pulumi config set idi:threshold_days "$THRESHOLD_DAYS"
+          [ -n "$MATCH_SCORE_THRESHOLD" ] && pulumi config set idi:match_score_threshold "$MATCH_SCORE_THRESHOLD"
+          [ -n "$SHARED_DLQ_NAME" ] && pulumi config set idi:shared_dlq_name "$SHARED_DLQ_NAME"
 
       - name: Pulumi deploy
         run: |
@@ -271,7 +288,7 @@ jobs:
 
       - name: Re-tag and push orchestrator to ECR
         run: |
-          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-company-info', needs.version.outputs.pulumi_project, needs.version.outputs.deploy_env) }}-orchestrator"
+          ECR_REPO="${{ secrets.ECR_REPOSITORY_PREFIX || format('{0}-{1}-{2}', needs.version.outputs.pulumi_project, needs.version.outputs.deploy_env, env.APP_NAME) }}-orchestrator"
           ECR_URI="${{ steps.ecr-login.outputs.registry }}/$ECR_REPO"
           GHCR_IMG="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PREFIX }}-orchestrator"
           docker pull ${GHCR_IMG}:${{ needs.version.outputs.version }}

@@ -1,25 +1,34 @@
-"""IAM roles, policies, and instance profile."""
+"""IAM roles and policies for ECS Fargate tasks.
+
+Two roles:
+  1. Task Execution Role — used by the ECS agent to pull images, write awslogs,
+     and read secrets from Secrets Manager.
+  2. Task Role — assumed by the container at runtime for S3 access and
+     ECS Exec (SSM) support.
+"""
 
 import json
 
 import pulumi_aws as aws
 
-from . import config, ecr
+import pulumi
+
+from . import config, ecr, secrets, storage
 
 # -----------------------------------------------------------------------------
-# EC2 Role
+# Task Execution Role (ECS agent — pulls image, writes logs, reads secrets)
 # -----------------------------------------------------------------------------
-ec2_role = aws.iam.Role(
-    "idi-role-ec2",
-    name=f"{config.name_prefix}-role-ec2",
-    description="IAM role for EC2 instances with ssm agent access",
+task_execution_role = aws.iam.Role(
+    "idi-role-ecs-execution",
+    name=f"{config.name_prefix}-role-ecs-execution",
+    description="ECS task execution role: image pull, awslogs, secrets",
     assume_role_policy=json.dumps(
         {
             "Version": "2012-10-17",
             "Statement": [
                 {
                     "Effect": "Allow",
-                    "Principal": {"Service": "ec2.amazonaws.com"},
+                    "Principal": {"Service": "ecs-tasks.amazonaws.com"},
                     "Action": "sts:AssumeRole",
                 }
             ],
@@ -28,56 +37,10 @@ ec2_role = aws.iam.Role(
     tags=config.tags(),
 )
 
-# Attach the AmazonSSMManagedInstanceCore managed policy
-ssm_policy_attachment = aws.iam.RolePolicyAttachment(
-    "idi-policy-ssm-agent",
-    role=ec2_role.name,
-    policy_arn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
-)
-
-# Inline CloudWatch Logs policy for watchtower (least-privilege)
-# See: https://kislyuk.github.io/watchtower/#iam-permissions
-# Scoped to idi-company-info-* log groups (matches logs.py)
-cloudwatch_logs_policy = aws.iam.RolePolicy(
-    "idi-policy-cloudwatch-logs",
-    role=ec2_role.id,
-    policy=json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "logs:CreateLogGroup",
-                        "logs:CreateLogStream",
-                        "logs:DescribeLogStreams",
-                        "logs:PutLogEvents",
-                        "logs:PutRetentionPolicy",
-                    ],
-                    "Resource": [
-                        "arn:aws:logs:*:*:log-group:idi-ftm2j",
-                        "arn:aws:logs:*:*:log-group:idi-ftm2j:*",
-                    ],
-                }
-            ],
-        }
-    ),
-)
-
-# Instance profile
-instance_profile = aws.iam.InstanceProfile(
-    "idi-instance-profile-ssm",
-    name=f"{config.name_prefix}-instance-profile-ssm",
-    role=ec2_role.name,
-    tags=config.tags(),
-)
-
-# -----------------------------------------------------------------------------
-# ECR IAM Policy (CI-pushed orchestrator image)
-# -----------------------------------------------------------------------------
-ecr_policy = aws.iam.RolePolicy(
-    "idi-policy-ecr-pull",
-    role=ec2_role.id,
+# ECR pull: account-level GetAuthorizationToken, repo-scoped data actions
+task_execution_ecr_policy = aws.iam.RolePolicy(
+    "idi-policy-ecs-execution-ecr",
+    role=task_execution_role.id,
     policy=ecr.ecr_repo.arn.apply(
         lambda arn: json.dumps(
             {
@@ -93,11 +56,140 @@ ecr_policy = aws.iam.RolePolicy(
                         "Action": [
                             "ecr:BatchGetImage",
                             "ecr:GetDownloadUrlForLayer",
+                            "ecr:BatchCheckLayerAvailability",
                         ],
-                        "Resource": [arn],
+                        "Resource": arn,
                     },
                 ],
             }
         )
+    ),
+)
+
+# Scoped awslogs writes: log group name is deterministic from name_prefix
+_log_group_name = f"/ecs/{config.name_prefix}"
+_log_group_arn = pulumi.Output.from_input(config.caller.account_id).apply(
+    lambda aid: f"arn:aws:logs:{config.aws_region}:{aid}:log-group:{_log_group_name}"
+)
+
+task_execution_logs_policy = aws.iam.RolePolicy(
+    "idi-policy-ecs-execution-logs",
+    role=task_execution_role.id,
+    policy=_log_group_arn.apply(
+        lambda arn: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "logs:CreateLogStream",
+                            "logs:PutLogEvents",
+                        ],
+                        "Resource": f"{arn}:*",
+                    }
+                ],
+            }
+        )
+    ),
+)
+
+# Read PermID API key from Secrets Manager
+task_execution_secrets_policy = aws.iam.RolePolicy(
+    "idi-policy-ecs-execution-secrets",
+    role=task_execution_role.id,
+    policy=pulumi.Output.json_dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "secretsmanager:GetSecretValue",
+                        "secretsmanager:DescribeSecret",
+                    ],
+                    "Resource": [secrets.permid_secret.arn],
+                }
+            ],
+        }
+    ),
+)
+
+# -----------------------------------------------------------------------------
+# Task Role (container runtime — S3 access + ECS Exec via SSM)
+# -----------------------------------------------------------------------------
+task_role = aws.iam.Role(
+    "idi-role-ecs-task",
+    name=f"{config.name_prefix}-role-ecs-task",
+    description="ECS task role: S3 read/write, ECS Exec",
+    assume_role_policy=json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+    ),
+    tags=config.tags(),
+)
+
+# S3 rw on the Pulumi-managed processor bucket
+task_s3_policy = aws.iam.RolePolicy(
+    "idi-policy-ecs-task-s3",
+    role=task_role.id,
+    policy=storage.processor_bucket.arn.apply(
+        lambda arn: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": ["s3:ListBucket"],
+                        "Resource": arn,
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            "s3:DeleteObject",
+                            "s3:AbortMultipartUpload",
+                            "s3:CreateMultipartUpload",
+                            "s3:UploadPart",
+                            "s3:CompleteMultipartUpload",
+                            "s3:ListMultipartUploadParts",
+                        ],
+                        "Resource": f"{arn}/*",
+                    },
+                ],
+            }
+        )
+    ),
+)
+
+# ECS Exec (SSM) — allows `aws ecs execute-command` for debugging
+task_ssm_policy = aws.iam.RolePolicy(
+    "idi-policy-ecs-task-ssm",
+    role=task_role.id,
+    policy=json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "ssmmessages:CreateControlChannel",
+                        "ssmmessages:CreateDataChannel",
+                        "ssmmessages:OpenControlChannel",
+                        "ssmmessages:OpenDataChannel",
+                    ],
+                    "Resource": "*",
+                }
+            ],
+        }
     ),
 )
