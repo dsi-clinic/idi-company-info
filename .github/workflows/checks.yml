@@ -117,8 +117,6 @@ jobs:
       BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
       PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
       GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
-      CRON_CIK: ${{ secrets.CRON_CIK }}
-      CRON_CUSIP: ${{ secrets.CRON_CUSIP }}
       INPUT_FILE_CIK: ${{ secrets.INPUT_FILE_CIK }}
       INPUT_FILE_CUSIP: ${{ secrets.INPUT_FILE_CUSIP }}
       SHARED_DLQ_NAME: ${{ secrets.SHARED_DLQ_NAME }}
@@ -151,8 +149,6 @@ jobs:
           [ -n "$BUCKET_NAME" ] && pulumi config set idi:bucket_name "$BUCKET_NAME"
           [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
           [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
-          [ -n "$CRON_CIK" ] && pulumi config set idi:cron_cik "$CRON_CIK"
-          [ -n "$CRON_CUSIP" ] && pulumi config set idi:cron_cusip "$CRON_CUSIP"
           [ -n "$INPUT_FILE_CIK" ] && pulumi config set idi:input_file_cik "$INPUT_FILE_CIK"
           [ -n "$INPUT_FILE_CUSIP" ] && pulumi config set idi:input_file_cusip "$INPUT_FILE_CUSIP"
           [ -n "$SHARED_DLQ_NAME" ] && pulumi config set idi:shared_dlq_name "$SHARED_DLQ_NAME"

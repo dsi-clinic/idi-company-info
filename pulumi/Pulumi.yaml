@@ -43,6 +43,7 @@ config:
 
   idi:input_file_cik:
     description: S3 URI of the CIK pipeline input parquet
+
   idi:input_file_cusip:
     description: S3 URI of the CUSIP pipeline input parquet
 
