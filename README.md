@@ -1,6 +1,6 @@
 # IDI Company Information Pipeline
 
-Automated pipeline for resolving investor identifiers (CIK, CUSIP) to PermIDs and fetching detailed company information via the LSEG PermID API.
+Automated pipeline for resolving investor identifiers (CIK, CUSIP) to PermIDs and fetching detailed company information via the LSEG PermID API. This is the Company Info Processor which is a part of the FTM2J Terminal.
 
 ## Pipeline Overview
 
