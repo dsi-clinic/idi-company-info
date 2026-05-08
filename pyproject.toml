@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pipeline = "idi_company_info.processors.orchestrator:main"
+pipeline = "idi_company_info.orchestrator:main"
 
 [project.optional-dependencies]
 dev = [

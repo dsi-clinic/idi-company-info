@@ -2,7 +2,7 @@
 
 # Standard library imports
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 # Third party imports
 from idi_ftm2j_shared.failures import FailureRegistry

@@ -524,7 +524,7 @@ pulumi = [
 [[package]]
 name = "idi-ftm2j-shared"
 version = "0.1.0"
-source = { git = "https://github.com/dsi-clinic/idi-ftm2j-shared.git?rev=issue-2-shared-code#d53032680f21f38a8b3e8ea1f235a976c87fdb00" }
+source = { git = "https://github.com/dsi-clinic/idi-ftm2j-shared.git?rev=issue-2-shared-code#e00472d3ddd6b373bc0b8587de761b27da2f1924" }
 dependencies = [
     { name = "requests" },
     { name = "smart-open", extra = ["s3"] },

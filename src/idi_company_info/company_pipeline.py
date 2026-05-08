@@ -19,6 +19,7 @@ from idi_company_info.api import (
     LsegRecordMatch,
 )
 from idi_company_info.batch import BatchProcessing
+from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval_company_info import CompInfoRetrieval
 from idi_company_info.retrieval_permid import PermidRetrieval
 from idi_company_info.types import (
@@ -61,8 +62,11 @@ class CompanyPipeline(ABC):
 
         self.batch_config = batch_config
 
+        company_info_failure_classifier = CompanyInfoFailureClassifier()
         self.failure_registry: FailureRegistry | None = (
-            FailureRegistry(file_paths.failure_file) if file_paths.failure_file else None
+            FailureRegistry(file_paths.failure_file, company_info_failure_classifier)
+            if file_paths.failure_file
+            else None
         )
 
         self.api_credentials = api_credentials

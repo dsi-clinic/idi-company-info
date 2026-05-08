@@ -31,6 +31,11 @@ class CompanyInfoFailureClassifier(FailureClassifier):
         {FailureType.NO_PERMID, FailureType.NO_COMPANY_INFO, FailureType.LOW_MATCH_SCORE}
     )
 
+    @property
+    def do_not_retry(self) -> frozenset:
+        """Return the set of failure types that should not be retried."""
+        return self._DO_NOT_RETRY
+
     @classmethod
     def is_retryable(cls, failure_type: FailureType) -> bool:
         """Check if a failure type should be retried.
