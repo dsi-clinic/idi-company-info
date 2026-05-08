@@ -313,16 +313,14 @@ class PermidRetrieval(Retrieval):
             if not CompanyInfoFailureClassifier.is_retryable(failure_type):
                 score = self._parse_score(record)
                 self.failure_registry.add(
-                    record["Input_Name"],
-                    record["Input_LocalID"],
-                    reason=f"{failure_type}:{score:.2f}",
+                    key=(record["Input_Name"], record["Input_LocalID"]),
+                    failure_type=failure_type,
                 )
 
         for record in no_match_records:
             failure_type = FailureType.NO_PERMID
             if not CompanyInfoFailureClassifier.is_retryable(failure_type):
                 self.failure_registry.add(
-                    record["Name"],
-                    record["LocalID"],
-                    reason=str(failure_type),
+                    key=(record["Name"], record["LocalID"]),
+                    failure_type=failure_type,
                 )

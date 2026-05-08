@@ -298,4 +298,4 @@ class CompInfoRetrieval(Retrieval):
             response, empty_data=empty_data, category="company_info"
         )
         if not CompanyInfoFailureClassifier.is_retryable(failure_type):
-            self.failure_registry.add(entity_name, identifier, reason=str(failure_type))
+            self.failure_registry.add(key=(entity_name, identifier), failure_type=failure_type)
