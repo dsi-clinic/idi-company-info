@@ -12,7 +12,7 @@ import pulumi_aws as aws
 
 import pulumi
 
-from . import config, logs, ecr, iam, secrets
+from . import config, ecr, iam, logs, secrets
 
 # -----------------------------------------------------------------------------
 # ECS Cluster (Fargate only)

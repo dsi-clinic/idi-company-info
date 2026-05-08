@@ -13,7 +13,7 @@ import pulumi_aws as aws
 
 import pulumi
 
-from . import config, ecr, ecs, logs, secrets
+from . import config, ecr, logs, secrets
 
 # -----------------------------------------------------------------------------
 # Task Execution Role (ECS agent — pulls image, writes logs, reads secrets)
