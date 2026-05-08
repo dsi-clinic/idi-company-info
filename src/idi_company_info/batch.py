@@ -4,11 +4,9 @@
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-# Application imports
-from idi_company_info.common.logs import get_logger
-
-if TYPE_CHECKING:
-    from idi_company_info.common.failures import FailureRegistry
+# Third party imports
+from idi_ftm2j_shared.failures import FailureRegistry
+from idi_ftm2j_shared.logs import get_logger
 
 
 class BatchProcessing:

@@ -8,20 +8,20 @@ from typing import Any
 
 # Third party imports
 import pandas as pd
+from idi_ftm2j_shared.failures import FailureRegistry
+from idi_ftm2j_shared.logs import get_logger
+from idi_ftm2j_shared.storage import load_json, save_json
 
 # Application imports
-from idi_company_info.common.api import (
+from idi_company_info.api import (
     GeonamesApi,
     LSEGEntityLookup,
     LsegRecordMatch,
 )
-from idi_company_info.common.batch import BatchProcessing
-from idi_company_info.common.failures import FailureRegistry
-from idi_company_info.common.logs import get_logger
-from idi_company_info.common.storage import load_json, save_json
-from idi_company_info.processors.retrieval_company_info import CompInfoRetrieval
-from idi_company_info.processors.retrieval_permid import PermidRetrieval
-from idi_company_info.processors.types import (
+from idi_company_info.batch import BatchProcessing
+from idi_company_info.retrieval_company_info import CompInfoRetrieval
+from idi_company_info.retrieval_permid import PermidRetrieval
+from idi_company_info.types import (
     ApiCredentials,
     BatchConfig,
     BatchStats,

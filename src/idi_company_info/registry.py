@@ -3,12 +3,11 @@
 # Standard library imports
 from dataclasses import dataclass
 
-from idi_company_info.processors.company_by_cik_pipeline import CompanyByCikPipeline
-from idi_company_info.processors.company_by_cusip_pipeline import CompanyByCusipPipeline
-from idi_company_info.processors.company_pipeline import CompanyPipeline
-
 # Application imports
-from idi_company_info.processors.types import IdentifierType
+from idi_company_info.company_by_cik_pipeline import CompanyByCikPipeline
+from idi_company_info.company_by_cusip_pipeline import CompanyByCusipPipeline
+from idi_company_info.company_pipeline import CompanyPipeline
+from idi_company_info.types import IdentifierType
 
 
 @dataclass

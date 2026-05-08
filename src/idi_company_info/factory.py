@@ -4,9 +4,9 @@
 import pathlib
 
 # Application imports
-from idi_company_info.processors.company_pipeline import CompanyPipeline
-from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
-from idi_company_info.processors.types import (
+from idi_company_info.company_pipeline import CompanyPipeline
+from idi_company_info.registry import IDENTIFIER_REGISTRY
+from idi_company_info.types import (
     ApiCredentials,
     BatchConfig,
     FilePaths,

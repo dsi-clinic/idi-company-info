@@ -12,6 +12,7 @@ description = "LSEG scraper to query the `permid.org` API and return PermIds for
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "idi-ftm2j-shared",
     "pandas>=3.0.0",
     "pyarrow>=23.0.0",
     "requests>=2.33.0",
@@ -94,3 +95,6 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.uv.sources]
+idi-ftm2j-shared = { git = "https://github.com/dsi-clinic/idi-ftm2j-shared.git", rev = "issue-2-shared-code" }

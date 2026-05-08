@@ -8,6 +8,7 @@ Supports three identifier types:
 To add a new identifier type, register it in IDENTIFIER_REGISTRY.
 """
 
+# Standard library imports
 import argparse
 import os
 import pathlib
@@ -15,9 +16,12 @@ import sys
 from dataclasses import asdict
 from datetime import datetime
 
-from idi_company_info.common.logs import get_logger
-from idi_company_info.processors.factory import IdentifierFactory
-from idi_company_info.processors.types import IdentifierType, OrchestratorConfig
+# Third party imports
+from idi_ftm2j_shared.logs import get_logger
+
+# Application imports
+from idi_company_info.factory import IdentifierFactory
+from idi_company_info.types import IdentifierType, OrchestratorConfig
 
 
 class PipelineOrchestrator:
