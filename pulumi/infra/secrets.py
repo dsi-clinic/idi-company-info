@@ -18,6 +18,7 @@ permid_secret = aws.secretsmanager.Secret(
     "idi-secret-permid-api-key",
     name=f"{config.name_prefix}-permid-api-key",
     description="PermID API Key for company information queries",
+    recovery_window_in_days=0,
     tags=config.tags(),
 )
 

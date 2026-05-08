@@ -15,15 +15,8 @@ from . import config, ecs, iam, networking
 # -----------------------------------------------------------------------------
 # Shared DLQ (looked up by name — owned by a separate project/stack)
 # Required config: deploy must set `idi:shared_dlq_name` per stack.
-#
-# TODO (when DLQ moves to shared infra):
-#   - Cross-region: pass opts=pulumi.InvokeOptions(provider=<region-scoped provider>)
-#     to get_queue_output, and add idi:shared_dlq_region config.
-#   - Cross-account: the owning project must attach an SQS resource policy
-#     allowing this scheduler_role ARN to sqs:SendMessage.
 # -----------------------------------------------------------------------------
-shared_dlq_name = config.config.require("shared_dlq_name")
-shared_dlq = aws.sqs.get_queue_output(name=shared_dlq_name)
+shared_dlq = aws.sqs.get_queue_output(name=config.shared_dlq_name)
 
 # -----------------------------------------------------------------------------
 # Scheduler IAM Role — allows EventBridge to run ECS tasks and send to DLQ
