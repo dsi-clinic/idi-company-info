@@ -311,7 +311,6 @@ class PermidRetrieval(Retrieval):
         for record in low_score_records:
             failure_type = FailureType.LOW_MATCH_SCORE
             if not CompanyInfoFailureClassifier.is_retryable(failure_type):
-                score = self._parse_score(record)
                 self.failure_registry.add(
                     key=(record["Input_Name"], record["Input_LocalID"]),
                     failure_type=failure_type,

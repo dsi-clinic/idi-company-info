@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from idi_company_info.processors.retrieval_permid import PermidRetrieval
+from idi_company_info.retrieval_permid import PermidRetrieval
 
 
 def make_retriever(

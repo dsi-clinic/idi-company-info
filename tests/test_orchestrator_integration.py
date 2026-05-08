@@ -13,17 +13,17 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from idi_company_info.common.api import (
+from idi_company_info.api import (
     GeonamesApi,
     LSEGEntityLookup,
     LsegRecordMatch,
 )
-from idi_company_info.processors.company_by_cik_pipeline import CompanyByCikPipeline
-from idi_company_info.processors.company_by_cusip_pipeline import CompanyByCusipPipeline
-from idi_company_info.processors.factory import IdentifierFactory
-from idi_company_info.processors.orchestrator import PipelineOrchestrator
-from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
-from idi_company_info.processors.types import IdentifierType, OrchestratorConfig
+from idi_company_info.company_by_cik_pipeline import CompanyByCikPipeline
+from idi_company_info.company_by_cusip_pipeline import CompanyByCusipPipeline
+from idi_company_info.factory import IdentifierFactory
+from idi_company_info.orchestrator import PipelineOrchestrator
+from idi_company_info.registry import IDENTIFIER_REGISTRY
+from idi_company_info.types import IdentifierType, OrchestratorConfig
 
 # ---------------------------------------------------------------------------
 # Shared mock API responses
@@ -192,9 +192,7 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch(
-            "idi_company_info.processors.orchestrator.IdentifierFactory.build"
-        ) as mock_build:
+        with patch("idi_company_info.orchestrator.IdentifierFactory.build") as mock_build:
             mock_build.return_value.run.return_value = None
 
             result = PipelineOrchestrator(config).run()
@@ -207,9 +205,7 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch(
-            "idi_company_info.processors.orchestrator.IdentifierFactory.build"
-        ) as mock_build:
+        with patch("idi_company_info.orchestrator.IdentifierFactory.build") as mock_build:
             mock_build.return_value.run.side_effect = RuntimeError("simulated API failure")
 
             result = PipelineOrchestrator(config).run()
@@ -221,9 +217,7 @@ class TestPipelineOrchestratorFlow:
         pd.DataFrame({"investor_name": ["A"], "investor_cik": ["1"]}).to_parquet(parquet)
         config = _make_config(parquet, tmp_path / "out", IdentifierType.CIK)
 
-        with patch(
-            "idi_company_info.processors.orchestrator.IdentifierFactory.build"
-        ) as mock_build:
+        with patch("idi_company_info.orchestrator.IdentifierFactory.build") as mock_build:
             mock_build.return_value.run.side_effect = KeyboardInterrupt
 
             result = PipelineOrchestrator(config).run()
