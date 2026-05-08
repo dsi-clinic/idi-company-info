@@ -76,10 +76,7 @@ ignore = [
   "D415",   # allow first line of doctstrings to end without punctuation
   "ANN002", # missing type on *args
   "ANN003", # missing type on **kwargs
-  "ANN101", # deprecated (and removed in modern ruff): annotating `self` is redundant
-  "ANN102", # deprecated (and removed in modern ruff): annotating `cls` is redundant
   "B905",   # won't work on python <3.10
-  "PD901",  # allow `df` as a DataFrame variable name (pandas convention)
   "S101",   # allow assertions
 ]
 

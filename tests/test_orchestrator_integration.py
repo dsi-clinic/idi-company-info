@@ -163,9 +163,9 @@ class TestIdentifierFactory:
 
     def test_each_type_has_distinct_output_filenames(self, tmp_path):
         result_files = {t: IDENTIFIER_REGISTRY[t].result_filename for t in IdentifierType}
-        assert len(set(result_files.values())) == len(
-            IdentifierType
-        ), "Each identifier type must write to a distinct result file"
+        assert len(set(result_files.values())) == len(IdentifierType), (
+            "Each identifier type must write to a distinct result file"
+        )
 
 
 # ---------------------------------------------------------------------------
