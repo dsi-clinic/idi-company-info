@@ -41,4 +41,4 @@ class Retrieval:
         self.batch_config = batch_config
         self.api_clients = api_clients
         self.failure_registry = failure_registry
-        self.logger = get_logger(self.__class__.__name__)
+        self.logger = get_logger(type(self).__name__)

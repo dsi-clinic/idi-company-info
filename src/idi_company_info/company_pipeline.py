@@ -87,7 +87,7 @@ class CompanyPipeline(ABC):
 
         self.match_score_threshold = match_score_threshold
 
-        self.logger = get_logger("CompanyPipeline")
+        self.logger = get_logger(type(self).__name__)
 
     def _init_dirs(self) -> None:
         """Initialize the directories. Skip for S3 paths (no local dirs needed)."""

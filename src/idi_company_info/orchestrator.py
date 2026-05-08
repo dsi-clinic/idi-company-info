@@ -39,7 +39,7 @@ class PipelineOrchestrator:
             config: Orchestrator configuration.
         """
         self.config = config
-        self.logger = get_logger("PipelineOrchestrator")
+        self.logger = get_logger(type(self).__name__)
 
     def _log_banner(self, message: str) -> None:
         self.logger.info("=" * 60)
