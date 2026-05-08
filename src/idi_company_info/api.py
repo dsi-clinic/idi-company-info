@@ -23,6 +23,8 @@ class LsegEntitySearch(ApiClient):
             "Accept": "application/json",
             "User-Agent": self.USER_AGENT,
         }
+
+        self.rate_limit()
         return self._query_with_error_handling(
             url=self.ENTITY_SEARCH_URL, params=params, headers=headers, method="get"
         )
@@ -50,6 +52,8 @@ class LsegRecordMatch(ApiClient):
             "x-openmatch-dataType": "Organization",
             "User-Agent": self.USER_AGENT,
         }
+
+        self.rate_limit()
         return self._query_with_error_handling(
             url=self.RECORD_MATCH_URL, data=csv_data, headers=headers, method="post"
         )
@@ -72,6 +76,8 @@ class LSEGEntityLookup(ApiClient):
             "Accept": "application/ld+json",
         }
         params = {"format": "json-ld"}
+
+        self.rate_limit()
         return self._query_with_error_handling(
             url=permid_url, params=params, headers=headers, method="get"
         )
@@ -82,14 +88,15 @@ class GeonamesApi(ApiClient):
 
     GEONAMES_API_URL = "http://api.geonames.org/getJSON"
 
-    def __init__(self, api_key: str, geonames_user: str) -> None:
+    def __init__(self, api_key: str, geonames_user: str, rate_limit: float | None = None) -> None:
         """Initialize the GeonamesApi.
 
         Args:
             api_key: The API key.
             geonames_user: The Geonames user.
+            rate_limit: The rate limit.
         """
-        super().__init__(api_key=api_key)
+        super().__init__(api_key=api_key, rate_limit=rate_limit)
         self.geonames_user = geonames_user
 
     def query_endpoint(self, geoname_url: str) -> dict:
@@ -103,6 +110,8 @@ class GeonamesApi(ApiClient):
 
         # Query Geonames API with credentials (per https://www.geonames.org/export/web-services.html)
         params = {"geonameId": geoname_id, "username": self.geonames_user}
+
+        self.rate_limit()
         return self._query_with_error_handling(
             url=self.GEONAMES_API_URL, params=params, method="get"
         )

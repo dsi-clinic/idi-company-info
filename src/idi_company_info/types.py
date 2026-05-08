@@ -34,6 +34,15 @@ class ApiCredentials:
 
 
 @dataclass
+class APIRateLimits:
+    """API rate limits for the pipeline."""
+
+    permid: float = 0.5
+    company_info: float = 0.5
+    geonames: float = 0
+
+
+@dataclass
 class CompanyInfo:
     """Resolved company information record written to the result buffer."""
 

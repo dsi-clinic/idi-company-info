@@ -24,6 +24,7 @@ from idi_company_info.retrieval_company_info import CompInfoRetrieval
 from idi_company_info.retrieval_permid import PermidRetrieval
 from idi_company_info.types import (
     ApiCredentials,
+    APIRateLimits,
     BatchConfig,
     BatchStats,
     FilePaths,
@@ -71,10 +72,16 @@ class CompanyPipeline(ABC):
 
         self.api_credentials = api_credentials
         self.api_clients = ApiClients(
-            record_match=LsegRecordMatch(api_key=api_credentials.api_key),
-            entity_lookup=LSEGEntityLookup(api_key=api_credentials.api_key),
+            record_match=LsegRecordMatch(
+                api_key=api_credentials.api_key, rate_limit=APIRateLimits.permid
+            ),
+            entity_lookup=LSEGEntityLookup(
+                api_key=api_credentials.api_key, rate_limit=APIRateLimits.company_info
+            ),
             geonames_api=GeonamesApi(
-                api_key=api_credentials.api_key, geonames_user=api_credentials.geonames_user
+                api_key=api_credentials.api_key,
+                geonames_user=api_credentials.geonames_user,
+                rate_limit=APIRateLimits.geonames,
             ),
         )
 
