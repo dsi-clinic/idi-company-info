@@ -15,8 +15,8 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system --no-cache-dir -e .
 
 # Final stage - minimal runtime image
 FROM python:3.13-slim
