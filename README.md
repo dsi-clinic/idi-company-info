@@ -189,9 +189,9 @@ docker compose -f compose.yml run --rm orchestrator-cik
 
 ---
 
-## Branching Strategy
+## Development cycle
 
-Documentation governing all processors: https://github.com/dsi-clinic/idi-ftm2j-shared/tree/main#development
+Documentation governing all processors: https://github.com/dsi-clinic/idi-ftm2j-shared/tree/main#development--contributing
 
 ### CI/CD specifics
 
