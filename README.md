@@ -191,23 +191,42 @@ docker compose -f compose.yml run --rm orchestrator-cik
 
 ## Branching Strategy
 
-The CI pipeline (`ci.yml`) triggers on push to `main`, `dev`, and `release/**`.
+Documentation governing all processors: https://github.com/dsi-clinic/idi-ftm2j-shared/tree/main#development
 
-| Branch | Version bump | Deploy target | Notes |
-|---|---|---|---|
-| `dev` | `patch` + `alpha` pre-release | `dev` | Feature development |
-| `release/**` | `rc` pre-release | `dev` | Release candidates |
-| `main` | Stable (drops pre-release tag) | `prod` | Production releases |
+### CI/CD specifics
 
-Each push to a tracked branch runs in order:
+**No path filtering.** Unlike the shared infrastructure pipeline, `deploy.yml` runs the full job sequence on every push to `dev` or `main` regardless of what changed — there is no change-detection gate.
 
-1. **Lint** — `ruff check` + `ruff format`
-2. **Tests** — `pytest` with coverage
-3. **Security** — `pip-audit` + CodeQL
-4. **Pulumi preview** — validates infra changes without deploying
-5. **Version bump** — updates `pyproject.toml`, commits, and tags
-6. **Docker build + push** — builds and pushes to GHCR
-7. **Pulumi deploy** — `pulumi up` against the target stack
-8. **ECR sync** — re-tags and pushes the GHCR image to ECR
+**Strict job sequence.** Jobs run in order: `version` → `docker` → `deploy-pulumi` → `sync-ecr`. Each job gates the next, so a Docker build failure will block the Pulumi deploy and ECR sync.
 
-**Issue branches** (e.g. `issue-123-my-feature`) are used for all feature and bug-fix work. They do not trigger CI automatically — open a PR to `dev` to run the full pipeline. The Pulumi deploy step will run against the `dev` stack if triggered manually via `workflow_dispatch`.
+**Single Docker image.** `idi-company-info-orchestrator` is built and published — to GHCR first, then re-tagged and pushed to ECR by `sync-ecr`.
+
+**Manual dispatch on issue branches.** `deploy-pulumi` and `sync-ecr` include `issue-*` in their `if` conditions. Pushes to issue branches do not trigger the workflow, but `workflow_dispatch` can be used to manually run a deploy from a feature branch — useful for testing before merging.
+
+**Required GitHub secrets.** The `deploy-pulumi` job requires the following secrets to be set in the repository. Secrets passed via `[ -n "$VAR" ]` are optional and skip silently if unset; all others are required for the deploy to succeed.
+
+| Secret | Required | Notes |
+|---|---|---|
+| `AWS_ROLE_ARN_DEPLOY` | Yes | IAM role for Pulumi and ECR |
+| `AWS_REGION` | No | Defaults to `us-east-2` |
+| `PULUMI_ACCESS_TOKEN` | Yes | |
+| `PULUMI_CONFIG_PASSPHRASE` | Yes | |
+| `PULUMI_STATE_BUCKET` | Yes | S3 bucket for Pulumi state |
+| `ECR_REPOSITORY_PREFIX` | No | Defaults to `{pulumi_project}-{env}-{app_name}` |
+| `BUCKET_NAME` | No | S3 bucket for pipeline I/O |
+| `PERMID_API_KEY` | No | Set as a Pulumi secret |
+| `GEONAMES_USER` | No | |
+| `CRON_CIK` | No | Cron schedule for CIK runs |
+| `CRON_CUSIP` | No | Cron schedule for CUSIP runs |
+| `INPUT_FILE_CIK` | No | S3 path to CIK input parquet |
+| `INPUT_FILE_CUSIP` | No | S3 path to CUSIP input parquet |
+| `ECS_TASK_CPU` | No | |
+| `ECS_TASK_MEMORY` | No | |
+| `SCHEDULE_ENABLED` | No | |
+| `BATCH_SIZE_CIK` | No | |
+| `BATCH_SIZE_CUSIP` | No | |
+| `BUFFER_SIZE` | No | |
+| `THRESHOLD_DAYS` | No | |
+| `MATCH_SCORE_THRESHOLD` | No | |
+| `SHARED_DLQ_NAME` | No | Name of the shared DLQ from `idi-ftm2j-shared` |
+
