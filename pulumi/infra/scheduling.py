@@ -85,20 +85,29 @@ geonames_user = config.config.require("geonames_user")
 buffer_size = config.config.require("buffer_size")
 threshold_days = config.config.require("threshold_days")
 match_score_threshold = config.config.require("match_score_threshold")
+output_dir = config.config.require("output_dir")
+failure_dir = config.config.require("failure_dir")
 
 
-def _container_override_input(pipeline_type: str, input_file: str, batch_size: str) -> str:
+def _container_override_input(
+    pipeline_type: str,
+    input_file: str,
+    batch_size: str,
+) -> str:
     """Build the EventBridge Scheduler `input` JSON for an ECS containerOverride.
 
-    The output-directory is rooted at the Pulumi-managed bucket and partitioned
-    by pipeline type so CIK and CUSIP runs don't collide. All inputs resolve to
-    plain strings at plan time, so no Pulumi Output wrapping is needed.
+    Output and failure directories are shared across pipeline types; the
+    container partitions writes into a per-type subdirectory at runtime. All
+    inputs resolve to plain strings at plan time, so no Pulumi Output wrapping
+    is needed.
     """
     command = [
         "--input-file",
         input_file,
         "--output-directory",
-        f"s3://{config.bucket_name}/{pipeline_type}/output",
+        output_dir,
+        "--failure-directory",
+        failure_dir,
         "--type",
         pipeline_type,
         "--geonames-user",
@@ -135,7 +144,11 @@ def _build_schedule(
         target=aws.scheduler.ScheduleTargetArgs(
             arn=ecs.cluster.arn,
             role_arn=scheduler_role.arn,
-            input=_container_override_input(pipeline_type, input_file, batch_size),
+            input=_container_override_input(
+                pipeline_type,
+                input_file,
+                batch_size,
+            ),
             ecs_parameters=aws.scheduler.ScheduleTargetEcsParametersArgs(
                 task_definition_arn=ecs.task_definition.arn,
                 launch_type="FARGATE",

@@ -25,6 +25,25 @@ from idi_company_info.orchestrator import PipelineOrchestrator
 from idi_company_info.registry import IDENTIFIER_REGISTRY
 from idi_company_info.types import IdentifierType, OrchestratorConfig
 
+
+def _paths_for(
+    output_dir: pathlib.Path,
+    failure_dir: pathlib.Path,
+    identifier_type: IdentifierType,
+) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
+    """Build (result, permid, failure) paths from the given directories.
+
+    Mirrors the factory: files live under a per-type subdirectory inside the
+    output and failure directories.
+    """
+    spec = IDENTIFIER_REGISTRY[identifier_type]
+    type_subdir = str(identifier_type)
+    return (
+        output_dir / type_subdir / spec.result_filename,
+        output_dir / type_subdir / spec.permid_filename,
+        failure_dir / type_subdir / spec.failure_filename,
+    )
+
 # ---------------------------------------------------------------------------
 # Shared mock API responses
 # ---------------------------------------------------------------------------
@@ -79,12 +98,17 @@ def _make_config(
     identifier_type: IdentifierType,
     **kwargs,
 ) -> OrchestratorConfig:
-    """Build a minimal OrchestratorConfig for testing."""
+    """Build a minimal OrchestratorConfig for testing.
+
+    Tests share a single directory for output and failures — they don't need
+    to be distinct, just the per-type filenames must not collide.
+    """
     defaults = {"batch_size": 10, "buffer_size": 5, "threshold_days": None}
     defaults.update(kwargs)
     return OrchestratorConfig(
         input_file=input_file,
         output_dir=output_dir,
+        failure_dir=output_dir,
         identifier_type=identifier_type,
         api_key="test-api-key",
         geonames_user="test-geonames-user",
@@ -95,13 +119,6 @@ def _make_config(
 def _read_output(output_file: pathlib.Path) -> list:
     """Read the company info output file, returning [] if it does not exist."""
     return json.loads(output_file.read_text()) if output_file.exists() else []
-
-
-def _read_permid_tracking(output_dir: pathlib.Path, identifier_type: IdentifierType) -> dict:
-    """Read the permid tracking file for the given identifier type."""
-    spec = IDENTIFIER_REGISTRY[identifier_type]
-    permid_file = output_dir / "permid_data" / spec.permid_filename
-    return json.loads(permid_file.read_text()) if permid_file.exists() else {}
 
 
 # ---------------------------------------------------------------------------
@@ -136,18 +153,18 @@ class TestIdentifierFactory:
 
         assert isinstance(identifier, CompanyByCusipPipeline)
 
-    def test_file_paths_derived_from_output_dir(self, tmp_path):
+    def test_file_paths_passed_through_explicitly(self, tmp_path):
         out = tmp_path / "output"
         parquet = tmp_path / "data.parquet"
         pd.DataFrame({"investor_name": ["Firm A"], "investor_cik": ["123"]}).to_parquet(parquet)
         config = _make_config(parquet, out, IdentifierType.CIK)
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
+        expected_result, expected_permid, expected_failure = _paths_for(out, out, IdentifierType.CIK)
 
         identifier = IdentifierFactory.build(config)
 
-        assert identifier.file_paths.result_file == str(out / "company_info" / spec.result_filename)
-        assert identifier.file_paths.permid_file == str(out / "permid_data" / spec.permid_filename)
-        assert identifier.file_paths.failure_file == str(out / "failures" / spec.failure_filename)
+        assert identifier.file_paths.result_file == str(expected_result)
+        assert identifier.file_paths.permid_file == str(expected_permid)
+        assert identifier.file_paths.failure_file == str(expected_failure)
 
     def test_batch_config_passed_through(self, tmp_path):
         parquet = tmp_path / "data.parquet"
@@ -162,7 +179,7 @@ class TestIdentifierFactory:
         assert identifier.batch_config.buffer_size == 7
 
     def test_each_type_has_distinct_output_filenames(self, tmp_path):
-        result_files = {t: IDENTIFIER_REGISTRY[t].result_filename for t in IdentifierType}
+        result_files = {t: _paths_for(tmp_path, tmp_path, t)[0] for t in IdentifierType}
         assert len(set(result_files.values())) == len(IdentifierType), (
             "Each identifier type must write to a distinct result file"
         )
@@ -255,8 +272,8 @@ class TestCikPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CIK)
+        records = _read_output(result_file)
 
         assert len(records) == 1
         assert records[0]["original_entity_name"] == entity_name
@@ -282,15 +299,15 @@ class TestCikPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CIK)
+        records = _read_output(result_file)
         assert records == []
 
     def test_creates_separate_output_from_cusip_pipeline(self, tmp_path):
         """CIK output files are distinct from CUSIP output files."""
-        cik_spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
-        cusip_spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
-        assert cik_spec.result_filename != cusip_spec.result_filename
+        cik_result, _, _ = _paths_for(tmp_path, tmp_path, IdentifierType.CIK)
+        cusip_result, _, _ = _paths_for(tmp_path, tmp_path, IdentifierType.CUSIP)
+        assert cik_result != cusip_result
 
     def test_deduplicates_investor_cik_pairs(self, tmp_path):
         """Duplicate (investor_name, investor_cik) pairs produce only one record."""
@@ -315,8 +332,8 @@ class TestCikPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CIK]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CIK)
+        records = _read_output(result_file)
 
         assert len(records) == 1
         assert records[0]["original_entity_name"] == entity_name
@@ -361,8 +378,8 @@ class TestCusipPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        records = _read_output(result_file)
 
         assert len(records) == 1
         assert records[0]["original_entity_name"] == entity_name
@@ -395,8 +412,8 @@ class TestCusipPipelineIntegration:
         ):
             PipelineOrchestrator(config).run()
 
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        records = _read_output(result_file)
         assert records[0]["ticker"] == "AAPL"
 
     def test_produces_empty_output_when_no_permid_match(self, tmp_path):
@@ -418,8 +435,8 @@ class TestCusipPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        records = _read_output(result_file)
         assert records == []
 
     def test_bond_securities_are_filtered_before_api_call(self, tmp_path):
@@ -470,8 +487,8 @@ class TestCusipPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        records = _read_output(result_file)
 
         assert len(records) == 1
         assert records[0]["original_entity_name"] == entity_name
@@ -546,8 +563,8 @@ class TestCusipPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        records = _read_output(result_file)
         assert records == []
 
     def test_keeps_distinct_issuer_cusip_pairs_for_same_issuer(self, tmp_path):
@@ -593,8 +610,8 @@ class TestCusipPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        spec = IDENTIFIER_REGISTRY[IdentifierType.CUSIP]
-        records = _read_output(tmp_path / "out" / "company_info" / spec.result_filename)
+        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        records = _read_output(result_file)
 
         assert len(records) == 2
         identifiers = {r["identifier"] for r in records}

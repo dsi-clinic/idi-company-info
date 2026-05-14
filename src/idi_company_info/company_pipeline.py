@@ -280,34 +280,44 @@ class CompanyPipeline(ABC):
 
     def run(self) -> None:
         """Run the identifier pipeline."""
-        # Load identifier data
-        identifier_data = self.load_data()
+        try:
+            # Load identifier data
+            identifier_data = self.load_data()
 
-        # Load existing results
-        existing_results = load_json(self.file_paths.result_file, return_type="list")
+            # Load existing results
+            existing_results = load_json(self.file_paths.result_file, return_type="list")
 
-        # Load previous batch processing data
-        batch_processing = BatchProcessing(
-            existing_results,
-            self.batch_config.threshold_days,
-            failure_registry=self.failure_registry,
-        )
-        unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
-        filtered_results, stale_identifiers = batch_processing.filter_stale_entities()
+            # Load previous batch processing data
+            batch_processing = BatchProcessing(
+                existing_results,
+                self.batch_config.threshold_days,
+                failure_registry=self.failure_registry,
+            )
+            unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
+            filtered_results, stale_identifiers = batch_processing.filter_stale_entities()
 
-        for entity, ids in stale_identifiers.items():
-            unprocessed_entities.setdefault(entity, []).extend(ids)
-        to_process = sum(len(v) for v in unprocessed_entities.values())
-        self.logger.info("To process: %d | Not to process: %d", to_process, len(filtered_results))
+            for entity, ids in stale_identifiers.items():
+                unprocessed_entities.setdefault(entity, []).extend(ids)
+            to_process = sum(len(v) for v in unprocessed_entities.values())
+            self.logger.info(
+                "To process: %d | Not to process: %d", to_process, len(filtered_results)
+            )
 
-        # If stale entities were removed, persist the pruned list so the buffer
-        # appends fresh results without duplicating the old stale records.
-        if stale_identifiers:
-            self.logger.info("Removing %d stale record(s) from result file", len(stale_identifiers))
-            save_json(self.file_paths.result_file, filtered_results)
+            # If stale entities were removed, persist the pruned list so the buffer
+            # appends fresh results without duplicating the old stale records.
+            if stale_identifiers:
+                self.logger.info(
+                    "Removing %d stale record(s) from result file", len(stale_identifiers)
+                )
+                save_json(self.file_paths.result_file, filtered_results)
 
-        # Process entities
-        batch_stats = self.process_entities(unprocessed_entities, len(filtered_results))
+            # Process entities
+            batch_stats = self.process_entities(unprocessed_entities, len(filtered_results))
 
-        # Print stats
-        self.print_stats(batch_stats)
+            # Print stats
+            self.print_stats(batch_stats)
+        finally:
+            # Persist any buffered failures so partial buffers (<flush_every)
+            # and end-of-run failures aren't lost on exit.
+            if self.failure_registry:
+                self.failure_registry.flush()

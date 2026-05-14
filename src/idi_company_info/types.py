@@ -103,6 +103,7 @@ class OrchestratorConfig:
 
     input_file: str | pathlib.Path
     output_dir: str | pathlib.Path
+    failure_dir: str | pathlib.Path
     identifier_type: IdentifierType
     api_key: str
     geonames_user: str
