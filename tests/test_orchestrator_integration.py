@@ -33,15 +33,16 @@ def _paths_for(
 ) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
     """Build (result, permid, failure) paths from the given directories.
 
-    Mirrors the factory: files live under a per-type subdirectory inside the
-    output and failure directories.
+    Mirrors the factory: result and permid files live under a per-type
+    subdirectory inside output_dir; the failure file is written directly
+    under failure_dir.
     """
     spec = IDENTIFIER_REGISTRY[identifier_type]
     type_subdir = str(identifier_type)
     return (
         output_dir / type_subdir / spec.result_filename,
         output_dir / type_subdir / spec.permid_filename,
-        failure_dir / type_subdir / spec.failure_filename,
+        failure_dir / spec.failure_filename,
     )
 
 

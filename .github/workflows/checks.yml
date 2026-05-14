@@ -119,6 +119,8 @@ jobs:
       GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
       INPUT_FILE_CIK: ${{ secrets.INPUT_FILE_CIK }}
       INPUT_FILE_CUSIP: ${{ secrets.INPUT_FILE_CUSIP }}
+      OUTPUT_DIR: ${{ secrets.OUTPUT_DIR }}
+      FAILURE_DIR: ${{ secrets.FAILURE_DIR }}
       SHARED_DLQ_NAME: ${{ secrets.SHARED_DLQ_NAME }}
     steps:
       - uses: actions/checkout@v4
@@ -152,4 +154,6 @@ jobs:
           [ -n "$INPUT_FILE_CIK" ] && pulumi config set idi:input_file_cik "$INPUT_FILE_CIK"
           [ -n "$INPUT_FILE_CUSIP" ] && pulumi config set idi:input_file_cusip "$INPUT_FILE_CUSIP"
           [ -n "$SHARED_DLQ_NAME" ] && pulumi config set idi:shared_dlq_name "$SHARED_DLQ_NAME"
+          [ -n "$OUTPUT_DIR" ] && pulumi config set idi:output_dir "$OUTPUT_DIR"
+          [ -n "$FAILURE_DIR" ] && pulumi config set idi:failure_dir "$FAILURE_DIR"
           uv run pulumi preview --non-interactive
