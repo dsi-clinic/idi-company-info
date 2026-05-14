@@ -44,6 +44,7 @@ def _paths_for(
         failure_dir / type_subdir / spec.failure_filename,
     )
 
+
 # ---------------------------------------------------------------------------
 # Shared mock API responses
 # ---------------------------------------------------------------------------
@@ -158,7 +159,9 @@ class TestIdentifierFactory:
         parquet = tmp_path / "data.parquet"
         pd.DataFrame({"investor_name": ["Firm A"], "investor_cik": ["123"]}).to_parquet(parquet)
         config = _make_config(parquet, out, IdentifierType.CIK)
-        expected_result, expected_permid, expected_failure = _paths_for(out, out, IdentifierType.CIK)
+        expected_result, expected_permid, expected_failure = _paths_for(
+            out, out, IdentifierType.CIK
+        )
 
         identifier = IdentifierFactory.build(config)
 
