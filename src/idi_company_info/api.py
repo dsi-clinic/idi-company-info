@@ -8,6 +8,7 @@ class LsegEntitySearch(ApiClient):
     """API client for the LSEG Entity Search API."""
 
     ENTITY_SEARCH_URL = "https://api-eit.refinitiv.com/permid/search"
+    USER_AGENT: str = "idi-company-info"
 
     def query_endpoint(self, params: dict) -> dict:
         """Query the LSEG Entity Search API.
@@ -34,6 +35,7 @@ class LsegRecordMatch(ApiClient):
     """API client for the LSEG Record Match API."""
 
     RECORD_MATCH_URL = "https://api-eit.refinitiv.com/permid/match"
+    USER_AGENT: str = "idi-company-info"
 
     def query_endpoint(self, csv_data: str) -> dict:
         """Query the LSEG Record Match API.
