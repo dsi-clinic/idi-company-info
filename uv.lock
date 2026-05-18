@@ -469,7 +469,7 @@ wheels = [
 
 [[package]]
 name = "idi-company-info"
-version = "0.1.1a5"
+version = "0.1.1a6"
 source = { editable = "." }
 dependencies = [
     { name = "idi-ftm2j-shared" },
@@ -499,7 +499,7 @@ pulumi = [
 
 [package.metadata]
 requires-dist = [
-    { name = "idi-ftm2j-shared", git = "https://github.com/dsi-clinic/idi-ftm2j-shared.git?rev=issue-2-shared-code" },
+    { name = "idi-ftm2j-shared", git = "https://github.com/dsi-clinic/idi-ftm2j-shared.git?rev=dev" },
     { name = "pandas", specifier = ">=3.0.0" },
     { name = "pyarrow", specifier = ">=23.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
@@ -523,8 +523,8 @@ pulumi = [
 
 [[package]]
 name = "idi-ftm2j-shared"
-version = "0.1.0"
-source = { git = "https://github.com/dsi-clinic/idi-ftm2j-shared.git?rev=issue-2-shared-code#66fc47781e74bb93114a184b6fb075327c890035" }
+version = "0.1.1a1"
+source = { git = "https://github.com/dsi-clinic/idi-ftm2j-shared.git?rev=dev#c14c0c4f56701dc9b0070656517cf6d019ddb01d" }
 dependencies = [
     { name = "requests" },
     { name = "smart-open", extra = ["s3"] },
