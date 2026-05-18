@@ -469,7 +469,7 @@ wheels = [
 
 [[package]]
 name = "idi-company-info"
-version = "0.1.1a4"
+version = "0.1.1a5"
 source = { editable = "." }
 dependencies = [
     { name = "idi-ftm2j-shared" },
