@@ -27,7 +27,7 @@ _HTTP_SERVER_ERROR_MIN = 500
 class CompanyInfoFailureClassifier(FailureClassifier):
     """Classifies failures as retryable or permanent."""
 
-    DO_NOT_RETRY = frozenset(
+    _DO_NOT_RETRY = frozenset(
         {FailureType.NO_PERMID, FailureType.NO_COMPANY_INFO, FailureType.LOW_MATCH_SCORE}
     )
 
@@ -46,7 +46,7 @@ class CompanyInfoFailureClassifier(FailureClassifier):
         Returns:
             True if the failure is transient and should be retried.
         """
-        return failure_type not in cls.DO_NOT_RETRY
+        return failure_type not in cls._DO_NOT_RETRY
 
     @classmethod
     def classify_from_response(
