@@ -5,13 +5,13 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from idi_company_info.processors.company_by_cik_pipeline import CompanyByCikPipeline
+from idi_company_info.company_by_cik_pipeline import CompanyByCikPipeline
 
 
 def make_cik_instance():
     """Create an CompanyByCikPipeline with mocked dependencies."""
-    with patch("idi_company_info.processors.company_pipeline.Path"):
-        with patch("idi_company_info.processors.company_pipeline.FailureRegistry"):
+    with patch("idi_company_info.company_pipeline.Path"):
+        with patch("idi_company_info.company_pipeline.FailureRegistry"):
             instance = CompanyByCikPipeline.__new__(CompanyByCikPipeline)
             instance.logger = MagicMock()
             return instance

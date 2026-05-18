@@ -5,15 +5,16 @@ from typing import TYPE_CHECKING, Any
 
 # Third party imports
 import pandas as pd
+from idi_ftm2j_shared.failures import FailureRegistry
 
 # Application imports
-from idi_company_info.common.buffer import Buffer
-from idi_company_info.common.failures import FailureClassifier, FailureRegistry, FailureType
-from idi_company_info.processors.retrieval import Retrieval
-from idi_company_info.processors.types import BatchConfig, BatchStats, FilePaths
+from idi_company_info.buffer import Buffer
+from idi_company_info.failures import CompanyInfoFailureClassifier, FailureType
+from idi_company_info.retrieval import Retrieval
+from idi_company_info.types import BatchConfig, BatchStats, FilePaths
 
 if TYPE_CHECKING:
-    from idi_company_info.processors.company_pipeline import ApiClients
+    from idi_company_info.company_pipeline import ApiClients
 
 
 class PermidRetrieval(Retrieval):
@@ -309,19 +310,16 @@ class PermidRetrieval(Retrieval):
         """
         for record in low_score_records:
             failure_type = FailureType.LOW_MATCH_SCORE
-            if not FailureClassifier.is_retryable(failure_type):
-                score = self._parse_score(record)
+            if not CompanyInfoFailureClassifier.is_retryable(failure_type):
                 self.failure_registry.add(
-                    record["Input_Name"],
-                    record["Input_LocalID"],
-                    reason=f"{failure_type}:{score:.2f}",
+                    key=(record["Input_Name"], record["Input_LocalID"]),
+                    failure_type=failure_type,
                 )
 
         for record in no_match_records:
             failure_type = FailureType.NO_PERMID
-            if not FailureClassifier.is_retryable(failure_type):
+            if not CompanyInfoFailureClassifier.is_retryable(failure_type):
                 self.failure_registry.add(
-                    record["Name"],
-                    record["LocalID"],
-                    reason=str(failure_type),
+                    key=(record["Name"], record["LocalID"]),
+                    failure_type=failure_type,
                 )

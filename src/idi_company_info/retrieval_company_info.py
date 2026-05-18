@@ -5,11 +5,14 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+# Third party imports
+from idi_ftm2j_shared.failures import FailureRegistry
+
 # Application imports
-from idi_company_info.common.buffer import Buffer
-from idi_company_info.common.failures import FailureClassifier, FailureRegistry
-from idi_company_info.processors.retrieval import Retrieval
-from idi_company_info.processors.types import (
+from idi_company_info.buffer import Buffer
+from idi_company_info.failures import CompanyInfoFailureClassifier
+from idi_company_info.retrieval import Retrieval
+from idi_company_info.types import (
     BatchConfig,
     BatchStats,
     CompanyInfo,
@@ -17,7 +20,7 @@ from idi_company_info.processors.types import (
 )
 
 if TYPE_CHECKING:
-    from idi_company_info.processors.company_pipeline import ApiClients
+    from idi_company_info.company_pipeline import ApiClients
 
 
 class CompInfoRetrieval(Retrieval):
@@ -291,8 +294,8 @@ class CompInfoRetrieval(Retrieval):
             company_data: The parsed company data (None when lookup returned nothing).
         """
         empty_data = company_data is None
-        failure_type = FailureClassifier.classify_from_response(
+        failure_type = CompanyInfoFailureClassifier.classify_from_response(
             response, empty_data=empty_data, category="company_info"
         )
-        if not FailureClassifier.is_retryable(failure_type):
-            self.failure_registry.add(entity_name, identifier, reason=str(failure_type))
+        if not CompanyInfoFailureClassifier.is_retryable(failure_type):
+            self.failure_registry.add(key=(entity_name, identifier), failure_type=failure_type)

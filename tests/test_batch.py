@@ -4,7 +4,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from idi_company_info.common.batch import BatchProcessing
+from idi_company_info.batch import BatchProcessing
 
 
 def make_record(entity_name, identifier, days_ago=0):

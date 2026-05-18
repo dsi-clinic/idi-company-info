@@ -13,7 +13,7 @@ import pulumi_aws as aws
 
 import pulumi
 
-from . import config, ecr, secrets, storage
+from . import config, ecr, logs, secrets
 
 # -----------------------------------------------------------------------------
 # Task Execution Role (ECS agent — pulls image, writes logs, reads secrets)
@@ -66,16 +66,10 @@ task_execution_ecr_policy = aws.iam.RolePolicy(
     ),
 )
 
-# Scoped awslogs writes: log group name is deterministic from name_prefix
-_log_group_name = f"/ecs/{config.name_prefix}"
-_log_group_arn = pulumi.Output.from_input(config.caller.account_id).apply(
-    lambda aid: f"arn:aws:logs:{config.aws_region}:{aid}:log-group:{_log_group_name}"
-)
-
 task_execution_logs_policy = aws.iam.RolePolicy(
     "idi-policy-ecs-execution-logs",
     role=task_execution_role.id,
-    policy=_log_group_arn.apply(
+    policy=logs.log_group.arn.apply(
         lambda arn: json.dumps(
             {
                 "Version": "2012-10-17",
@@ -137,11 +131,17 @@ task_role = aws.iam.Role(
     tags=config.tags(),
 )
 
+# -----------------------------------------------------------------------------
+# S3 bucket (looked up by name — owned by a separate project/stack)
+# Required config: deploy must set `idi:bucket_name` per stack.
+# -----------------------------------------------------------------------------
+bucket = aws.s3.get_bucket_output(bucket=config.bucket_name)
+
 # S3 rw on the Pulumi-managed processor bucket
 task_s3_policy = aws.iam.RolePolicy(
     "idi-policy-ecs-task-s3",
     role=task_role.id,
-    policy=storage.processor_bucket.arn.apply(
+    policy=bucket.arn.apply(
         lambda arn: json.dumps(
             {
                 "Version": "2012-10-17",

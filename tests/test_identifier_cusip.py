@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from idi_company_info.processors.company_by_cusip_pipeline import CompanyByCusipPipeline
+from idi_company_info.company_by_cusip_pipeline import CompanyByCusipPipeline
 
 
 def make_cusip_instance():

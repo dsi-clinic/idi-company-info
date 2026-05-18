@@ -1,9 +1,11 @@
 """Buffer for storing data that flushes to file when threshold is reached."""
 
+# Third party imports
+from idi_ftm2j_shared.logs import get_logger
+from idi_ftm2j_shared.storage import load_json, save_json
+
 # Application imports
-from idi_company_info.common.logs import get_logger
-from idi_company_info.common.storage import load_json, save_json
-from idi_company_info.processors.types import CompanyInfo
+from idi_company_info.types import CompanyInfo
 
 # Maps entity name → list of (identifier, associated values) tuples
 type EntityBuffer = dict[str, list[tuple[str, list[str]]]]
@@ -24,7 +26,7 @@ class Buffer:
         """
         self.file_path = file_path
         self.buffer_size = buffer_size
-        self.logger = get_logger("Buffer")
+        self.logger = get_logger(type(self).__name__)
         self.mode = mode
         if mode == "dict":
             self._buffer: dict = {}

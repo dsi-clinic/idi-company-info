@@ -4,14 +4,22 @@
 import pathlib
 
 # Application imports
-from idi_company_info.processors.company_pipeline import CompanyPipeline
-from idi_company_info.processors.registry import IDENTIFIER_REGISTRY
-from idi_company_info.processors.types import (
+from idi_company_info.company_pipeline import CompanyPipeline
+from idi_company_info.registry import IDENTIFIER_REGISTRY
+from idi_company_info.types import (
     ApiCredentials,
     BatchConfig,
     FilePaths,
     OrchestratorConfig,
 )
+
+
+def _join(base: str | pathlib.Path, name: str) -> str:
+    """Join a filename onto a base directory, supporting both local paths and s3:// URLs."""
+    base_str = str(base)
+    if base_str.startswith("s3://"):
+        return f"{base_str.rstrip('/')}/{name}"
+    return str(pathlib.Path(base_str) / name)
 
 
 class IdentifierFactory:
@@ -37,23 +45,14 @@ class IdentifierFactory:
         """
         spec = IDENTIFIER_REGISTRY[config.identifier_type]
 
-        output_base = str(config.output_dir)
-        if output_base.startswith("s3://"):
-            base = output_base.rstrip("/")
-            file_paths = FilePaths(
-                input_file=str(config.input_file),
-                result_file=f"{base}/company_info/{spec.result_filename}",
-                permid_file=f"{base}/permid_data/{spec.permid_filename}",
-                failure_file=f"{base}/failures/{spec.failure_filename}",
-            )
-        else:
-            output_path = pathlib.Path(config.output_dir)
-            file_paths = FilePaths(
-                input_file=str(config.input_file),
-                result_file=str(output_path / "company_info" / spec.result_filename),
-                permid_file=str(output_path / "permid_data" / spec.permid_filename),
-                failure_file=str(output_path / "failures" / spec.failure_filename),
-            )
+        type_subdir = str(config.identifier_type)
+        output_subdir = _join(config.output_dir, type_subdir)
+        file_paths = FilePaths(
+            input_file=str(config.input_file),
+            result_file=_join(output_subdir, spec.result_filename),
+            permid_file=_join(output_subdir, spec.permid_filename),
+            failure_file=_join(config.failure_dir, spec.failure_filename),
+        )
 
         batch_config = BatchConfig(
             batch_size=config.batch_size,

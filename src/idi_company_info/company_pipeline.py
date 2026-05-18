@@ -8,21 +8,23 @@ from typing import Any
 
 # Third party imports
 import pandas as pd
+from idi_ftm2j_shared.failures import FailureRegistry
+from idi_ftm2j_shared.logs import get_logger
+from idi_ftm2j_shared.storage import load_json, save_json
 
 # Application imports
-from idi_company_info.common.api import (
+from idi_company_info.api import (
     GeonamesApi,
     LSEGEntityLookup,
     LsegRecordMatch,
 )
-from idi_company_info.common.batch import BatchProcessing
-from idi_company_info.common.failures import FailureRegistry
-from idi_company_info.common.logs import get_logger
-from idi_company_info.common.storage import load_json, save_json
-from idi_company_info.processors.retrieval_company_info import CompInfoRetrieval
-from idi_company_info.processors.retrieval_permid import PermidRetrieval
-from idi_company_info.processors.types import (
+from idi_company_info.batch import BatchProcessing
+from idi_company_info.failures import CompanyInfoFailureClassifier
+from idi_company_info.retrieval_company_info import CompInfoRetrieval
+from idi_company_info.retrieval_permid import PermidRetrieval
+from idi_company_info.types import (
     ApiCredentials,
+    APIRateLimits,
     BatchConfig,
     BatchStats,
     FilePaths,
@@ -61,22 +63,31 @@ class CompanyPipeline(ABC):
 
         self.batch_config = batch_config
 
+        company_info_failure_classifier = CompanyInfoFailureClassifier()
         self.failure_registry: FailureRegistry | None = (
-            FailureRegistry(file_paths.failure_file) if file_paths.failure_file else None
+            FailureRegistry(file_paths.failure_file, company_info_failure_classifier)
+            if file_paths.failure_file
+            else None
         )
 
         self.api_credentials = api_credentials
         self.api_clients = ApiClients(
-            record_match=LsegRecordMatch(api_key=api_credentials.api_key),
-            entity_lookup=LSEGEntityLookup(api_key=api_credentials.api_key),
+            record_match=LsegRecordMatch(
+                api_key=api_credentials.api_key, rate_limit=APIRateLimits.permid
+            ),
+            entity_lookup=LSEGEntityLookup(
+                api_key=api_credentials.api_key, rate_limit=APIRateLimits.company_info
+            ),
             geonames_api=GeonamesApi(
-                api_key=api_credentials.api_key, geonames_user=api_credentials.geonames_user
+                api_key=api_credentials.api_key,
+                geonames_user=api_credentials.geonames_user,
+                rate_limit=APIRateLimits.geonames,
             ),
         )
 
         self.match_score_threshold = match_score_threshold
 
-        self.logger = get_logger("CompanyPipeline")
+        self.logger = get_logger(type(self).__name__)
 
     def _init_dirs(self) -> None:
         """Initialize the directories. Skip for S3 paths (no local dirs needed)."""
@@ -269,34 +280,44 @@ class CompanyPipeline(ABC):
 
     def run(self) -> None:
         """Run the identifier pipeline."""
-        # Load identifier data
-        identifier_data = self.load_data()
+        try:
+            # Load identifier data
+            identifier_data = self.load_data()
 
-        # Load existing results
-        existing_results = load_json(self.file_paths.result_file, return_type="list")
+            # Load existing results
+            existing_results = load_json(self.file_paths.result_file, return_type="list")
 
-        # Load previous batch processing data
-        batch_processing = BatchProcessing(
-            existing_results,
-            self.batch_config.threshold_days,
-            failure_registry=self.failure_registry,
-        )
-        unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
-        filtered_results, stale_identifiers = batch_processing.filter_stale_entities()
+            # Load previous batch processing data
+            batch_processing = BatchProcessing(
+                existing_results,
+                self.batch_config.threshold_days,
+                failure_registry=self.failure_registry,
+            )
+            unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
+            filtered_results, stale_identifiers = batch_processing.filter_stale_entities()
 
-        for entity, ids in stale_identifiers.items():
-            unprocessed_entities.setdefault(entity, []).extend(ids)
-        to_process = sum(len(v) for v in unprocessed_entities.values())
-        self.logger.info("To process: %d | Not to process: %d", to_process, len(filtered_results))
+            for entity, ids in stale_identifiers.items():
+                unprocessed_entities.setdefault(entity, []).extend(ids)
+            to_process = sum(len(v) for v in unprocessed_entities.values())
+            self.logger.info(
+                "To process: %d | Not to process: %d", to_process, len(filtered_results)
+            )
 
-        # If stale entities were removed, persist the pruned list so the buffer
-        # appends fresh results without duplicating the old stale records.
-        if stale_identifiers:
-            self.logger.info("Removing %d stale record(s) from result file", len(stale_identifiers))
-            save_json(self.file_paths.result_file, filtered_results)
+            # If stale entities were removed, persist the pruned list so the buffer
+            # appends fresh results without duplicating the old stale records.
+            if stale_identifiers:
+                self.logger.info(
+                    "Removing %d stale record(s) from result file", len(stale_identifiers)
+                )
+                save_json(self.file_paths.result_file, filtered_results)
 
-        # Process entities
-        batch_stats = self.process_entities(unprocessed_entities, len(filtered_results))
+            # Process entities
+            batch_stats = self.process_entities(unprocessed_entities, len(filtered_results))
 
-        # Print stats
-        self.print_stats(batch_stats)
+            # Print stats
+            self.print_stats(batch_stats)
+        finally:
+            # Persist any buffered failures so partial buffers (<flush_every)
+            # and end-of-run failures aren't lost on exit.
+            if self.failure_registry:
+                self.failure_registry.flush()

@@ -12,7 +12,7 @@ import pulumi_aws as aws
 
 import pulumi
 
-from . import config, ecr, iam, secrets
+from . import config, ecr, iam, logs, secrets
 
 # -----------------------------------------------------------------------------
 # ECS Cluster (Fargate only)
@@ -30,16 +30,6 @@ cluster = aws.ecs.Cluster(
 )
 
 # -----------------------------------------------------------------------------
-# CloudWatch Log Group for awslogs driver
-# -----------------------------------------------------------------------------
-log_group = aws.cloudwatch.LogGroup(
-    "idi-ecs-log-group",
-    name=f"/ecs/{config.name_prefix}",
-    retention_in_days=config.log_retention_days,
-    tags=config.tags(),
-)
-
-# -----------------------------------------------------------------------------
 # Task Definition
 # -----------------------------------------------------------------------------
 CONTAINER_NAME = "company-info-orchestrator"
@@ -49,7 +39,7 @@ memory = config.config.get("memory") or "4096"
 
 container_definitions = pulumi.Output.all(
     image=ecr.orchestrator_image,
-    log_group_name=log_group.name,
+    log_group_name=logs.log_group.name,
     region=config.aws_region,
     secret_arn=secrets.permid_secret.arn,
 ).apply(

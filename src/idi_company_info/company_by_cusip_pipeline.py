@@ -7,7 +7,7 @@ import re
 import pandas as pd
 
 # Application imports
-from idi_company_info.processors.company_pipeline import CompanyPipeline
+from idi_company_info.company_pipeline import CompanyPipeline
 
 _TICKER_WITH_EXCHANGE_PARTS = 2
 

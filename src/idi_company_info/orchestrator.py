@@ -8,6 +8,7 @@ Supports three identifier types:
 To add a new identifier type, register it in IDENTIFIER_REGISTRY.
 """
 
+# Standard library imports
 import argparse
 import os
 import pathlib
@@ -15,9 +16,12 @@ import sys
 from dataclasses import asdict
 from datetime import datetime
 
-from idi_company_info.common.logs import get_logger
-from idi_company_info.processors.factory import IdentifierFactory
-from idi_company_info.processors.types import IdentifierType, OrchestratorConfig
+# Third party imports
+from idi_ftm2j_shared.logs import get_logger
+
+# Application imports
+from idi_company_info.factory import IdentifierFactory
+from idi_company_info.types import IdentifierType, OrchestratorConfig
 
 
 class PipelineOrchestrator:
@@ -35,7 +39,7 @@ class PipelineOrchestrator:
             config: Orchestrator configuration.
         """
         self.config = config
-        self.logger = get_logger("PipelineOrchestrator")
+        self.logger = get_logger(type(self).__name__)
 
     def _log_banner(self, message: str) -> None:
         self.logger.info("=" * 60)
@@ -107,7 +111,13 @@ def get_args() -> argparse.Namespace:
         "--output-directory",
         type=str,
         required=True,
-        help="Root directory for output files (local path or s3:// URL)",
+        help="Directory for the company info result and PermID tracking files (local path or s3:// URL)",
+    )
+    parser.add_argument(
+        "--failure-directory",
+        type=str,
+        required=True,
+        help="Directory for the permanent failures file (local path or s3:// URL)",
     )
     parser.add_argument(
         "--type",
@@ -176,6 +186,7 @@ def main() -> None:
     config = OrchestratorConfig(
         input_file=args.input_file,
         output_dir=args.output_directory,
+        failure_dir=args.failure_directory,
         identifier_type=args.type,
         api_key=api_key,
         geonames_user=geonames_user,

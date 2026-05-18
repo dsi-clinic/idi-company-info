@@ -2,13 +2,11 @@
 
 # Standard library imports
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-# Application imports
-from idi_company_info.common.logs import get_logger
-
-if TYPE_CHECKING:
-    from idi_company_info.common.failures import FailureRegistry
+# Third party imports
+from idi_ftm2j_shared.failures import FailureRegistry
+from idi_ftm2j_shared.logs import get_logger
 
 
 class BatchProcessing:
@@ -30,7 +28,7 @@ class BatchProcessing:
         self.result_data = result_data
         self.threshold_days = threshold_days
         self.failure_registry = failure_registry
-        self.logger = get_logger("BatchProcessing")
+        self.logger = get_logger(type(self).__name__)
 
     def get_unprocessed_entities(self, entity_data: dict[str, list[Any]]) -> dict[str, Any]:
         """Get list of entities that haven't been processed yet.

@@ -12,6 +12,7 @@ description = "LSEG scraper to query the `permid.org` API and return PermIds for
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "idi-ftm2j-shared",
     "pandas>=3.0.0",
     "pyarrow>=23.0.0",
     "requests>=2.33.0",
@@ -21,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pipeline = "idi_company_info.processors.orchestrator:main"
+pipeline = "idi_company_info.orchestrator:main"
 
 [project.optional-dependencies]
 dev = [
@@ -75,10 +76,7 @@ ignore = [
   "D415",   # allow first line of doctstrings to end without punctuation
   "ANN002", # missing type on *args
   "ANN003", # missing type on **kwargs
-  "ANN101", # deprecated (and removed in modern ruff): annotating `self` is redundant
-  "ANN102", # deprecated (and removed in modern ruff): annotating `cls` is redundant
   "B905",   # won't work on python <3.10
-  "PD901",  # allow `df` as a DataFrame variable name (pandas convention)
   "S101",   # allow assertions
 ]
 
@@ -94,3 +92,6 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.uv.sources]
+idi-ftm2j-shared = { git = "https://github.com/dsi-clinic/idi-ftm2j-shared.git", rev = "issue-2-shared-code" }

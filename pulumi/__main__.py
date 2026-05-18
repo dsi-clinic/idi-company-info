@@ -4,7 +4,7 @@ Imports all resource modules (creation order matters) and exports stack outputs.
 """
 
 # Import order matters: config first, then resources by dependency
-from infra import ecr, ecs, iam, networking, scheduling, secrets, storage
+from infra import ecr, ecs, iam, logs, networking, scheduling, secrets
 
 import pulumi
 
@@ -24,6 +24,11 @@ pulumi.export("task_execution_role_name", iam.task_execution_role.name)
 pulumi.export("task_role_arn", iam.task_role.arn)
 pulumi.export("task_role_name", iam.task_role.name)
 
+# Logs
+pulumi.export("log_group_arn", logs.log_group.arn)
+pulumi.export("log_group_name", logs.log_group.name)
+pulumi.export("log_group_retention_days", logs.log_group.retention_in_days)
+
 # ECR
 pulumi.export("ecr_repo_url", ecr.ecr_repo.repository_url)
 pulumi.export("ecr_orchestrator_image", ecr.orchestrator_image)
@@ -32,11 +37,6 @@ pulumi.export("ecr_orchestrator_image", ecr.orchestrator_image)
 pulumi.export("ecs_cluster_arn", ecs.cluster.arn)
 pulumi.export("ecs_cluster_name", ecs.cluster.name)
 pulumi.export("task_definition_arn", ecs.task_definition.arn)
-pulumi.export("log_group_name", ecs.log_group.name)
-
-# Storage
-pulumi.export("processor_bucket_name", storage.processor_bucket.id)
-pulumi.export("processor_bucket_arn", storage.processor_bucket.arn)
 
 # Secrets
 pulumi.export("permid_secret_arn", secrets.permid_secret.arn)

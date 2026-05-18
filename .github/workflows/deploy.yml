@@ -7,8 +7,6 @@ on:
     branches:
       - main
       - dev
-      - release
-      - 'release/**'
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -68,10 +66,6 @@ jobs:
             uv version --bump patch --bump alpha
           fi
 
-      - name: Bump rc version (release branch)
-        if: startsWith(github.ref, 'refs/heads/release')
-        run: uv version --bump rc
-
       - name: Bump stable version (main branch)
         if: github.ref == 'refs/heads/main'
         run: uv version --bump stable
@@ -105,7 +99,7 @@ jobs:
           generateReleaseNotes: true
           name: v${{ steps.set-version.outputs.version }}
           tag: v${{ steps.set-version.outputs.version }}
-          prerelease: ${{ github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/heads/release') }}
+          prerelease: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: Save outputs
         id: output
@@ -171,7 +165,6 @@ jobs:
     if: |
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/dev' ||
-      startsWith(github.ref, 'refs/heads/release') ||
       startsWith(github.ref, 'refs/heads/issue-')
     defaults:
       run:
@@ -186,6 +179,8 @@ jobs:
       CRON_CUSIP: ${{ secrets.CRON_CUSIP }}
       INPUT_FILE_CIK: ${{ secrets.INPUT_FILE_CIK }}
       INPUT_FILE_CUSIP: ${{ secrets.INPUT_FILE_CUSIP }}
+      OUTPUT_DIR: ${{ secrets.OUTPUT_DIR }}
+      FAILURE_DIR: ${{ secrets.FAILURE_DIR }}
       ECS_TASK_CPU: ${{ secrets.ECS_TASK_CPU }}
       ECS_TASK_MEMORY: ${{ secrets.ECS_TASK_MEMORY }}
       SCHEDULE_ENABLED: ${{ secrets.SCHEDULE_ENABLED }}
@@ -229,6 +224,8 @@ jobs:
           [ -n "$CRON_CUSIP" ] && pulumi config set idi:cron_cusip "$CRON_CUSIP"
           [ -n "$INPUT_FILE_CIK" ] && pulumi config set idi:input_file_cik "$INPUT_FILE_CIK"
           [ -n "$INPUT_FILE_CUSIP" ] && pulumi config set idi:input_file_cusip "$INPUT_FILE_CUSIP"
+          [ -n "$OUTPUT_DIR" ] && pulumi config set idi:output_dir "$OUTPUT_DIR"
+          [ -n "$FAILURE_DIR" ] && pulumi config set idi:failure_dir "$FAILURE_DIR"
           [ -n "$ECS_TASK_CPU" ] && pulumi config set idi:cpu "$ECS_TASK_CPU"
           [ -n "$ECS_TASK_MEMORY" ] && pulumi config set idi:memory "$ECS_TASK_MEMORY"
           [ -n "$SCHEDULE_ENABLED" ] && pulumi config set idi:schedule_enabled "$SCHEDULE_ENABLED"
@@ -255,7 +252,6 @@ jobs:
     if: |
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/dev' ||
-      startsWith(github.ref, 'refs/heads/release') ||
       startsWith(github.ref, 'refs/heads/issue-')
     defaults:
       run:

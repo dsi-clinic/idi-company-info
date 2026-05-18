@@ -3,13 +3,15 @@
 # Standard library imports
 from typing import TYPE_CHECKING
 
+# Third party imports
+from idi_ftm2j_shared.failures import FailureRegistry
+from idi_ftm2j_shared.logs import get_logger
+
 # Application imports
-from idi_company_info.common.failures import FailureRegistry
-from idi_company_info.common.logs import get_logger
-from idi_company_info.processors.types import BatchConfig, FilePaths
+from idi_company_info.types import BatchConfig, FilePaths
 
 if TYPE_CHECKING:
-    from idi_company_info.processors.company_pipeline import ApiClients
+    from idi_company_info.company_pipeline import ApiClients
 
 
 class Retrieval:
@@ -39,4 +41,4 @@ class Retrieval:
         self.batch_config = batch_config
         self.api_clients = api_clients
         self.failure_registry = failure_registry
-        self.logger = get_logger(self.__class__.__name__)
+        self.logger = get_logger(type(self).__name__)

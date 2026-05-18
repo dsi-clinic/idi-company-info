@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.common.logs."""
+"""Unit tests for idi_ftm2j_shared.logs."""
 
 import logging
 from unittest.mock import ANY, MagicMock, patch
 
-from idi_company_info.common.logs import get_logger
+from idi_ftm2j_shared.logs import get_logger
 
 
 class TestGetLogger:
@@ -12,64 +12,64 @@ class TestGetLogger:
 
     def test_returns_logger_with_expected_name(self):
         """Test that get_logger returns a logger with the given name."""
-        with patch("idi_company_info.common.logs._configure_cloudwatch"):
+        with patch("idi_ftm2j_shared.logs._configure_cloudwatch"):
             logger = get_logger("test_name")
             assert logger.name == "test_name"
 
     def test_returns_logger_with_default_level(self):
         """Test that get_logger returns a logger with INFO level by default."""
-        with patch("idi_company_info.common.logs._configure_cloudwatch"):
+        with patch("idi_ftm2j_shared.logs._configure_cloudwatch"):
             logger = get_logger("test_level_default")
             assert logger.level == logging.INFO
 
     def test_returns_logger_with_custom_level(self):
         """Test that get_logger accepts a custom level."""
-        with patch("idi_company_info.common.logs._configure_cloudwatch"):
+        with patch("idi_ftm2j_shared.logs._configure_cloudwatch"):
             logger = get_logger("test_level_custom", level=logging.DEBUG)
             assert logger.level == logging.DEBUG
 
     def test_attaches_stream_handler(self):
-        """Test that get_logger attaches a StreamHandler to the logger."""
-        with patch("idi_company_info.common.logs._configure_cloudwatch"):
+        """Test that get_logger attaches a console handler to the logger."""
+        with patch("idi_ftm2j_shared.logs._configure_cloudwatch"):
             logger = get_logger("test_stream_handler")
-            stream_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)]
-            assert len(stream_handlers) >= 1
-            assert stream_handlers[0].level == logging.INFO
+            console_handlers = [h for h in logger.handlers if isinstance(h, logging.Handler)]
+            assert len(console_handlers) >= 1
+            assert console_handlers[0].level == logging.INFO
 
     def test_stream_handler_has_formatter(self):
-        """Test that the StreamHandler has a formatter configured."""
-        with patch("idi_company_info.common.logs._configure_cloudwatch"):
+        """Test that the console handler has a formatter configured."""
+        with patch("idi_ftm2j_shared.logs._configure_cloudwatch"):
             logger = get_logger("test_formatter")
-            stream_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)]
-            assert stream_handlers[0].formatter is not None
-            assert "%(name)s" in stream_handlers[0].formatter._fmt
+            console_handlers = [h for h in logger.handlers if isinstance(h, logging.Handler)]
+            assert console_handlers[0].formatter is not None
+            assert "%(name)s" in console_handlers[0].formatter._fmt
 
     def test_calls_configure_cloudwatch(self):
-        """Test that get_logger calls _configure_cloudwatch with the logger and name."""
-        with patch("idi_company_info.common.logs._configure_cloudwatch") as mock_configure:
+        """Test that get_logger calls _configure_cloudwatch with the logger, name, and cw params."""
+        with patch("idi_ftm2j_shared.logs._configure_cloudwatch") as mock_configure:
             logger = get_logger("test_configure_call")
-            mock_configure.assert_called_once_with(logger, "test_configure_call")
+            mock_configure.assert_called_once_with(logger, "test_configure_call", "", "")
 
 
 class TestConfigureCloudwatch:
     """Tests for _configure_cloudwatch behavior via get_logger."""
 
-    @patch("idi_company_info.common.logs._configure_cloudwatch")
+    @patch("idi_ftm2j_shared.logs._configure_cloudwatch")
     def test_no_cloudwatch_handler_when_not_on_ec2(self, mock_configure):
         """CloudWatch is configured by _configure_cloudwatch; we test behavior via mock."""
         # When _configure_cloudwatch does nothing (no EC2), only StreamHandler is present
-        mock_configure.side_effect = lambda logger, name: None
+        mock_configure.side_effect = lambda logger, name, log_group_name, log_stream_prefix: None
         logger = get_logger("test")
         cloudwatch_handlers = [
             h for h in logger.handlers if type(h).__name__ == "CloudWatchLogHandler"
         ]
         assert len(cloudwatch_handlers) == 0
 
-    @patch("idi_company_info.common.logs._EXECUTION_ID", "20240101_000000_000000")
-    @patch("idi_company_info.common.logs.boto3.client")
-    @patch("idi_company_info.common.logs.requests.get")
-    @patch("idi_company_info.common.logs.requests.put")
-    @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
+    @patch("idi_ftm2j_shared.logs._EXECUTION_ID", "20240101_000000_000000")
+    @patch("idi_ftm2j_shared.logs.boto3.client")
+    @patch("idi_ftm2j_shared.logs.requests.get")
+    @patch("idi_ftm2j_shared.logs.requests.put")
+    @patch("idi_ftm2j_shared.logs.watchtower.CloudWatchLogHandler")
     def test_adds_cloudwatch_handler_with_instance_id_from_metadata(
         self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
     ):
@@ -87,7 +87,9 @@ class TestConfigureCloudwatch:
         mock_cw_handler_class.return_value = mock_cw_handler
 
         with patch.dict("os.environ", {"CLOUDWATCH_LOGS_ENABLED": "true"}):
-            logger = get_logger("test_instance_id")
+            logger = get_logger(
+                "test_instance_id", log_group_name="idi-ftm2j", log_stream_prefix="/company-info"
+            )
 
         mock_cw_handler_class.assert_called_once_with(
             log_group_name="idi-ftm2j",
@@ -102,11 +104,11 @@ class TestConfigureCloudwatch:
         assert "%(name)s" in formatter_arg._fmt
         assert mock_cw_handler in logger.handlers
 
-    @patch("idi_company_info.common.logs._EXECUTION_ID", "20240101_000000_000000")
-    @patch("idi_company_info.common.logs.boto3.client")
-    @patch("idi_company_info.common.logs.requests.get")
-    @patch("idi_company_info.common.logs.requests.put")
-    @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
+    @patch("idi_ftm2j_shared.logs._EXECUTION_ID", "20240101_000000_000000")
+    @patch("idi_ftm2j_shared.logs.boto3.client")
+    @patch("idi_ftm2j_shared.logs.requests.get")
+    @patch("idi_ftm2j_shared.logs.requests.put")
+    @patch("idi_ftm2j_shared.logs.watchtower.CloudWatchLogHandler")
     def test_adds_cloudwatch_handler_when_env_enabled_uses_hostname_fallback(
         self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
     ):
@@ -120,7 +122,9 @@ class TestConfigureCloudwatch:
         with patch.dict(
             "os.environ", {"CLOUDWATCH_LOGS_ENABLED": "true", "HOSTNAME": "docker-container-1"}
         ):
-            logger = get_logger("test_env_enabled")
+            logger = get_logger(
+                "test_env_enabled", log_group_name="idi-ftm2j", log_stream_prefix="/company-info"
+            )
 
         mock_cw_handler_class.assert_called_once_with(
             log_group_name="idi-ftm2j",
@@ -135,11 +139,11 @@ class TestConfigureCloudwatch:
         assert "%(name)s" in formatter_arg._fmt
         assert mock_cw_handler in logger.handlers
 
-    @patch("idi_company_info.common.logs._EXECUTION_ID", "20240101_000000_000000")
-    @patch("idi_company_info.common.logs.boto3.client")
-    @patch("idi_company_info.common.logs.requests.get")
-    @patch("idi_company_info.common.logs.requests.put")
-    @patch("idi_company_info.common.logs.watchtower.CloudWatchLogHandler")
+    @patch("idi_ftm2j_shared.logs._EXECUTION_ID", "20240101_000000_000000")
+    @patch("idi_ftm2j_shared.logs.boto3.client")
+    @patch("idi_ftm2j_shared.logs.requests.get")
+    @patch("idi_ftm2j_shared.logs.requests.put")
+    @patch("idi_ftm2j_shared.logs.watchtower.CloudWatchLogHandler")
     def test_adds_cloudwatch_handler_uses_instance_id_env_var(
         self, mock_cw_handler_class, mock_put, mock_get, mock_boto_client
     ):
@@ -152,7 +156,9 @@ class TestConfigureCloudwatch:
             "os.environ",
             {"CLOUDWATCH_LOGS_ENABLED": "true", "INSTANCE_ID": "i-custom-from-env"},
         ):
-            logger = get_logger("test_instance_env")
+            logger = get_logger(
+                "test_instance_env", log_group_name="idi-ftm2j", log_stream_prefix="/company-info"
+            )
 
         mock_put.assert_not_called()
         mock_get.assert_not_called()
