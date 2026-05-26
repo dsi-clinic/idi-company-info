@@ -7,7 +7,7 @@ packages = ["src/idi_company_info"]
 
 [project]
 name = "idi-company-info"
-version = "0.1.1a6"
+version = "0.1.1a7"
 description = "LSEG scraper to query the `permid.org` API and return PermIds for investor CIKs"
 readme = "README.md"
 requires-python = ">=3.13"
