@@ -14,7 +14,7 @@ class BatchProcessing:
 
     def __init__(
         self,
-        result_data: list[dict[str, Any]],
+        result_data: dict[str, dict[str, dict]],
         threshold_days: int = 30,
         failure_registry: "FailureRegistry | None" = None,
     ) -> None:
@@ -39,33 +39,32 @@ class BatchProcessing:
         Returns:
             Dict of entity_name -> list of identifiers
         """
-        processed_entities = {
-            (entity["original_entity_name"], entity["identifier"]) for entity in self.result_data
-        }
-
-        new_entities = [
-            (entity_name, identifier)
-            for entity_name, identifiers in entity_data.items()
-            for identifier in identifiers
+        # Format processed entities so they are easy to compare
+        processed_entities = [
+            (value["identifier"]["name"], value["identifier"]["identifier"])
+            for value in self.result_data.values()
         ]
 
-        unprocessed_entities = [
-            (entity_name, identifier)
-            for entity_name, identifier in new_entities
-            if (entity_name, identifier) not in processed_entities
-        ]
+        # Get all new entities from input data that are not in processed
+        unprocessed_entities = {}
+        for entity_name, identifier_list in entity_data.items():
+            for identifier in identifier_list:
+                if (entity_name, identifier) not in processed_entities:
+                    unprocessed_entities.setdefault(entity_name, []).append(identifier)
 
         # Exclude entries in do-not-retry registry
         unprocessed_entities = self._remove_failed_entities(unprocessed_entities)
 
-        self.logger.info("Total new entities: %s", len(new_entities))
+        new_entity_count = sum(len(identifiers) for identifiers in entity_data.values())
+        unprocessed_count = sum(len(identifiers) for identifiers in unprocessed_entities.values())
+
+        self.logger.info("Total new entities: %s", new_entity_count)
         self.logger.info("Already processed entities: %s", len(processed_entities))
-        self.logger.info("Remaining to process: %s", len(unprocessed_entities))
+        self.logger.info("Remaining to process: %s", unprocessed_count)
 
-        unprocessed_identifiers = self._get_identifier_dict(unprocessed_entities)
-        return unprocessed_identifiers
+        return unprocessed_entities
 
-    def _remove_failed_entities(self, entities: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    def _remove_failed_entities(self, entities: dict[str, list[str]]) -> dict[str, list[str]]:
         """Remove entities that are in the do-not-retry registry from the list.
 
         Args:
@@ -77,14 +76,16 @@ class BatchProcessing:
         if not self.failure_registry:
             return entities
 
-        before_count = len(entities)
-        result = [
-            (entity_name, identifier)
-            for entity_name, identifier in entities
-            if (entity_name, identifier) not in self.failure_registry
-        ]
+        before_count = sum(len(identifiers) for identifiers in entities.values() )
 
-        excluded = before_count - len(result)
+        result = {}
+        for entity_name, identifiers in entities.items():
+            for identifier in identifiers:
+                if (entity_name, identifier) not in self.failure_registry:
+                    result.setdefault(entity_name, []).append(identifier)
+
+        result_count = sum(len(identifiers) for identifiers in result.values())
+        excluded = before_count - result_count
         if excluded > 0:
             self.logger.info("Excluded %d entities from do-not-retry registry", excluded)
 
