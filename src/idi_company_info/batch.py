@@ -2,11 +2,16 @@
 
 # Standard library imports
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 # Third party imports
 from idi_ftm2j_shared.failures import FailureRegistry
 from idi_ftm2j_shared.logs import get_logger
+from idi_ftm2j_shared.storage import load_json, save_json
+
+# Application imports
+from idi_company_info.cache_keys import permid_cache_key, parse_permid_cache_key
 
 
 class BatchProcessing:
@@ -53,28 +58,29 @@ class BatchProcessing:
                     unprocessed_entities.setdefault(entity_name, []).append(identifier)
 
         # Exclude entries in do-not-retry registry
-        unprocessed_entities = self._remove_failed_entities(unprocessed_entities)
+        unprocessed_entities, excluded = self._remove_failed_entities(unprocessed_entities)
 
         new_entity_count = sum(len(identifiers) for identifiers in entity_data.values())
         unprocessed_count = sum(len(identifiers) for identifiers in unprocessed_entities.values())
 
         self.logger.info("Total new entities: %s", new_entity_count)
         self.logger.info("Already processed entities: %s", len(processed_entities))
+        self.logger.info("Excluded %d entities from do-not-retry registry", excluded)
         self.logger.info("Remaining to process: %s", unprocessed_count)
 
         return unprocessed_entities
 
-    def _remove_failed_entities(self, entities: dict[str, list[str]]) -> dict[str, list[str]]:
+    def _remove_failed_entities(self, entities: dict[str, list[str]]) -> tuple[dict[str, list[str]], int]:
         """Remove entities that are in the do-not-retry registry from the list.
 
         Args:
             entities: List of (entity_name, identifier) tuples.
 
         Returns:
-            List of (entity_name, identifier) tuples.
+            Tuple of result with failures removed and number of result excluded
         """
         if not self.failure_registry:
-            return entities
+            return entities, 0
 
         before_count = sum(len(identifiers) for identifiers in entities.values() )
 
@@ -86,81 +92,77 @@ class BatchProcessing:
 
         result_count = sum(len(identifiers) for identifiers in result.values())
         excluded = before_count - result_count
-        if excluded > 0:
-            self.logger.info("Excluded %d entities from do-not-retry registry", excluded)
 
-        return result
+        return result, excluded
 
-    def _get_identifier_dict(self, entities: list[tuple[str, str]]) -> dict[str, list[str]]:
-        """Get identifier dictionary from entities.
-
-        Args:
-            entities: List of (entity_name, identifier) tuples.
-
-        Returns:
-            Identifier dictionary {entity_name: [identifier, ...]}
-        """
-        identifiers: dict[str, list[str]] = {}
-        for entity_name, identifier in entities:
-            identifiers.setdefault(entity_name, []).append(identifier)
-        return identifiers
-
-    def filter_stale_entities(self) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    def filter_stale_entities(self, result_file: Path, permid_file: Path) -> tuple[dict[str, dict], int]:
         """Identify and process stale entities based on threshold.
 
+        Filters out stale entities from result file and saves JSON.
+
+        Args:
+            result_file: Path to result file
+            permid_file: Path to permid file (cache)
+
         Returns:
-            Tuple of (filtered_results, stale_identifiers) where:
-              - filtered_results: full company info records that are not stale
-              - stale_identifiers: dict mapping entity_name -> [identifier, ...] for re-processing
+            Tuple of (stale_entities, num_not_stale) where:
+              - stale_entities: full company info records that are stale
+              - num_not_stale: number of remaining results that are not stale
         """
         if self.threshold_days is None:
-            return self.result_data, {}
+            return {}, len(self.result_data.keys())
 
         self.logger.info("Checking for entities not updated in last %d days", self.threshold_days)
         stale_entities, _ = self._get_stale_entities()
+        self.logger.info("Located %s stale entities", len(stale_entities.keys()))
 
         if not stale_entities:
-            return self.result_data, {}
-
-        self.logger.info("Found %d stale entity(ies) to re-process", len(stale_entities))
+            return {}, len(self.result_data.keys())
 
         # Remove stale entity records so they can be re-processed
-        filtered_results = self._remove_stale_records(stale_entities)
-        stale_identifiers = self._get_identifier_dict(stale_entities)
+        filtered_results, removed_result = self._remove_stale_records(stale_entities)
 
-        return filtered_results, stale_identifiers
+         # Remove stale entities from permid cache
+        filtered_permid, removed_permid = self._filter_stale_permid_cache(permid_file, stale_entities)
 
-    def _get_stale_entities(self) -> tuple[set[tuple[str, str]], list[datetime]]:
+        # If stale entities were removed, persist the pruned list so the buffer
+        # appends fresh results without duplicating the old stale records.
+        if removed_result:
+            save_json(str(result_file), filtered_results)
+            self.logger.info("Removed %d stale record(s) for re-processing from results", removed_result)
+
+        if removed_permid:
+            save_json(str(permid_file), filtered_permid)
+            self.logger.info("Removed %d stale record(s) for re-processing from permid cache", removed_permid)
+
+        return stale_entities, len(filtered_results.keys())
+
+    def _get_stale_entities(self) -> tuple[dict[str, dict], list[datetime]]:
         """Get stale entities based on threshold.
 
         Returns:
             Tuple of (set of stale entity names and identifiers tuples, list of stale dates)
         """
         if self.threshold_days is None:
-            return set(), []
+            return {}, []
 
         threshold_date = datetime.now() - timedelta(days=self.threshold_days)
-        old_entities: set[tuple[str, str]] = set()
-        new_entities: set[tuple[str, str]] = set()
-        stale_dates: list[str] = []
+        stale_entries: dict[str, dict] = {}
+        stale_dates: list[datetime] = []
 
-        for company_info in self.result_data:
-            try:
-                time_str = company_info.get("last_processed")
-                time_dt = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
-            except ValueError:
+        for permid, company_info in self.result_data.items():
+            time_str = company_info.get("result", {}).get("last_processed")
+            if not time_str:
                 continue
-            if time_dt < threshold_date:
-                old_entities.add((company_info["original_entity_name"], company_info["identifier"]))
-                stale_dates.append(time_dt)
-            else:
-                new_entities.add((company_info["original_entity_name"], company_info["identifier"]))
 
-        stale_entries = old_entities - new_entities
-        self.logger.info("Located %s stale entities", len(stale_entries))
+            time_dt = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
+            if time_dt < threshold_date:
+                stale_entries[permid] = company_info
+                stale_dates.append(time_dt)
+
         return stale_entries, stale_dates
 
-    def _remove_stale_records(self, stale_entities: set[tuple[str, str]]) -> list[dict[str, Any]]:
+    def _remove_stale_records(self, stale_entities: dict[str, dict]) -> tuple[dict[str, dict], int]:
         """Remove records for stale entities so they can be re-processed.
 
         Args:
@@ -168,18 +170,53 @@ class BatchProcessing:
 
         Returns:
             Filtered list without stale entity records
+            Number of removed entries
         """
         if not stale_entities:
             return self.result_data
 
-        filtered_results = [
-            record
-            for record in self.result_data
-            if record
-            and (record["original_entity_name"], record["identifier"]) not in stale_entities
-        ]
+        filtered_results = {
+            permid: company_info
+            for permid, company_info in self.result_data.items()
+            if permid not in stale_entities
+        }
 
-        removed_count = len(self.result_data) - len(filtered_results)
-        self.logger.info("Removed %d stale record(s) for re-processing", removed_count)
+        removed_count = len(self.result_data.keys()) - len(filtered_results.keys())
+        return filtered_results, removed_count
 
-        return filtered_results
+    def _filter_stale_permid_cache(
+        self, permid_file: Path, stale_entities: dict[str, dict]
+    ) -> tuple[dict[str, dict | list], int]:
+        """Select the permid_file entries that correspond to stale results.
+
+        Walks the permid cache and matches each entry against the stale entities
+        by (name, identifier_type, identifier), and removes the stale entry
+        from the permid cache.
+
+        Args:
+            permid_file: Path to the permid cache JSON
+            stale_entities: Mapping of permid_url -> stale result record
+
+        Returns:
+            Tuple of (filter_permid, removed_count) where filter_permid
+            includes non-stale entries and removed_count is the number
+            of removed entries.
+        """
+        permid_cache = load_json(permid_file, return_type="dict")
+
+        filter_permid = {}
+        for permid_key, permid_value in permid_cache.items():
+            cache_name, cache_id_type, cache_id = parse_permid_cache_key(permid_key)
+
+            is_stale = any(
+                cache_name == ci["identifier"]["name"]
+                and cache_id_type == ci["identifier"]["identifier_type"]
+                and cache_id == ci["identifier"]["identifier"]
+                for ci in stale_entities.values()
+            )
+
+            if not is_stale:
+                filter_permid[permid_key] = permid_value
+
+        removed_count = len(permid_cache.keys()) - len(filter_permid.keys())
+        return filter_permid, removed_count

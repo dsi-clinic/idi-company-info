@@ -21,8 +21,8 @@ def parse_permid_cache_key(key: str) -> tuple[str, str, str]:
     Returns:
         Tuple of (entity_name, identifier_type, identifier).
     """
-    parts = key.rsplit("_", 1)
-    if len(parts) != 2:
+    parts = key.rsplit("_", 2)
+    if len(parts) != 3:
         raise ValueError(f"Malformed permid cache key: {key!r}")
     entity_name, identifier_type, identifier = parts
     return entity_name, identifier_type, identifier
