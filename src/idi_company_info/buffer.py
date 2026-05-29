@@ -75,16 +75,18 @@ class Buffer:
         Args:
             existing: The existing data.
         """
-        for entity_name, entity_data in self._buffer.items():
-            if entity_name in existing:
-                existing_ids = {k for item in existing[entity_name] for k in item}
-                for item in entity_data:
-                    for identifier in item.keys():
-                        if identifier not in existing_ids:
-                            existing[entity_name].append(item)
-                            existing_ids.add(identifier)
+        for key, value in self._buffer.items():
+            # Merge old data with new
+            if key not in existing:
+                existing[key] = value
+            # Merge old data with existing data
             else:
-                existing[entity_name] = entity_data
+                existing_urls = existing[key]["result"]
+                for url in value["result"]:
+                    if url not in existing_urls:
+                        existing_urls.append(url)
+                existing[key]["search"] = value["search"]
+
 
     def _should_flush(self, current_size: int) -> bool:
         return current_size >= self.buffer_size
