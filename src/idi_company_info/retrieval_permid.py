@@ -67,9 +67,15 @@ class PermidRetrieval(Retrieval):
         Returns:
             The permid data.
         """
-        items = list(entities_to_process.keys())[:batch_size]
+        all_entities = [
+            (entity_name, identifier)
+            for entity_name, identifiers in entities_to_process.items()
+            for identifier in identifiers
+        ]
+        batch_entities = all_entities[:batch_size]
+
         all_records, total_records, total_batches = self._retrieve_records(
-            items, entities_to_process
+            batch_entities
         )
 
         buffer = Buffer(
@@ -103,24 +109,17 @@ class PermidRetrieval(Retrieval):
         batch_stats.total_permids += sum(len(v["result"]) for v in permid_data.values())
         return permid_data
 
-    def _retrieve_records(
-        self, items: list[str], entities_to_process: dict[str, Any]
-    ) -> tuple[list[dict[str, Any]], int, int]:
+    def _retrieve_records(self, batch_entities: list[tuple[str, str]]) -> tuple[list[dict[str, Any]], int, int]:
         """Retrieve records from the Record Match API.
 
         Args:
-            items: The items to process.
-            entities_to_process: The entities to process.
+            batch_entities: The entities to process.
 
         Returns:
             A tuple of (all_records, total_records, total_batches).
         """
-        self.logger.info("Retrieving PermIDs for %d entities", len(items))
-
-        # Build the flat record list first — each entity may have multiple identifiers,
-        # so the total row count can exceed the entity count. Batch by rows, not entities.
-        all_entities = [(item, entities_to_process[item]) for item in items]
-        all_records = self._build_records(all_entities)
+        self.logger.info("Retrieving PermIDs for %d entities", len(batch_entities))
+        all_records = self._build_records(batch_entities)
 
         total_records = len(all_records)
         total_batches = (total_records + self.RECORD_BATCH_SIZE - 1) // self.RECORD_BATCH_SIZE
@@ -130,10 +129,9 @@ class PermidRetrieval(Retrieval):
             total_batches,
             self.RECORD_BATCH_SIZE,
         )
-
         return all_records, total_records, total_batches
 
-    def _build_records(self, batch_entities: list[tuple[str, list[str]]]) -> list[dict[str, Any]]:
+    def _build_records(self, batch_entities: list[tuple[str, str]]) -> list[dict[str, Any]]:
         """Build the flat record list for the Record Match API payload.
 
         Args:
@@ -143,8 +141,7 @@ class PermidRetrieval(Retrieval):
             Flat list of record dicts ready for DataFrame construction.
         """
         records = []
-        for entity_name, identifier_list in batch_entities:
-            for identifier in identifier_list:
+        for entity_name, identifier in batch_entities:
                 if self.identifier_type == "cusip":
                     local_id = f"cusip_{identifier}"  # CUSIP is the stable LocalID
                     standard_identifier = self._std_ticker_map[identifier]

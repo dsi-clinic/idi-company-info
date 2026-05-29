@@ -19,6 +19,7 @@ from idi_company_info.api import (
     LsegRecordMatch,
 )
 from idi_company_info.batch import BatchProcessing
+from idi_company_info.cache_keys import permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval_company_info import CompInfoRetrieval
 from idi_company_info.retrieval_permid import PermidRetrieval
@@ -171,12 +172,10 @@ class CompanyPipeline(ABC):
         batch_stats = BatchStats()
 
         # Partition: entities that already have PermIDs vs those that still need retrieval
-        existing_permid_data = load_json(self.file_paths.permid_file, return_type="dict")
-        needs_permid = {
-            k: v for k, v in entities_to_process.items() if k not in existing_permid_data
-        }
-        has_permid_count = len(entities_to_process) - len(needs_permid)
+        needs_permid, has_permid_count = self._determine_needs_permid(entities_to_process)
+        needs_count = sum(len(identifiers) for identifiers in needs_permid.values())
 
+        # Shared date between retrievals
         shared = {
             "file_paths": self.file_paths,
             "batch_config": self.batch_config,
@@ -186,11 +185,69 @@ class CompanyPipeline(ABC):
         }
 
         # Retrieve the PermIDs for the entities that need them
+        permid_data = self._retrieve_permid(needs_permid, needs_count, has_permid_count, shared, batch_stats)
+
+        # Retrieve the company info for the entities that have PermIDs
+        all_entities = list(entities_to_process.keys())
+        company_info_retriever = CompInfoRetrieval(**shared, raw_ticker_map=self.raw_ticker_map)
+        company_info_retriever.retrieve(
+            permid_data, all_entities, num_existing_entities, batch_stats
+        )
+        return batch_stats
+
+    def _determine_needs_permid(self, entities_to_process: dict[str, list[str]]) -> tuple[dict[str, list[str]], int]:
+        """Determine what entities need permids and what already have them
+
+        Args:
+            entities_to_process: Dictonary of entities to process
+
+        Returns:
+            Tuple of entities that need a permid and the count of ones that don't
+        """
+        existing_permid_data = load_json(self.file_paths.permid_file, return_type="dict")
+
+        needs_permid = {}
+        for entity_name, identifiers in entities_to_process.items():
+            for identifier in identifiers:
+                key = permid_cache_key(entity_name, f"{self.identifier_type}_{identifier}")
+                if key not in existing_permid_data:
+                    needs_permid.setdefault(entity_name, []).append(identifier)
+
+        needs_count = sum(len(identifiers) for identifiers in needs_permid.values())
+        entity_count = sum(len(identifiers) for identifiers in entities_to_process.values())
+        has_permid_count = entity_count - needs_count
+
+        return needs_permid, has_permid_count
+
+    def _retrieve_permid(
+        self,
+        needs_permid: dict[str, list[str]],
+        needs_count: int,
+        has_permid_count: int,
+        shared: dict[str, Any],
+        batch_stats: BatchStats,
+    ) -> dict[str, dict]:
+        """Retrieve PermIDs for entities that need them and return the refreshed cache.
+
+        When ``needs_permid`` is non-empty, runs the Record Match API then reloads
+        ``permid_file``. When empty, skips retrieval and just reloads the existing
+        cache.
+
+        Args:
+            needs_permid: Mapping of entity_name -> [identifier, ...]
+            needs_count: Total number of identifiers across ``needs_permid`` (queued count).
+            has_permid_count: Number of to-process identifiers already resolved in the cache.
+            shared: Common keyword args (file_paths, batch_config, api_clients, failure_registry, identifier_type).
+            batch_stats: Accumulator for run-level statistics, mutated in place.
+
+        Returns:
+            The reloaded permid_data: ``{cache_key: {"search": {...}, "result": [permid_url, ...]}}``.
+        """
         if needs_permid:
-            retrieval_count = min(len(needs_permid), self.batch_config.batch_size)
+            retrieval_count = min(needs_count, self.batch_config.batch_size)
             self.logger.info(
                 "PermID retrieval: %d queued, %d will be retrieved this run, %d already resolved",
-                len(needs_permid),
+                needs_count,
                 retrieval_count,
                 has_permid_count,
             )
@@ -213,13 +270,7 @@ class CompanyPipeline(ABC):
         if needs_permid:
             self._log_permid_retrieval_stats(needs_permid, permid_data)
 
-        # Retrieve the company info for the entities that have PermIDs
-        all_entities = list(entities_to_process.keys())
-        company_info_retriever = CompInfoRetrieval(**shared, raw_ticker_map=self.raw_ticker_map)
-        company_info_retriever.retrieve(
-            permid_data, all_entities, num_existing_entities, batch_stats
-        )
-        return batch_stats
+        return permid_data
 
     def _log_permid_retrieval_stats(
         self, needs_permid: dict[str, Any], permid_data: dict[str, Any]
@@ -232,7 +283,8 @@ class CompanyPipeline(ABC):
         """
         retrieved_count = min(len(needs_permid), self.batch_config.batch_size)
         resolved_this_run = sum(
-            1 for k in list(needs_permid.keys())[:retrieved_count] if k in permid_data
+            1 for k, ids in list(needs_permid.items())[:retrieved_count]
+            if any(permid_cache_key(k, f"{self.identifier_type}_{i}") in permid_data for i in ids)
         )
         self.logger.info(
             "PermID retrieval complete: %d/%d entities resolved this run",
@@ -294,25 +346,19 @@ class CompanyPipeline(ABC):
                 failure_registry=self.failure_registry,
             )
             unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
-            filtered_results, stale_identifiers = batch_processing.filter_stale_entities()
-
-            for entity, ids in stale_identifiers.items():
-                unprocessed_entities.setdefault(entity, []).extend(ids)
-            to_process = sum(len(v) for v in unprocessed_entities.values())
-            self.logger.info(
-                "To process: %d | Not to process: %d", to_process, len(filtered_results)
+            stale_entities, num_not_stale = batch_processing.filter_stale_entities(
+                self.file_paths.result_file,
+                self.file_paths.permid_file
             )
 
-            # If stale entities were removed, persist the pruned list so the buffer
-            # appends fresh results without duplicating the old stale records.
-            if stale_identifiers:
-                self.logger.info(
-                    "Removing %d stale record(s) from result file", len(stale_identifiers)
-                )
-                save_json(self.file_paths.result_file, filtered_results)
+            unprocessed_entities.update(stale_entities)
+            to_process = len(unprocessed_entities.keys())
+            self.logger.info(
+                "To process: %d | Remaining saved results: %d", to_process, num_not_stale
+            )
 
             # Process entities
-            batch_stats = self.process_entities(unprocessed_entities, len(filtered_results))
+            batch_stats = self.process_entities(unprocessed_entities, num_not_stale)
 
             # Print stats
             self.print_stats(batch_stats)
