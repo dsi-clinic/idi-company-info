@@ -9,6 +9,7 @@ from idi_ftm2j_shared.failures import FailureRegistry
 
 # Application imports
 from idi_company_info.buffer import Buffer
+from idi_company_info.cache_keys import permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier, FailureType
 from idi_company_info.retrieval import Retrieval
 from idi_company_info.types import BatchConfig, BatchStats, FilePaths
@@ -85,13 +86,21 @@ class PermidRetrieval(Retrieval):
             batch_permid_data = self._record_match_batch(
                 batch_records, batch_num, total_batches, batch_stats, buffer
             )
-            for entity_name, permids in batch_permid_data.items():
-                permid_data.setdefault(entity_name, []).extend(permids)
+
+            for key, entry in batch_permid_data.items():
+                # Append permid url to existing entity - does not preserve search
+                if key in permid_data:
+                    for url in entry["result"]:
+                        if url not in permid_data[key]["result"]:
+                            permid_data[key]["result"].append(url)
+                # Define a new entry
+                else:
+                    permid_data[key] = entry
 
         if buffer._buffer:
             buffer.flush()
 
-        batch_stats.total_permids += sum(len(permid_list) for permid_list in permid_data.values())
+        batch_stats.total_permids += sum(len(v["result"]) for v in permid_data.values())
         return permid_data
 
     def _retrieve_records(
@@ -137,10 +146,10 @@ class PermidRetrieval(Retrieval):
         for entity_name, identifier_list in batch_entities:
             for identifier in identifier_list:
                 if self.identifier_type == "cusip":
-                    local_id = identifier  # CUSIP is the stable LocalID
+                    local_id = f"cusip_{identifier}"  # CUSIP is the stable LocalID
                     standard_identifier = self._std_ticker_map[identifier]
                 elif self.identifier_type == "cik":
-                    local_id = identifier
+                    local_id = f"cik_{identifier}"
                     standard_identifier = f"Cik:{identifier}"
                 else:
                     raise ValueError(f"Invalid identifier type: {self.identifier_type}")
@@ -292,9 +301,29 @@ class PermidRetrieval(Retrieval):
         """
         permid_data: dict[str, list] = {}
         for record in response:
-            permid_data.setdefault(record.get("Input_Name"), []).append(
-                {record.get("Input_LocalID"): [record.get("Match OpenPermID")]}
-            )
+            permid_url = record.get("Match OpenPermID")
+            name = record.get("Input_Name")
+            local_id = record.get("Input_LocalID")
+            standard_id = record.get("Input_Standard Identifier")
+
+            value = {
+                "search": {
+                    "Name": name,
+                    "LocalID": local_id,
+                    "Standard Identifier": standard_id
+                },
+                "result": []
+            }
+
+            if not (name and local_id and permid_url):
+                continue
+
+            key = permid_cache_key(name, local_id)
+            entry = permid_data.setdefault(key, value)
+
+            if permid_url not in entry["result"]:
+                entry["result"].append(permid_url)
+
         return permid_data
 
     def _handle_failures(
