@@ -188,10 +188,9 @@ class CompanyPipeline(ABC):
         permid_data = self._retrieve_permid(needs_permid, needs_count, has_permid_count, shared, batch_stats)
 
         # Retrieve the company info for the entities that have PermIDs
-        all_entities = list(entities_to_process.keys())
         company_info_retriever = CompInfoRetrieval(**shared, raw_ticker_map=self.raw_ticker_map)
         company_info_retriever.retrieve(
-            permid_data, all_entities, num_existing_entities, batch_stats
+            permid_data, entities_to_process, num_existing_entities, batch_stats
         )
         return batch_stats
 
@@ -337,7 +336,7 @@ class CompanyPipeline(ABC):
             identifier_data = self.load_data()
 
             # Load existing results
-            existing_results = load_json(self.file_paths.result_file, return_type="list")
+            existing_results = load_json(self.file_paths.result_file, return_type="dict")
 
             # Load previous batch processing data
             batch_processing = BatchProcessing(
