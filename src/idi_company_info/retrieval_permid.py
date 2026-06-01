@@ -74,13 +74,10 @@ class PermidRetrieval(Retrieval):
         ]
         batch_entities = all_entities[:batch_size]
 
-        all_records, total_records, total_batches = self._retrieve_records(
-            batch_entities
-        )
+        all_records, total_records, total_batches = self._retrieve_records(batch_entities)
 
         buffer = Buffer(
-            file_path=self.file_paths.permid_file,
-            buffer_size=self.batch_config.buffer_size
+            file_path=self.file_paths.permid_file, buffer_size=self.batch_config.buffer_size
         )
 
         permid_data = {}
@@ -108,7 +105,9 @@ class PermidRetrieval(Retrieval):
         batch_stats.total_permids += sum(len(v["result"]) for v in permid_data.values())
         return permid_data
 
-    def _retrieve_records(self, batch_entities: list[tuple[str, str]]) -> tuple[list[dict[str, Any]], int, int]:
+    def _retrieve_records(
+        self, batch_entities: list[tuple[str, str]]
+    ) -> tuple[list[dict[str, Any]], int, int]:
         """Retrieve records from the Record Match API.
 
         Args:
@@ -141,22 +140,22 @@ class PermidRetrieval(Retrieval):
         """
         records = []
         for entity_name, identifier in batch_entities:
-                if self.identifier_type == "cusip":
-                    local_id = f"cusip_{identifier}"  # CUSIP is the stable LocalID
-                    standard_identifier = self._std_ticker_map[identifier]
-                elif self.identifier_type == "cik":
-                    local_id = f"cik_{identifier}"
-                    standard_identifier = f"Cik:{identifier}"
-                else:
-                    raise ValueError(f"Invalid identifier type: {self.identifier_type}")
+            if self.identifier_type == "cusip":
+                local_id = f"cusip_{identifier}"  # CUSIP is the stable LocalID
+                standard_identifier = self._std_ticker_map[identifier]
+            elif self.identifier_type == "cik":
+                local_id = f"cik_{identifier}"
+                standard_identifier = f"Cik:{identifier}"
+            else:
+                raise ValueError(f"Invalid identifier type: {self.identifier_type}")
 
-                records.append(
-                    {
-                        "LocalID": local_id,
-                        "Standard Identifier": standard_identifier,
-                        "Name": entity_name,
-                    }
-                )
+            records.append(
+                {
+                    "LocalID": local_id,
+                    "Standard Identifier": standard_identifier,
+                    "Name": entity_name,
+                }
+            )
         return records
 
     def _record_match_batch(
@@ -203,8 +202,8 @@ class PermidRetrieval(Retrieval):
         Returns:
             Mapping of entity name → list of {identifier: [permid_url, ...]} items.
         """
-        df = pd.DataFrame(records)
-        csv_data = df.to_csv(index=False)
+        records_df = pd.DataFrame(records)
+        csv_data = records_df.to_csv(index=False)
 
         parsed_response: dict[str, Any] = {}
         try:
@@ -303,12 +302,8 @@ class PermidRetrieval(Retrieval):
             standard_id = record.get("Input_Standard Identifier")
 
             value = {
-                "search": {
-                    "Name": name,
-                    "LocalID": local_id,
-                    "Standard Identifier": standard_id
-                },
-                "result": []
+                "search": {"Name": name, "LocalID": local_id, "Standard Identifier": standard_id},
+                "result": [],
             }
 
             if not (name and local_id and permid_url):

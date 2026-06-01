@@ -61,10 +61,10 @@ class CompanyByCikPipeline(CompanyPipeline):
         Returns:
             A dictionary with investor_name as key and a list of investor_cik as value.
         """
-        df = self.read_parquet(
+        input_df = self.read_parquet(
             self.file_paths.input_file, required_columns=["investor_name", "investor_cik"]
         )
-        self.logger.info("Loaded %s rows", len(df))
+        self.logger.info("Loaded %s rows", len(input_df))
 
-        result = self._extract_filter_parquet_cik(df)
+        result = self._extract_filter_parquet_cik(input_df)
         return result

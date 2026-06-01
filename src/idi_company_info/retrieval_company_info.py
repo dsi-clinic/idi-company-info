@@ -1,7 +1,6 @@
 """Retrieve company information from PermID entity lookup."""
 
 # Standard library imports
-from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -12,12 +11,7 @@ from idi_ftm2j_shared.failures import FailureRegistry
 from idi_company_info.buffer import Buffer, CacheBuffer
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval import Retrieval
-from idi_company_info.types import (
-    BatchConfig,
-    BatchStats,
-    FilePaths,
-    PermidResponse
-)
+from idi_company_info.types import BatchConfig, BatchStats, FilePaths, PermidResponse
 
 if TYPE_CHECKING:
     from idi_company_info.company_pipeline import ApiClients
@@ -88,17 +82,12 @@ class CompInfoRetrieval(Retrieval):
 
         # Retrieve the company info for each entity in the batch
         for idx, permid_url in enumerate(batch, 1):
-            self.logger.info(
-                "[%d/%d] Processing: %s",
-                idx,
-                len(batch),
-                permid_url
-            )
+            self.logger.info("[%d/%d] Processing: %s", idx, len(batch), permid_url)
             company = self._retrieve_entity_company_info(
                 permid_url,
                 batch_url[permid_url]["Name"],
                 batch_url[permid_url]["LocalID"],
-                batch_stats
+                batch_stats,
             )
             buffer.add(data=company)
             batch_stats.total_entities += 1
@@ -119,19 +108,19 @@ class CompInfoRetrieval(Retrieval):
             The subset of entities that fits within the request budget.
         """
         permid_list = [
-            permid_url
-            for values in permid_data.values()
-            for permid_url in values["result"]
+            permid_url for values in permid_data.values() for permid_url in values["result"]
         ]
 
-        batch_permids = permid_list[:self.batch_config.batch_size]
+        batch_permids = permid_list[: self.batch_config.batch_size]
         remaining = len(permid_list) - len(batch_permids)
 
-        self.logger.info("Will process %d permid urls, remaining: %d", len(batch_permids), remaining)
+        self.logger.info(
+            "Will process %d permid urls, remaining: %d", len(batch_permids), remaining
+        )
         return batch_permids
 
     def _retrieve_entity_company_info(
-        self, permid_url, entity_name, entity_identifier, batch_stats: BatchStats
+        self, permid_url: str, entity_name: str, entity_identifier: str, batch_stats: BatchStats
     ) -> CacheBuffer:
         """Fetch company info for every PermID associated with a single entity.
 
@@ -191,7 +180,7 @@ class CompInfoRetrieval(Retrieval):
         )
         batch_stats.total_company_info += 1
 
-        return { permid_url: company_data }
+        return {permid_url: company_data}
 
     def _parse_company_info(
         self,
@@ -217,9 +206,7 @@ class CompInfoRetrieval(Retrieval):
             A populated CompanyInfo dataclass instance.
         """
         return {
-            "search": {
-                "permid_url": permid_url
-            },
+            "search": {"permid_url": permid_url},
             "result": {
                 "investor_name": response.get("vcard:organization-name"),
                 "permid_id": response.get("tr-common:hasPermId") or permid_url.split("/")[-1],
@@ -234,14 +221,14 @@ class CompInfoRetrieval(Retrieval):
                 "domiciled_in": self._query_geonames_location(response.get("isDomiciledIn")),
                 "url": response.get("hasURL"),
                 "activity_status": response.get("hasActivityStatus"),
-                "last_processed": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S")
+                "last_processed": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
             },
             "identifier": {
                 "name": entity_name,
                 "identifier": identifier,
                 "identifier_type": identifier_type,
-                "ticker": ticker
-            }
+                "ticker": ticker,
+            },
         }
 
     def _query_geonames_location(self, url: str | None) -> str | None:

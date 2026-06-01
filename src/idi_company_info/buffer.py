@@ -72,8 +72,8 @@ class Buffer:
             else:
                 # company info: result is a dict
                 self.logger.warning(
-                    "Unexpected duplicate key in result buffer: %s - overwriting",
-                key)
+                    "Unexpected duplicate key in result buffer: %s - overwriting", key
+                )
                 existing[key] = value
 
     def _should_flush(self, current_size: int) -> bool:

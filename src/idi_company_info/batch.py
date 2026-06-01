@@ -11,7 +11,7 @@ from idi_ftm2j_shared.logs import get_logger
 from idi_ftm2j_shared.storage import load_json, save_json
 
 # Application imports
-from idi_company_info.cache_keys import permid_cache_key, parse_permid_cache_key
+from idi_company_info.cache_keys import parse_permid_cache_key
 
 
 class BatchProcessing:
@@ -70,7 +70,9 @@ class BatchProcessing:
 
         return unprocessed_entities
 
-    def _remove_failed_entities(self, entities: dict[str, list[str]]) -> tuple[dict[str, list[str]], int]:
+    def _remove_failed_entities(
+        self, entities: dict[str, list[str]]
+    ) -> tuple[dict[str, list[str]], int]:
         """Remove entities that are in the do-not-retry registry from the list.
 
         Args:
@@ -82,7 +84,7 @@ class BatchProcessing:
         if not self.failure_registry:
             return entities, 0
 
-        before_count = sum(len(identifiers) for identifiers in entities.values() )
+        before_count = sum(len(identifiers) for identifiers in entities.values())
 
         result = {}
         for entity_name, identifiers in entities.items():
@@ -95,7 +97,9 @@ class BatchProcessing:
 
         return result, excluded
 
-    def filter_stale_entities(self, result_file: Path, permid_file: Path) -> tuple[dict[str, dict], int]:
+    def filter_stale_entities(
+        self, result_file: Path, permid_file: Path
+    ) -> tuple[dict[str, dict], int]:
         """Identify and process stale entities based on threshold.
 
         Filters out stale entities from result file and saves JSON.
@@ -122,18 +126,24 @@ class BatchProcessing:
         # Remove stale entity records so they can be re-processed
         filtered_results, removed_result = self._remove_stale_records(stale_entities)
 
-         # Remove stale entities from permid cache
-        filtered_permid, removed_permid = self._filter_stale_permid_cache(permid_file, stale_entities)
+        # Remove stale entities from permid cache
+        filtered_permid, removed_permid = self._filter_stale_permid_cache(
+            permid_file, stale_entities
+        )
 
         # If stale entities were removed, persist the pruned list so the buffer
         # appends fresh results without duplicating the old stale records.
         if removed_result:
             save_json(str(result_file), filtered_results)
-            self.logger.info("Removed %d stale record(s) for re-processing from results", removed_result)
+            self.logger.info(
+                "Removed %d stale record(s) for re-processing from results", removed_result
+            )
 
         if removed_permid:
             save_json(str(permid_file), filtered_permid)
-            self.logger.info("Removed %d stale record(s) for re-processing from permid cache", removed_permid)
+            self.logger.info(
+                "Removed %d stale record(s) for re-processing from permid cache", removed_permid
+            )
 
         return stale_entities, len(filtered_results.keys())
 

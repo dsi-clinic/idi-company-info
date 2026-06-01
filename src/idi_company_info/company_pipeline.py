@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 from idi_ftm2j_shared.failures import FailureRegistry
 from idi_ftm2j_shared.logs import get_logger
-from idi_ftm2j_shared.storage import load_json, save_json
+from idi_ftm2j_shared.storage import load_json
 
 # Application imports
 from idi_company_info.api import (
@@ -143,14 +143,14 @@ class CompanyPipeline(ABC):
         Returns:
             The dataframe with the required columns.
         """
-        df = pd.read_parquet(input_file)
+        input_df = pd.read_parquet(input_file)
 
         # Validate required columns
-        missing_columns = [col for col in required_columns if col not in df.columns]
+        missing_columns = [col for col in required_columns if col not in input_df.columns]
         if missing_columns:
             raise ValueError(f"Required columns {missing_columns} not found in dataframe")
 
-        return df
+        return input_df
 
     def process_entities(
         self, entities_to_process: dict[str, Any], num_existing_entities: int
@@ -185,7 +185,9 @@ class CompanyPipeline(ABC):
         }
 
         # Retrieve the PermIDs for the entities that need them
-        permid_data = self._retrieve_permid(needs_permid, needs_count, has_permid_count, shared, batch_stats)
+        permid_data = self._retrieve_permid(
+            needs_permid, needs_count, has_permid_count, shared, batch_stats
+        )
 
         # Retrieve the company info for the entities that have PermIDs
         company_info_retriever = CompInfoRetrieval(**shared, raw_ticker_map=self.raw_ticker_map)
@@ -194,7 +196,9 @@ class CompanyPipeline(ABC):
         )
         return batch_stats
 
-    def _determine_needs_permid(self, entities_to_process: dict[str, list[str]]) -> tuple[dict[str, list[str]], int]:
+    def _determine_needs_permid(
+        self, entities_to_process: dict[str, list[str]]
+    ) -> tuple[dict[str, list[str]], int]:
         """Determine what entities need permids and what already have them
 
         Args:
@@ -282,7 +286,8 @@ class CompanyPipeline(ABC):
         """
         retrieved_count = min(len(needs_permid), self.batch_config.batch_size)
         resolved_this_run = sum(
-            1 for k, ids in list(needs_permid.items())[:retrieved_count]
+            1
+            for k, ids in list(needs_permid.items())[:retrieved_count]
             if any(permid_cache_key(k, f"{self.identifier_type}_{i}") in permid_data for i in ids)
         )
         self.logger.info(
@@ -346,8 +351,7 @@ class CompanyPipeline(ABC):
             )
             unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
             stale_entities, num_not_stale = batch_processing.filter_stale_entities(
-                self.file_paths.result_file,
-                self.file_paths.permid_file
+                self.file_paths.result_file, self.file_paths.permid_file
             )
 
             unprocessed_entities.update(stale_entities)

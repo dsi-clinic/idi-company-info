@@ -1,5 +1,8 @@
 """Utilities for the creation of cache keys."""
 
+_EXPECTED_KEY_PARTS = 3
+
+
 def permid_cache_key(entity_name: str, identifier: str) -> str:
     """Build the flat permid_file key for an input row.
 
@@ -12,6 +15,7 @@ def permid_cache_key(entity_name: str, identifier: str) -> str:
     """
     return f"{entity_name}_{identifier}"
 
+
 def parse_permid_cache_key(key: str) -> tuple[str, str, str]:
     """Parse the flat permid_file key into entity_name, identifier_type, identifier.
 
@@ -22,7 +26,7 @@ def parse_permid_cache_key(key: str) -> tuple[str, str, str]:
         Tuple of (entity_name, identifier_type, identifier).
     """
     parts = key.rsplit("_", 2)
-    if len(parts) != 3:
+    if len(parts) != _EXPECTED_KEY_PARTS:
         raise ValueError(f"Malformed permid cache key: {key!r}")
     entity_name, identifier_type, identifier = parts
     return entity_name, identifier_type, identifier

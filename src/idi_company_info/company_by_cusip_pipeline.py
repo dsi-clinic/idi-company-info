@@ -209,9 +209,9 @@ class CompanyByCusipPipeline(CompanyPipeline):
 
     def load_data(self) -> dict[str, list[str]]:
         """Load the input parquet and return ``{issuer_name: [cusip, ...]}``."""
-        df = self.read_parquet(
+        input_df = self.read_parquet(
             self.file_paths.input_file,
             required_columns=["issuer_name", "security_cusip", "stock_ticker"],
         )
-        self.logger.info("Loaded %s rows (ticker mode)", len(df))
-        return self._extract_filter_parquet_ticker(df)
+        self.logger.info("Loaded %s rows (ticker mode)", len(input_df))
+        return self._extract_filter_parquet_ticker(input_df)
