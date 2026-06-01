@@ -180,3 +180,36 @@ class BatchProcessing:
             if time_dt < threshold_date:
                 stale.add(permid_url)
         return stale
+
+
+_CUSIP_ISSUER_LEN = 6  # CUSIP = 6-char issuer + 2-char issue + check digit
+
+
+def find_cusip_collisions(permid_data: dict[str, dict]) -> dict[str, dict[str, str]]:
+    """Find PermIDs reached by CUSIPs from more than one distinct issuer.
+
+    A PermID legitimately collapses multiple CUSIPs only when they are share classes of the
+    same issuer (same 6-char issuer prefix). A PermID reached by CUSIPs with *different*
+    issuer prefixes is almost certainly a false Record Match (e.g. tickers ABL/ABLD wrongly
+    resolving to Abbott). This is a pure post-run aggregation over permid_data — no API calls.
+
+    Args:
+        permid_data: The permid_file, keyed by permid_cache_key, each with a search block
+            whose LocalID is the prefixed CUSIP (e.g. "cusip_00258Y104") and Name.
+
+    Returns:
+        {permid_url: {cusip: submitted_name, ...}} for each PermID reached by >1 distinct
+        issuer prefix. The submitted name per CUSIP is included so the warning is legible.
+    """
+    url_to_members: dict[str, dict[str, str]] = {}
+    for entry in permid_data.values():
+        cusip = entry["search"]["LocalID"].split("_", 1)[-1]
+        name = entry["search"]["Name"]
+        for url in entry["result"]:
+            url_to_members.setdefault(url, {}).setdefault(cusip, name)
+
+    return {
+        url: members
+        for url, members in url_to_members.items()
+        if len({cusip[:_CUSIP_ISSUER_LEN] for cusip in members}) > 1
+    }

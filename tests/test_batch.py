@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from idi_company_info.batch import BatchProcessing
+from idi_company_info.batch import BatchProcessing, find_cusip_collisions
 
 _PERMID_URL = "https://permid.org/1-test"
 _PERMID_URL_2 = "https://permid.org/1-test2"
@@ -195,3 +195,43 @@ class TestFilterStaleEntities:
         bp = BatchProcessing({}, {}, "cik", threshold_days=30)
         remaining = bp.filter_stale_entities(result_file, permid_file)
         assert remaining == 0
+
+
+def _permid_entry(name: str, cusip: str, permid_url: str) -> dict:
+    """A permid_file entry for a CUSIP row resolving to permid_url."""
+    return {
+        f"{name}_cusip_{cusip}": {
+            "search": {"Name": name, "LocalID": f"cusip_{cusip}", "Standard Identifier": "ticker:X"},
+            "result": [permid_url],
+        }
+    }
+
+
+class TestFindCusipCollisions:
+    """Tests for find_cusip_collisions (detection-only, no API calls)."""
+
+    def test_flags_different_issuers_on_one_permid(self):
+        """CUSIPs with different issuer prefixes sharing a PermID is a suspect."""
+        permid_data = {
+            **_permid_entry("ABBOTT", "002824100", _PERMID_URL),  # issuer 002824
+            **_permid_entry("ABACUS", "00258Y104", _PERMID_URL),  # issuer 00258Y
+        }
+        collisions = find_cusip_collisions(permid_data)
+        # Returns the submitted name per CUSIP so the warning is legible.
+        assert collisions == {_PERMID_URL: {"002824100": "ABBOTT", "00258Y104": "ABACUS"}}
+
+    def test_share_classes_same_issuer_not_flagged(self):
+        """Same issuer prefix (share classes) collapsing to one PermID is legitimate."""
+        permid_data = {
+            **_permid_entry("ALPHA A", "00510M104", _PERMID_URL),  # issuer 00510M
+            **_permid_entry("ALPHA B", "00510M203", _PERMID_URL),  # issuer 00510M
+        }
+        assert find_cusip_collisions(permid_data) == {}
+
+    def test_distinct_permids_not_flagged(self):
+        """Different CUSIPs resolving to different PermIDs is fine."""
+        permid_data = {
+            **_permid_entry("ABBOTT", "002824100", _PERMID_URL),
+            **_permid_entry("ADOBE", "00724F101", _PERMID_URL_2),
+        }
+        assert find_cusip_collisions(permid_data) == {}

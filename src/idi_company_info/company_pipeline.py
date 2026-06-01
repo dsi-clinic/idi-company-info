@@ -18,7 +18,7 @@ from idi_company_info.api import (
     LSEGEntityLookup,
     LsegRecordMatch,
 )
-from idi_company_info.batch import BatchProcessing
+from idi_company_info.batch import BatchProcessing, find_cusip_collisions
 from idi_company_info.cache_keys import permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval_company_info import CompInfoRetrieval
@@ -332,6 +332,35 @@ class CompanyPipeline(ABC):
         )
         self.logger.info("=" * 50)
 
+    def _report_cusip_collisions(self) -> None:
+        """Warn about PermIDs reached by multiple CUSIP issuers (likely false matches).
+
+        Detection only — no API calls, nothing pruned. Reads the final permid_file and logs
+        each collision plus a summary count so mismatches are visible and trackable.
+        """
+        permid_data = load_json(self.file_paths.permid_file, return_type="dict")
+        result_data = load_json(self.file_paths.result_file, return_type="dict")
+        collisions = find_cusip_collisions(permid_data)
+
+        for permid_url, members in collisions.items():
+            canonical = result_data.get(permid_url, {}).get("result", {}).get("investor_name")
+            detail = ", ".join(f"{cusip} ({name})" for cusip, name in sorted(members.items()))
+            self.logger.warning(
+                "Possible false match: %d CUSIPs across multiple issuers resolved to "
+                "PermID %s (%s): %s",
+                len(members),
+                permid_url,
+                canonical,
+                detail,
+            )
+
+        if collisions:
+            self.logger.warning(
+                "CUSIP collision summary: %d PermID(s) reached by multiple CUSIP issuers "
+                "(review for false Record Match hits)",
+                len(collisions),
+            )
+
     def run(self) -> None:
         """Run the identifier pipeline."""
         try:
@@ -368,6 +397,10 @@ class CompanyPipeline(ABC):
 
             # Print stats
             self.print_stats(batch_stats)
+
+            # CUSIP: flag likely false Record Match collisions (no extra API calls).
+            if self.identifier_type == "cusip":
+                self._report_cusip_collisions()
         finally:
             # Persist any buffered failures so partial buffers (<flush_every)
             # and end-of-run failures aren't lost on exit.
