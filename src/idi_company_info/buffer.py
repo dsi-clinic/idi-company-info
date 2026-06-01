@@ -5,18 +5,13 @@ from idi_ftm2j_shared.logs import get_logger
 from idi_ftm2j_shared.storage import load_json, save_json
 
 # Application imports
-from idi_company_info.types import CompanyInfo
-
-# Maps entity name → list of (identifier, associated values) tuples
-type EntityBuffer = dict[str, list[tuple[str, list[str]]]]
-# List of resolved records
-type RecordBuffer = list[CompanyInfo]
+from idi_company_info.types import CacheBuffer
 
 
 class Buffer:
     """PermidBuffer for storing permid data in a sync buffer."""
 
-    def __init__(self, file_path: str, buffer_size: int = 500, mode: str = "dict") -> None:
+    def __init__(self, file_path: str, buffer_size: int = 500) -> None:
         """Initialize the PermidBuffer.
 
         Args:
@@ -27,25 +22,15 @@ class Buffer:
         self.file_path = file_path
         self.buffer_size = buffer_size
         self.logger = get_logger(type(self).__name__)
-        self.mode = mode
-        if mode == "dict":
-            self._buffer: dict = {}
-        elif mode == "list":
-            self._buffer: list = []
-        else:
-            raise ValueError(f"Invalid mode: {mode}")
+        self._buffer: CacheBuffer = {}
 
-    def add(self, data: EntityBuffer | RecordBuffer) -> None:
+    def add(self, data: CacheBuffer) -> None:
         """Merge permid_data into sync buffer; flush if threshold reached.
 
         Args:
             data: The data to merge.
         """
-        if self.mode == "dict":
-            self._buffer.update(data)
-        else:
-            self._buffer.extend(data)
-
+        self._buffer.update(data)
         if self._should_flush(len(self._buffer)):
             self.flush()
 
@@ -58,11 +43,8 @@ class Buffer:
         if not self._buffer:
             return
 
-        existing = load_json(self.file_path, return_type=self.mode)
-        if self.mode == "dict":
-            self._merge_dict(existing)
-        else:
-            existing.extend(self._buffer)
+        existing = load_json(self.file_path, return_type="dict")
+        self._merge_dict(existing)
 
         save_json(self.file_path, existing)
         self.logger.info("Saved %s data to %s", len(self._buffer), self.file_path)
@@ -79,14 +61,20 @@ class Buffer:
             # Merge old data with new
             if key not in existing:
                 existing[key] = value
-            # Merge old data with existing data
-            else:
-                existing_urls = existing[key]["result"]
+            # Merge old data with existing new
+            elif isinstance(value.get("result"), list):
+                # permid file: result is a list of URLs
                 for url in value["result"]:
+                    existing_urls = existing[key]["result"]
                     if url not in existing_urls:
                         existing_urls.append(url)
                 existing[key]["search"] = value["search"]
-
+            else:
+                # company info: result is a dict
+                self.logger.warning(
+                    "Unexpected duplicate key in result buffer: %s - overwriting",
+                key)
+                existing[key] = value
 
     def _should_flush(self, current_size: int) -> bool:
         return current_size >= self.buffer_size
@@ -98,6 +86,4 @@ class Buffer:
             The merged data.
         """
         self.flush()
-        return load_json(self.file_path, return_type=self.mode) or (
-            {} if self.mode == "dict" else []
-        )
+        return load_json(self.file_path, return_type="dict")

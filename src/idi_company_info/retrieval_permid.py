@@ -80,8 +80,7 @@ class PermidRetrieval(Retrieval):
 
         buffer = Buffer(
             file_path=self.file_paths.permid_file,
-            buffer_size=self.batch_config.buffer_size,
-            mode="dict",
+            buffer_size=self.batch_config.buffer_size
         )
 
         permid_data = {}

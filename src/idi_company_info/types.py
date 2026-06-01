@@ -4,6 +4,14 @@
 import pathlib
 from dataclasses import dataclass
 from enum import Enum, StrEnum
+from typing import Any
+
+# Buffer records
+type CacheEntry = dict[str, Any]
+type CacheBuffer = dict[str, CacheEntry]
+
+# LSEG permid response
+type PermidResponse = dict[str, str | dict[str, str]] | None
 
 
 @dataclass
