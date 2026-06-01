@@ -1,5 +1,9 @@
 """Buffer for storing data that flushes to file when threshold is reached."""
 
+# Standard library imports
+from collections.abc import Mapping
+from typing import Any
+
 # Third party imports
 from idi_ftm2j_shared.logs import get_logger
 from idi_ftm2j_shared.storage import load_json, save_json
@@ -25,8 +29,11 @@ class Buffer:
         self.logger = get_logger(type(self).__name__)
         self._buffer: CacheBuffer = {}
 
-    def add(self, data: CacheBuffer) -> None:
+    def add(self, data: Mapping[str, Any]) -> None:
         """Merge data into sync buffer; flush if threshold reached.
+
+        Accepts any mapping of cache entries (Mapping is covariant in its value type, so
+        callers can pass precisely-typed entries like dict[str, ResultEntry]).
 
         Args:
             data: The data to merge.
@@ -62,7 +69,7 @@ class Buffer:
 
         self._buffer = {}
 
-    def _merge(self, source: dict, target: dict) -> None:
+    def _merge(self, source: Mapping[str, Any], target: dict) -> None:
         """Merge source into target using this buffer's strategy.
 
         permid: extend the result URL list (deduped). company info: overwrite the entry —

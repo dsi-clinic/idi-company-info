@@ -12,7 +12,7 @@ from idi_company_info.buffer import Buffer
 from idi_company_info.cache_keys import permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier, FailureType
 from idi_company_info.retrieval import Retrieval
-from idi_company_info.types import BatchConfig, BatchStats, FilePaths, MergeStrategy
+from idi_company_info.types import BatchConfig, BatchStats, FilePaths, MergeStrategy, PermidEntry
 
 if TYPE_CHECKING:
     from idi_company_info.company_pipeline import ApiClients
@@ -275,29 +275,31 @@ class PermidRetrieval(Retrieval):
         s = match.get("Match Score")
         return float(str(s).rstrip("%")) / 100 if s else 0
 
-    def _parse_record_match_response(self, response: list[dict[str, Any]]) -> dict[str, Any]:
+    def _parse_record_match_response(
+        self, response: list[dict[str, Any]]
+    ) -> dict[str, PermidEntry]:
         """Convert filtered Record Match records into the permid_data structure.
 
         Args:
             response: Filtered list of match records.
 
         Returns:
-            Mapping of entity name → list of {identifier: [permid_url, ...]} items.
+            Mapping of permid_cache_key → {search, result: [permid_url, ...]}.
         """
-        permid_data: dict[str, list] = {}
+        permid_data: dict[str, PermidEntry] = {}
         for record in response:
             permid_url = record.get("Match OpenPermID")
             name = record.get("Input_Name")
             local_id = record.get("Input_LocalID")
             standard_id = record.get("Input_Standard Identifier")
 
-            value = {
+            if not (name and local_id and permid_url):
+                continue
+
+            value: PermidEntry = {
                 "search": {"Name": name, "LocalID": local_id, "Standard Identifier": standard_id},
                 "result": [],
             }
-
-            if not (name and local_id and permid_url):
-                continue
 
             key = permid_cache_key(name, local_id)
             entry = permid_data.setdefault(key, value)

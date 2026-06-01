@@ -9,10 +9,17 @@ from idi_ftm2j_shared.failures import FailureRegistry
 from idi_ftm2j_shared.storage import load_json
 
 # Application imports
-from idi_company_info.buffer import Buffer, CacheBuffer
+from idi_company_info.buffer import Buffer
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval import Retrieval
-from idi_company_info.types import BatchConfig, BatchStats, FilePaths, MergeStrategy, PermidResponse
+from idi_company_info.types import (
+    BatchConfig,
+    BatchStats,
+    FilePaths,
+    MergeStrategy,
+    PermidResponse,
+    ResultEntry,
+)
 
 if TYPE_CHECKING:
     from idi_company_info.company_pipeline import ApiClients
@@ -133,7 +140,7 @@ class CompInfoRetrieval(Retrieval):
         permid_url: str,
         failure_pairs: list[tuple[str, str]],
         batch_stats: BatchStats,
-    ) -> CacheBuffer:
+    ) -> dict[str, ResultEntry]:
         """Fetch company info for a single PermID and build its result entry.
 
         Args:
@@ -169,7 +176,7 @@ class CompInfoRetrieval(Retrieval):
         batch_stats.total_company_info += 1
         return {permid_url: company_data}
 
-    def _parse_company_info(self, permid_url: str, response: dict[str, Any]) -> dict[str, dict]:
+    def _parse_company_info(self, permid_url: str, response: dict[str, Any]) -> ResultEntry:
         """Map a raw entity-lookup response to a pure permid_url-keyed result entry.
 
         Args:

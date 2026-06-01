@@ -4,14 +4,60 @@
 import pathlib
 from dataclasses import dataclass
 from enum import Enum, StrEnum
-from typing import Any
+from typing import Any, TypedDict
 
-# Buffer records
+# Buffer records — the buffer is generic over both on-disk shapes below
 type CacheEntry = dict[str, Any]
 type CacheBuffer = dict[str, CacheEntry]
 
 # LSEG permid response
 type PermidResponse = dict[str, str | dict[str, str]] | None
+
+
+# Functional syntax required because "Standard Identifier" contains a space.
+PermidSearch = TypedDict(
+    "PermidSearch",
+    {"Name": str, "LocalID": str, "Standard Identifier": str | None},
+)
+
+
+class PermidEntry(TypedDict):
+    """A permid_file entry: the input search block and the resolved PermID URLs."""
+
+    search: PermidSearch
+    result: list[str]
+
+
+class ResultSearch(TypedDict):
+    """The search block of a result_file entry."""
+
+    permid_url: str
+
+
+class CompanyResult(TypedDict):
+    """Company info returned by the entity-lookup API for one PermID."""
+
+    investor_name: str | None
+    permid_id: str
+    permid_url: str | None
+    hq_address: str | None
+    registered_address: str | None
+    fax_number: str | None
+    phone_number: str | None
+    lei: str | None
+    founded_date: str | None
+    incorporated_in: str | None
+    domiciled_in: str | None
+    url: str | None
+    activity_status: str | None
+    last_processed: str
+
+
+class ResultEntry(TypedDict):
+    """A result_file entry: pure company info keyed by permid_url."""
+
+    search: ResultSearch
+    result: CompanyResult
 
 
 @dataclass
