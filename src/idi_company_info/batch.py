@@ -8,10 +8,10 @@ from typing import Any
 # Third party imports
 from idi_ftm2j_shared.failures import FailureRegistry
 from idi_ftm2j_shared.logs import get_logger
-from idi_ftm2j_shared.storage import load_json, save_json
+from idi_ftm2j_shared.storage import save_json
 
 # Application imports
-from idi_company_info.cache_keys import parse_permid_cache_key
+from idi_company_info.cache_keys import permid_cache_key
 
 
 class BatchProcessing:
@@ -19,57 +19,71 @@ class BatchProcessing:
 
     def __init__(
         self,
-        result_data: dict[str, dict[str, dict]],
-        threshold_days: int = 30,
+        result_data: dict[str, dict],
+        permid_data: dict[str, dict],
+        identifier_type: str,
+        threshold_days: int | None = 30,
         failure_registry: "FailureRegistry | None" = None,
     ) -> None:
         """Initialize the BatchProcessing.
 
         Args:
-            result_data: The result data.
-            threshold_days: The threshold days.
+            result_data: The result_file, keyed by permid_url.
+            permid_data: The permid_file, keyed by permid_cache_key. Owns the input
+                (name, identifier) -> permid_url linkage.
+            identifier_type: The identifier type (e.g. 'cik', 'cusip'), used to rebuild
+                the prefixed LocalID for cache-key and failure-registry lookups.
+            threshold_days: The staleness threshold in days (None disables staleness).
             failure_registry: Optional registry of permanent failures to exclude from retries.
         """
         self.result_data = result_data
+        self.permid_data = permid_data
+        self.identifier_type = identifier_type
         self.threshold_days = threshold_days
         self.failure_registry = failure_registry
         self.logger = get_logger(type(self).__name__)
 
     def get_unprocessed_entities(self, entity_data: dict[str, list[Any]]) -> dict[str, Any]:
-        """Get list of entities that haven't been processed yet.
+        """Get input rows that still need processing.
+
+        A (name, identifier) row is already processed when its permid is resolved AND every
+        permid_url it resolved to is present in result_data. The linkage is read from
+        permid_data (result_file no longer stores identifiers).
 
         Args:
-            entity_data: Dict of entity_name -> list of identifiers (strings)
+            entity_data: Dict of entity_name -> list of identifiers (raw, unprefixed)
 
         Returns:
-            Dict of entity_name -> list of identifiers
+            Dict of entity_name -> list of identifiers still to process
         """
-        # Format processed entities so they are easy to compare
-        processed_entities = [
-            (block["name"], block["identifier"])
-            for value in self.result_data.values()
-            for block in value["identifiers"]
-        ]
-
-        # Get all new entities from input data that are not in processed
-        unprocessed_entities = {}
+        unprocessed_entities: dict[str, list[str]] = {}
+        new_entity_count = 0
+        processed_count = 0
         for entity_name, identifier_list in entity_data.items():
             for identifier in identifier_list:
-                if (entity_name, identifier) not in processed_entities:
+                new_entity_count += 1
+                if self._is_processed(entity_name, identifier):
+                    processed_count += 1
+                else:
                     unprocessed_entities.setdefault(entity_name, []).append(identifier)
 
         # Exclude entries in do-not-retry registry
         unprocessed_entities, excluded = self._remove_failed_entities(unprocessed_entities)
 
-        new_entity_count = sum(len(identifiers) for identifiers in entity_data.values())
         unprocessed_count = sum(len(identifiers) for identifiers in unprocessed_entities.values())
-
         self.logger.info("Total new entities: %s", new_entity_count)
-        self.logger.info("Already processed entities: %s", len(processed_entities))
+        self.logger.info("Already processed entities: %s", processed_count)
         self.logger.info("Excluded %d entities from do-not-retry registry", excluded)
         self.logger.info("Remaining to process: %s", unprocessed_count)
 
         return unprocessed_entities
+
+    def _is_processed(self, entity_name: str, identifier: str) -> bool:
+        """True if this row's permid is resolved and all its permid_urls have results."""
+        key = permid_cache_key(entity_name, f"{self.identifier_type}_{identifier}")
+        entry = self.permid_data.get(key)
+        urls = entry["result"] if entry else []
+        return bool(urls) and all(url in self.result_data for url in urls)
 
     def _remove_failed_entities(
         self, entities: dict[str, list[str]]
@@ -87,10 +101,13 @@ class BatchProcessing:
 
         before_count = sum(len(identifiers) for identifiers in entities.values())
 
+        # Failures are keyed by the prefixed LocalID (e.g. "cik_0001234567") to match
+        # what both retrieval stages register.
         result = {}
         for entity_name, identifiers in entities.items():
             for identifier in identifiers:
-                if (entity_name, identifier) not in self.failure_registry:
+                key = (entity_name, f"{self.identifier_type}_{identifier}")
+                if key not in self.failure_registry:
                     result.setdefault(entity_name, []).append(identifier)
 
         result_count = sum(len(identifiers) for identifiers in result.values())
@@ -98,137 +115,68 @@ class BatchProcessing:
 
         return result, excluded
 
-    def filter_stale_entities(
-        self, result_file: Path, permid_file: Path
-    ) -> tuple[dict[str, dict], int]:
-        """Identify and process stale entities based on threshold.
+    def filter_stale_entities(self, result_file: Path, permid_file: Path) -> int:
+        """Prune stale results and their permid_file keys in sync, then persist both.
 
-        Filters out stale entities from result file and saves JSON.
+        A result entry is stale when its ``last_processed`` is older than threshold_days.
+        Stale ``permid_url``s are reverse-indexed to their permid_cache_key so the matching
+        permid_file entry is removed too — that way the affected input rows fall back into
+        the "needs permid" bucket and re-resolve. Mutates ``self.result_data`` and
+        ``self.permid_data`` in place.
 
         Args:
-            result_file: Path to result file
-            permid_file: Path to permid file (cache)
+            result_file: Path to the result_file (written if anything is pruned).
+            permid_file: Path to the permid_file (written if anything is pruned).
 
         Returns:
-            Tuple of (stale_entities, num_not_stale) where:
-              - stale_entities: full company info records that are stale
-              - num_not_stale: number of remaining results that are not stale
+            The number of result entries remaining after pruning.
         """
         if self.threshold_days is None:
-            return {}, len(self.result_data.keys())
+            return len(self.result_data)
 
         self.logger.info("Checking for entities not updated in last %d days", self.threshold_days)
-        stale_entities, _ = self._get_stale_entities()
-        self.logger.info("Located %s stale entities", len(stale_entities.keys()))
+        stale_urls = self._get_stale_urls()
+        self.logger.info("Located %s stale entities", len(stale_urls))
+        if not stale_urls:
+            return len(self.result_data)
 
-        if not stale_entities:
-            return {}, len(self.result_data.keys())
+        # Reverse index: permid_url -> permid_cache_key (a url not present is a no-op).
+        url_to_key = {
+            url: key for key, entry in self.permid_data.items() for url in entry["result"]
+        }
+        stale_keys = {url_to_key[url] for url in stale_urls if url in url_to_key}
 
-        # Remove stale entity records so they can be re-processed
-        filtered_results, removed_result = self._remove_stale_records(stale_entities)
+        # Prune both caches in place.
+        for url in stale_urls:
+            self.result_data.pop(url, None)
+        for key in stale_keys:
+            self.permid_data.pop(key, None)
 
-        # Remove stale entities from permid cache
-        filtered_permid, removed_permid = self._filter_stale_permid_cache(
-            permid_file, stale_entities
+        save_json(str(result_file), self.result_data)
+        save_json(str(permid_file), self.permid_data)
+        self.logger.info(
+            "Pruned %d stale result(s) and %d permid key(s) for re-processing",
+            len(stale_urls),
+            len(stale_keys),
         )
 
-        # If stale entities were removed, persist the pruned list so the buffer
-        # appends fresh results without duplicating the old stale records.
-        if removed_result:
-            save_json(str(result_file), filtered_results)
-            self.logger.info(
-                "Removed %d stale record(s) for re-processing from results", removed_result
-            )
+        return len(self.result_data)
 
-        if removed_permid:
-            save_json(str(permid_file), filtered_permid)
-            self.logger.info(
-                "Removed %d stale record(s) for re-processing from permid cache", removed_permid
-            )
-
-        return stale_entities, len(filtered_results.keys())
-
-    def _get_stale_entities(self) -> tuple[dict[str, dict], list[datetime]]:
-        """Get stale entities based on threshold.
-
-        Returns:
-            Tuple of (set of stale entity names and identifiers tuples, list of stale dates)
-        """
+    def _get_stale_urls(self) -> set[str]:
+        """Return the set of permid_urls whose result is older than threshold_days."""
         if self.threshold_days is None:
-            return {}, []
+            return set()
 
         threshold_date = datetime.now() - timedelta(days=self.threshold_days)
-        stale_entries: dict[str, dict] = {}
-        stale_dates: list[datetime] = []
-
-        for permid, company_info in self.result_data.items():
-            time_str = company_info.get("result", {}).get("last_processed")
+        stale: set[str] = set()
+        for permid_url, entry in self.result_data.items():
+            time_str = entry.get("result", {}).get("last_processed")
             if not time_str:
                 continue
-
-            time_dt = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
+            try:
+                time_dt = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
+            except ValueError:
+                continue
             if time_dt < threshold_date:
-                stale_entries[permid] = company_info
-                stale_dates.append(time_dt)
-
-        return stale_entries, stale_dates
-
-    def _remove_stale_records(self, stale_entities: dict[str, dict]) -> tuple[dict[str, dict], int]:
-        """Remove records for stale entities so they can be re-processed.
-
-        Args:
-            stale_entities: Set of (entity_name, identifier) tuples to remove
-
-        Returns:
-            Filtered list without stale entity records
-            Number of removed entries
-        """
-        if not stale_entities:
-            return self.result_data
-
-        filtered_results = {
-            permid: company_info
-            for permid, company_info in self.result_data.items()
-            if permid not in stale_entities
-        }
-
-        removed_count = len(self.result_data.keys()) - len(filtered_results.keys())
-        return filtered_results, removed_count
-
-    def _filter_stale_permid_cache(
-        self, permid_file: Path, stale_entities: dict[str, dict]
-    ) -> tuple[dict[str, dict | list], int]:
-        """Select the permid_file entries that correspond to stale results.
-
-        Walks the permid cache and matches each entry against the stale entities
-        by (name, identifier_type, identifier), and removes the stale entry
-        from the permid cache.
-
-        Args:
-            permid_file: Path to the permid cache JSON
-            stale_entities: Mapping of permid_url -> stale result record
-
-        Returns:
-            Tuple of (filter_permid, removed_count) where filter_permid
-            includes non-stale entries and removed_count is the number
-            of removed entries.
-        """
-        permid_cache = load_json(permid_file, return_type="dict")
-
-        filter_permid = {}
-        for permid_key, permid_value in permid_cache.items():
-            cache_name, cache_id_type, cache_id = parse_permid_cache_key(permid_key)
-
-            is_stale = any(
-                cache_name == block["name"]
-                and cache_id_type == block["identifier_type"]
-                and cache_id == block["identifier"].split("_")[-1]
-                for ci in stale_entities.values()
-                for block in ci.get("identifiers", [])
-            )
-
-            if not is_stale:
-                filter_permid[permid_key] = permid_value
-
-        removed_count = len(permid_cache.keys()) - len(filter_permid.keys())
-        return filter_permid, removed_count
+                stale.add(permid_url)
+        return stale

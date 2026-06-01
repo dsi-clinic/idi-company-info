@@ -79,7 +79,7 @@ class PermidRetrieval(Retrieval):
         buffer = Buffer(
             file_path=self.file_paths.permid_file,
             merge=MergeStrategy.PERMID,
-            buffer_size=self.batch_config.buffer_size
+            buffer_size=self.batch_config.buffer_size,
         )
 
         for batch_start in range(0, total_records, self.RECORD_BATCH_SIZE):
@@ -92,7 +92,9 @@ class PermidRetrieval(Retrieval):
 
             if batch_permid_data:
                 buffer.add(data=batch_permid_data)
-                batch_stats.total_permids += sum(len(v["result"]) for v in batch_permid_data.values())
+                batch_stats.total_permids += sum(
+                    len(v["result"]) for v in batch_permid_data.values()
+                )
 
         permid_data = buffer.load_all()
         return permid_data

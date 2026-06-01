@@ -99,5 +99,6 @@ class OrchestratorConfig:
 
 class MergeStrategy(StrEnum):
     """Options for results merge operations."""
+
     PERMID = "permid"
     COMPANY_INFO = "company_info"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.common.batch.BatchProcessing."""
+"""Unit tests for idi_company_info.batch.BatchProcessing."""
 
 import json
 from datetime import datetime, timedelta
@@ -12,29 +12,30 @@ _PERMID_URL = "https://permid.org/1-test"
 _PERMID_URL_2 = "https://permid.org/1-test2"
 
 
-def make_record(
-    entity_name: str,
-    identifier: str,
-    days_ago: int = 0,
-    permid_url: str = _PERMID_URL,
-) -> dict:
-    """Build a result_data entry for a single permid_url."""
+def make_result(permid_url: str, days_ago: int = 0) -> dict:
+    """Build a result_file entry (keyed by permid_url) — no identifiers block."""
     ts = datetime.now() - timedelta(days=days_ago)
     return {
         "search": {"permid_url": permid_url},
         "result": {"last_processed": ts.strftime("%Y%m%dT%H%M%S")},
-        "identifier": {
-            "name": entity_name,
-            "identifier": identifier,
-            "identifier_type": "cik",
-        },
     }
 
 
-def make_permid_cache(entity_name: str, identifier: str, permid_url: str = _PERMID_URL) -> dict:
-    """Build a minimal permid_file dict matching a single entity/identifier."""
-    key = f"{entity_name}_cik_{identifier}"
-    return {key: {"search": {"Name": entity_name, "LocalID": f"cik_{identifier}"}, "result": [permid_url]}}
+def make_permid(
+    entity_name: str, identifier: str, permid_url: str, identifier_type: str = "cik"
+) -> dict:
+    """Build a one-entry permid_file dict for a single (name, identifier) -> permid_url."""
+    key = f"{entity_name}_{identifier_type}_{identifier}"
+    return {
+        key: {
+            "search": {
+                "Name": entity_name,
+                "LocalID": f"{identifier_type}_{identifier}",
+                "Standard Identifier": f"Cik:{identifier}",
+            },
+            "result": [permid_url],
+        }
+    }
 
 
 def write_files(tmp_path: Path, result_data: dict, permid_data: dict) -> tuple[Path, Path]:
@@ -47,127 +48,150 @@ def write_files(tmp_path: Path, result_data: dict, permid_data: dict) -> tuple[P
 
 
 class TestGetUnprocessedEntities:
-    """Tests for BatchProcessing.get_unprocessed_entities."""
+    """Tests for BatchProcessing.get_unprocessed_entities.
+
+    A (name, identifier) is processed iff its permid_cache_key is in permid_data AND every
+    permid_url it resolved to is present in result_data.
+    """
 
     def test_returns_all_entities_when_none_processed(self):
-        """When result_data is empty, all entities are returned."""
-        bp = BatchProcessing(result_data={})
-        entity_data = {"Firm A": ["id1", "id2"]}
-        result = bp.get_unprocessed_entities(entity_data)
+        """Empty caches → all input rows are unprocessed."""
+        bp = BatchProcessing(result_data={}, permid_data={}, identifier_type="cik")
+        result = bp.get_unprocessed_entities({"Firm A": ["id1", "id2"]})
         assert result == {"Firm A": ["id1", "id2"]}
 
     def test_excludes_already_processed_entities(self):
-        """Entities already in result_data are excluded."""
-        result_data = {_PERMID_URL: make_record("Firm A", "id1")}
-        bp = BatchProcessing(result_data=result_data)
-        entity_data = {"Firm A": ["id1", "id2"]}
-        result = bp.get_unprocessed_entities(entity_data)
+        """A row whose permid is resolved and result present is excluded."""
+        permid_data = make_permid("Firm A", "id1", _PERMID_URL)
+        result_data = {_PERMID_URL: make_result(_PERMID_URL)}
+        bp = BatchProcessing(
+            result_data=result_data, permid_data=permid_data, identifier_type="cik"
+        )
+        result = bp.get_unprocessed_entities({"Firm A": ["id1", "id2"]})
         assert result == {"Firm A": ["id2"]}
 
+    def test_permid_resolved_but_result_missing_is_unprocessed(self):
+        """Permid resolved but its url not yet in result_data → still unprocessed."""
+        permid_data = make_permid("Firm A", "id1", _PERMID_URL)
+        bp = BatchProcessing(result_data={}, permid_data=permid_data, identifier_type="cik")
+        result = bp.get_unprocessed_entities({"Firm A": ["id1"]})
+        assert result == {"Firm A": ["id1"]}
+
     def test_returns_empty_when_all_processed(self):
-        """Returns empty dict when all entities have been processed."""
-        result_data = {
-            _PERMID_URL: make_record("Firm A", "id1"),
-            _PERMID_URL_2: make_record("Firm A", "id2"),
+        """All rows resolved + results present → nothing to process."""
+        permid_data = {
+            **make_permid("Firm A", "id1", _PERMID_URL),
+            **make_permid("Firm A", "id2", _PERMID_URL_2),
         }
-        bp = BatchProcessing(result_data=result_data)
-        entity_data = {"Firm A": ["id1", "id2"]}
-        result = bp.get_unprocessed_entities(entity_data)
+        result_data = {
+            _PERMID_URL: make_result(_PERMID_URL),
+            _PERMID_URL_2: make_result(_PERMID_URL_2),
+        }
+        bp = BatchProcessing(
+            result_data=result_data, permid_data=permid_data, identifier_type="cik"
+        )
+        result = bp.get_unprocessed_entities({"Firm A": ["id1", "id2"]})
         assert result == {}
 
     def test_multiple_entities_partial_processing(self):
-        """Handles multiple entities where some are partially processed."""
-        result_data = {_PERMID_URL: make_record("Firm A", "id1")}
-        bp = BatchProcessing(result_data=result_data)
-        entity_data = {
-            "Firm A": ["id1", "id2"],
-            "Firm B": ["id3"],
-        }
-        result = bp.get_unprocessed_entities(entity_data)
+        """Mix of processed and new rows across entities."""
+        permid_data = make_permid("Firm A", "id1", _PERMID_URL)
+        result_data = {_PERMID_URL: make_result(_PERMID_URL)}
+        bp = BatchProcessing(
+            result_data=result_data, permid_data=permid_data, identifier_type="cik"
+        )
+        result = bp.get_unprocessed_entities({"Firm A": ["id1", "id2"], "Firm B": ["id3"]})
         assert result == {"Firm A": ["id2"], "Firm B": ["id3"]}
 
     def test_excludes_failure_registry_entries(self):
-        """Entities in the failure registry are excluded."""
+        """Rows in the do-not-retry registry (keyed by prefixed LocalID) are excluded."""
         failure_registry = MagicMock()
-        failure_registry.__contains__ = lambda self, key: key == ("Firm A", "id1")
-        bp = BatchProcessing(result_data={}, failure_registry=failure_registry)
-        entity_data = {"Firm A": ["id1", "id2"]}
-        result = bp.get_unprocessed_entities(entity_data)
+        failure_registry.__contains__ = lambda self, key: key == ("Firm A", "cik_id1")
+        bp = BatchProcessing(
+            result_data={}, permid_data={}, identifier_type="cik", failure_registry=failure_registry
+        )
+        result = bp.get_unprocessed_entities({"Firm A": ["id1", "id2"]})
         assert "id1" not in result.get("Firm A", [])
         assert "id2" in result.get("Firm A", [])
 
     def test_no_failure_registry_returns_all_unprocessed(self):
-        """When no failure registry is set, all unprocessed entities are returned."""
-        bp = BatchProcessing(result_data={}, failure_registry=None)
-        entity_data = {"Firm A": ["id1"]}
-        result = bp.get_unprocessed_entities(entity_data)
+        """No registry → all unprocessed rows are returned."""
+        bp = BatchProcessing(
+            result_data={}, permid_data={}, identifier_type="cik", failure_registry=None
+        )
+        result = bp.get_unprocessed_entities({"Firm A": ["id1"]})
         assert result == {"Firm A": ["id1"]}
 
 
 class TestFilterStaleEntities:
-    """Tests for BatchProcessing.filter_stale_entities."""
+    """Tests for BatchProcessing.filter_stale_entities (prunes both caches in sync)."""
 
-    def test_returns_empty_stale_when_no_stale(self, tmp_path):
-        """When no records are stale, returns empty stale dict and full count."""
-        result_data = {_PERMID_URL: make_record("Firm A", "id1", days_ago=1)}
-        permid_data = make_permid_cache("Firm A", "id1")
+    def test_returns_count_when_no_stale(self, tmp_path):
+        """No stale results → both caches untouched, returns remaining count."""
+        result_data = {_PERMID_URL: make_result(_PERMID_URL, days_ago=1)}
+        permid_data = make_permid("Firm A", "id1", _PERMID_URL)
         result_file, permid_file = write_files(tmp_path, result_data, permid_data)
-        bp = BatchProcessing(result_data=result_data, threshold_days=30)
-        stale, count = bp.filter_stale_entities(result_file, permid_file)
-        assert stale == {}
-        assert count == 1
+        bp = BatchProcessing(result_data, permid_data, "cik", threshold_days=30)
+        remaining = bp.filter_stale_entities(result_file, permid_file)
+        assert remaining == 1
+        assert _PERMID_URL in bp.result_data
 
-    def test_identifies_stale_records(self, tmp_path):
-        """Records older than threshold_days are identified as stale."""
-        result_data = {_PERMID_URL: make_record("Firm A", "id1", days_ago=60)}
-        permid_data = make_permid_cache("Firm A", "id1")
+    def test_prunes_stale_result_and_permid_key(self, tmp_path):
+        """A stale result is dropped, and its reverse-indexed permid key is dropped too."""
+        result_data = {_PERMID_URL: make_result(_PERMID_URL, days_ago=60)}
+        permid_data = make_permid("Firm A", "id1", _PERMID_URL)
         result_file, permid_file = write_files(tmp_path, result_data, permid_data)
-        bp = BatchProcessing(result_data=result_data, threshold_days=30)
-        stale, _ = bp.filter_stale_entities(result_file, permid_file)
-        assert _PERMID_URL in stale
-        assert stale[_PERMID_URL]["identifier"]["name"] == "Firm A"
+        bp = BatchProcessing(result_data, permid_data, "cik", threshold_days=30)
+        remaining = bp.filter_stale_entities(result_file, permid_file)
+        assert remaining == 0
+        assert bp.result_data == {}
+        assert bp.permid_data == {}
+        # Both files persisted pruned.
+        assert json.loads(result_file.read_text()) == {}
+        assert json.loads(permid_file.read_text()) == {}
 
-    def test_stale_records_pruned_from_result_file(self, tmp_path):
-        """Stale records are removed from the saved result file."""
-        stale_data = make_record("Firm A", "id1", days_ago=60, permid_url=_PERMID_URL)
-        fresh_data = make_record("Firm B", "id2", days_ago=1, permid_url=_PERMID_URL_2)
-        result_data = {_PERMID_URL: stale_data, _PERMID_URL_2: fresh_data}
+    def test_keeps_fresh_prunes_only_stale(self, tmp_path):
+        """Only the stale entry and its key are removed; fresh ones remain."""
+        result_data = {
+            _PERMID_URL: make_result(_PERMID_URL, days_ago=60),
+            _PERMID_URL_2: make_result(_PERMID_URL_2, days_ago=1),
+        }
         permid_data = {
-            **make_permid_cache("Firm A", "id1", _PERMID_URL),
-            **make_permid_cache("Firm B", "id2", _PERMID_URL_2),
+            **make_permid("Firm A", "id1", _PERMID_URL),
+            **make_permid("Firm B", "id2", _PERMID_URL_2),
         }
         result_file, permid_file = write_files(tmp_path, result_data, permid_data)
-        bp = BatchProcessing(result_data=result_data, threshold_days=30)
-        stale, count = bp.filter_stale_entities(result_file, permid_file)
-        saved = json.loads(result_file.read_text())
-        assert _PERMID_URL_2 in saved
-        assert _PERMID_URL not in saved
-        assert count == 1
+        bp = BatchProcessing(result_data, permid_data, "cik", threshold_days=30)
+        remaining = bp.filter_stale_entities(result_file, permid_file)
+        assert remaining == 1
+        assert _PERMID_URL_2 in bp.result_data
+        assert _PERMID_URL not in bp.result_data
+        assert "Firm B_cik_id2" in bp.permid_data
+        assert "Firm A_cik_id1" not in bp.permid_data
 
     def test_returns_all_when_threshold_is_none(self, tmp_path):
-        """When threshold_days is None, no staleness check is done."""
-        result_data = {_PERMID_URL: make_record("Firm A", "id1", days_ago=999)}
-        permid_data = make_permid_cache("Firm A", "id1")
+        """threshold_days None disables staleness."""
+        result_data = {_PERMID_URL: make_result(_PERMID_URL, days_ago=999)}
+        permid_data = make_permid("Firm A", "id1", _PERMID_URL)
         result_file, permid_file = write_files(tmp_path, result_data, permid_data)
-        bp = BatchProcessing(result_data=result_data, threshold_days=None)
-        stale, count = bp.filter_stale_entities(result_file, permid_file)
-        assert stale == {}
-        assert count == 1
+        bp = BatchProcessing(result_data, permid_data, "cik", threshold_days=None)
+        remaining = bp.filter_stale_entities(result_file, permid_file)
+        assert remaining == 1
+        assert _PERMID_URL in bp.result_data
 
-    def test_stale_permid_cache_pruned(self, tmp_path):
-        """Permid cache entries for stale entities are removed from the saved permid file."""
-        result_data = {_PERMID_URL: make_record("Firm A", "id1", days_ago=60)}
-        permid_data = make_permid_cache("Firm A", "id1")
+    def test_orphan_stale_url_is_noop_on_permid(self, tmp_path):
+        """A stale result whose url isn't in any permid entry prunes the result only."""
+        result_data = {_PERMID_URL: make_result(_PERMID_URL, days_ago=60)}
+        permid_data = {}  # no permid entry references the url
         result_file, permid_file = write_files(tmp_path, result_data, permid_data)
-        bp = BatchProcessing(result_data=result_data, threshold_days=30)
-        bp.filter_stale_entities(result_file, permid_file)
-        saved_permid = json.loads(permid_file.read_text())
-        assert saved_permid == {}
+        bp = BatchProcessing(result_data, permid_data, "cik", threshold_days=30)
+        remaining = bp.filter_stale_entities(result_file, permid_file)
+        assert remaining == 0
+        assert bp.result_data == {}
 
-    def test_empty_result_data_returns_empty_stale(self, tmp_path):
-        """Empty result_data returns empty stale dict."""
+    def test_empty_result_data_returns_zero(self, tmp_path):
+        """Empty result_data → nothing stale, zero remaining."""
         result_file, permid_file = write_files(tmp_path, {}, {})
-        bp = BatchProcessing(result_data={}, threshold_days=30)
-        stale, count = bp.filter_stale_entities(result_file, permid_file)
-        assert stale == {}
-        assert count == 0
+        bp = BatchProcessing({}, {}, "cik", threshold_days=30)
+        remaining = bp.filter_stale_entities(result_file, permid_file)
+        assert remaining == 0

@@ -72,9 +72,7 @@ _RECORD_MATCH_MISS = {
 }
 
 
-def _record_match_hit(
-    entity_name: str, local_id: str, identifier_type: str = "cik"
-) -> dict:
+def _record_match_hit(entity_name: str, local_id: str, identifier_type: str = "cik") -> dict:
     """Build a Record Match response with a single 100% match.
 
     ``Input_LocalID`` is prefixed with the identifier type to match what
@@ -194,9 +192,9 @@ class TestIdentifierFactory:
 
     def test_each_type_has_distinct_output_filenames(self, tmp_path):
         result_files = {t: _paths_for(tmp_path, tmp_path, t)[0] for t in IdentifierType}
-        assert len(set(result_files.values())) == len(
-            IdentifierType
-        ), "Each identifier type must write to a distinct result file"
+        assert len(set(result_files.values())) == len(IdentifierType), (
+            "Each identifier type must write to a distinct result file"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -286,15 +284,19 @@ class TestCikPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CIK)
+        result_file, permid_file, _ = _paths_for(
+            tmp_path / "out", tmp_path / "out", IdentifierType.CIK
+        )
         records = _read_output(result_file)
 
+        # result_file is pure company info keyed by permid_url
         assert len(records) == 1
-        record = list(records.values())[0]
-        assert record["identifier"]["name"] == entity_name
-        assert record["identifier"]["identifier_type"] == "cik"
-        assert record["identifier"]["identifier"] == f"cik_{cik}"
-        assert record["result"]["permid_id"] == "4295904307"
+        assert _PERMID_URL in records
+        assert records[_PERMID_URL]["result"]["permid_id"] == "4295904307"
+
+        # linkage (name, identifier) -> permid_url lives in permid_file
+        permid = _read_output(permid_file)
+        assert permid[f"{entity_name}_cik_{cik}"]["result"] == [_PERMID_URL]
 
     def test_produces_empty_output_when_no_permid_match(self, tmp_path):
         parquet = tmp_path / "data.parquet"
@@ -347,13 +349,16 @@ class TestCikPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CIK)
+        result_file, permid_file, _ = _paths_for(
+            tmp_path / "out", tmp_path / "out", IdentifierType.CIK
+        )
         records = _read_output(result_file)
 
+        # Duplicate input rows collapse to one company (one permid_url).
         assert len(records) == 1
-        record = list(records.values())[0]
-        assert record["identifier"]["name"] == entity_name
-        assert record["identifier"]["identifier"] == f"cik_{cik}"
+        assert _PERMID_URL in records
+        permid = _read_output(permid_file)
+        assert permid[f"{entity_name}_cik_{cik}"]["result"] == [_PERMID_URL]
 
 
 # ---------------------------------------------------------------------------
@@ -394,18 +399,19 @@ class TestCusipPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        result_file, permid_file, _ = _paths_for(
+            tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP
+        )
         records = _read_output(result_file)
 
         assert len(records) == 1
-        record = list(records.values())[0]
-        assert record["identifier"]["name"] == entity_name
-        assert record["identifier"]["identifier_type"] == "cusip"
-        assert record["identifier"]["identifier"] == f"cusip_{cusip}"
-        assert record["result"]["permid_id"] == "4295904307"
+        assert _PERMID_URL in records
+        assert records[_PERMID_URL]["result"]["permid_id"] == "4295904307"
+        permid = _read_output(permid_file)
+        assert permid[f"{entity_name}_cusip_{cusip}"]["result"] == [_PERMID_URL]
 
-    def test_cusip_output_contains_raw_ticker(self, tmp_path):
-        """The ticker field in output is the raw ticker symbol, not the formatted form."""
+    def test_result_file_is_pure_company_info(self, tmp_path):
+        """result_file entries hold only search + result — no identifiers/ticker block."""
         entity_name = "Corp Beta"
         cusip = "037833100"
         parquet = tmp_path / "data.parquet"
@@ -432,7 +438,10 @@ class TestCusipPipelineIntegration:
         result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
         records = _read_output(result_file)
         record = list(records.values())[0]
-        assert record["identifier"]["ticker"] == "AAPL"
+        assert set(record.keys()) == {"search", "result"}
+        assert record["search"] == {"permid_url": _PERMID_URL}
+        assert "identifiers" not in record
+        assert "ticker" not in record["result"]
 
     def test_produces_empty_output_when_no_permid_match(self, tmp_path):
         parquet = tmp_path / "data.parquet"
@@ -505,13 +514,15 @@ class TestCusipPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        result_file, permid_file, _ = _paths_for(
+            tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP
+        )
         records = _read_output(result_file)
 
         assert len(records) == 1
-        record = list(records.values())[0]
-        assert record["identifier"]["name"] == entity_name
-        assert record["identifier"]["identifier"] == f"cusip_{cusip}"
+        assert _PERMID_URL in records
+        permid = _read_output(permid_file)
+        assert permid[f"{entity_name}_cusip_{cusip}"]["result"] == [_PERMID_URL]
 
     def test_record_match_receives_cusip_as_local_id(self, tmp_path):
         """Record Match CSV payload uses CUSIP as LocalID and ticker as Standard Identifier."""
@@ -644,9 +655,13 @@ class TestCusipPipelineIntegration:
             result = PipelineOrchestrator(config).run()
 
         assert result is True
-        result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
+        result_file, permid_file, _ = _paths_for(
+            tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP
+        )
         records = _read_output(result_file)
 
-        assert len(records) == 2
-        identifiers = {v["identifier"]["identifier"] for v in records.values()}
-        assert identifiers == {f"cusip_{cusip_a}", f"cusip_{cusip_b}"}
+        # Two distinct CUSIPs -> two distinct PermIDs -> two result entries.
+        assert set(records.keys()) == {_PERMID_URL_A, _PERMID_URL_B}
+        permid = _read_output(permid_file)
+        assert permid[f"{entity_name}_cusip_{cusip_a}"]["result"] == [_PERMID_URL_A]
+        assert permid[f"{entity_name}_cusip_{cusip_b}"]["result"] == [_PERMID_URL_B]

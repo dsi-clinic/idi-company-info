@@ -190,10 +190,8 @@ class CompanyPipeline(ABC):
         )
 
         # Retrieve the company info for the entities that have PermIDs
-        company_info_retriever = CompInfoRetrieval(**shared, raw_ticker_map=self.raw_ticker_map)
-        company_info_retriever.retrieve(
-            permid_data, entities_to_process, num_existing_entities, batch_stats
-        )
+        company_info_retriever = CompInfoRetrieval(**shared)
+        company_info_retriever.retrieve(permid_data, num_existing_entities, batch_stats)
         return batch_stats
 
     def _determine_needs_permid(
@@ -340,22 +338,27 @@ class CompanyPipeline(ABC):
             # Load identifier data
             identifier_data = self.load_data()
 
-            # Load existing results
-            existing_results = load_json(self.file_paths.result_file, return_type="dict")
+            # Load existing caches
+            result_data = load_json(self.file_paths.result_file, return_type="dict")
+            permid_data = load_json(self.file_paths.permid_file, return_type="dict")
 
-            # Load previous batch processing data
             batch_processing = BatchProcessing(
-                existing_results,
+                result_data,
+                permid_data,
+                self.identifier_type,
                 self.batch_config.threshold_days,
                 failure_registry=self.failure_registry,
             )
-            unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
-            stale_entities, num_not_stale = batch_processing.filter_stale_entities(
+
+            # Prune stale results + their permid keys FIRST so stale rows re-resolve
+            # naturally as "unprocessed" below.
+            num_not_stale = batch_processing.filter_stale_entities(
                 self.file_paths.result_file, self.file_paths.permid_file
             )
 
-            unprocessed_entities.update(stale_entities)
-            to_process = len(unprocessed_entities.keys())
+            # Determine what still needs processing against the pruned caches.
+            unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
+            to_process = sum(len(ids) for ids in unprocessed_entities.values())
             self.logger.info(
                 "To process: %d | Remaining saved results: %d", to_process, num_not_stale
             )

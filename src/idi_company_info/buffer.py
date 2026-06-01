@@ -26,16 +26,24 @@ class Buffer:
         self._buffer: CacheBuffer = {}
 
     def add(self, data: CacheBuffer) -> None:
-        """Merge permid_data into sync buffer; flush if threshold reached.
+        """Merge data into sync buffer; flush if threshold reached.
 
         Args:
             data: The data to merge.
         """
-        self._merge(data, self._buffer)        # was: self._buffer.update(data)
-        # current_size = sum(len(value["result"]) for value in self._buffer.values())
-        # print("CURRENT_SIZE", current_size)
-        if self._should_flush(len(self._buffer)):
+        self._merge(data, self._buffer)
+        if self._should_flush(self._buffer_size()):
             self.flush()
+
+    def _buffer_size(self) -> int:
+        """Count the unit that defines the flush threshold for this buffer.
+
+        permid: total permid URLs across entries; company info: number of companies
+        (one entry == one entity-lookup result).
+        """
+        if self.merge is MergeStrategy.PERMID:
+            return sum(len(value["result"]) for value in self._buffer.values())
+        return len(self._buffer.keys())
 
     def flush(self) -> None:
         """Merge sync buffer into file and clear buffer.
@@ -47,7 +55,7 @@ class Buffer:
             return
 
         existing = load_json(self.file_path, return_type="dict")
-        self._merge(self._buffer, existing)    # merge buffer into file
+        self._merge(self._buffer, existing)  # merge buffer into file
 
         save_json(self.file_path, existing)
         self.logger.info("Saved %s data to %s", len(self._buffer), self.file_path)
@@ -55,14 +63,17 @@ class Buffer:
         self._buffer = {}
 
     def _merge(self, source: dict, target: dict) -> None:
-        """Merge source into target using this buffer's strategy."""
+        """Merge source into target using this buffer's strategy.
+
+        permid: extend the result URL list (deduped). company info: overwrite the entry —
+        result_file is keyed by a unique permid_url and only written when absent or being
+        refreshed after a stale prune, so there is nothing to union.
+        """
         for source_key, source_value in source.items():
-            if source_key not in target:
+            if source_key not in target or self.merge is MergeStrategy.COMPANY_INFO:
                 target[source_key] = source_value
-            elif self.merge is MergeStrategy.PERMID:
-                self._merge_permid(target[source_key], source_value)
             else:
-                self._merge_company_info(target[source_key], source_value)
+                self._merge_permid(target[source_key], source_value)
 
     @staticmethod
     def _merge_permid(existing_entry: dict, value: dict) -> None:
@@ -72,14 +83,6 @@ class Buffer:
             if url not in urls:
                 urls.append(url)
         existing_entry["search"] = value["search"]
-
-    @staticmethod
-    def _merge_company_info(target_entry: dict, source_entry: dict) -> None:
-        """result_file: union identifiers, refresh company info."""
-        target_ids = [ (value["name"], value["identifier"]) for value in target_entry["identifiers"] ]
-        for source_id in source_entry["identifiers"]:
-            if (source_id["name"], source_id["identifier"]) not in target_ids:
-                target_entry["identifiers"].append(source_id)
 
     def _should_flush(self, current_size: int) -> bool:
         return current_size >= self.buffer_size
