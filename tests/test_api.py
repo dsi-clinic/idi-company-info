@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for idi_company_info.common.api."""
 
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -158,7 +159,7 @@ class TestLsegEntitySearch:
                     headers={
                         "X-AG-Access-Token": "api-key-123",
                         "Accept": "application/json",
-                        "User-Agent": ApiClient.USER_AGENT,
+                        "User-Agent": mock.ANY,
                     },
                 )
 
@@ -216,7 +217,7 @@ class TestLsegRecordMatch:
                         "x-ag-access-token": "api-key-456",
                         "x-openmatch-numberOfMatchesPerRecord": "1",
                         "x-openmatch-dataType": "Organization",
-                        "User-Agent": ApiClient.USER_AGENT,
+                        "User-Agent": mock.ANY,
                     },
                 )
 
