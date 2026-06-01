@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 # Third party imports
 from idi_ftm2j_shared.failures import FailureRegistry
+from idi_ftm2j_shared.storage import load_json
 
 # Application imports
 from idi_company_info.buffer import Buffer, CacheBuffer
@@ -61,7 +62,8 @@ class CompInfoRetrieval(Retrieval):
             batch_stats: Accumulator for run-level statistics.
         """
         # Build the batch of entities to process
-        batch = self._build_company_info_batch(permid_data)
+        result_data = load_json(self.file_paths.result_file, return_type="dict")
+        batch = self._build_company_info_batch(permid_data, result_data)
         self.logger.info(
             "Generating company info for %d permid urls",
             len(batch),
@@ -92,9 +94,12 @@ class CompInfoRetrieval(Retrieval):
             buffer.add(data=company)
             batch_stats.total_entities += 1
 
+        if buffer._buffer:
+            buffer.flush()
+
         batch_stats.total_records = len(buffer.load_all()) - num_existing_entities
 
-    def _build_company_info_batch(self, permid_data: dict[str, Any]) -> list[str]:
+    def _build_company_info_batch(self, permid_data: dict[str, Any], result_data) -> list[str]:
         """Select entities to process, capped at batch_size total entity-lookup API calls.
 
         Each entity can have multiple PermIDs; every PermID costs one API request.
@@ -103,12 +108,16 @@ class CompInfoRetrieval(Retrieval):
 
         Args:
             permid_data: Mapping of entity name → list of {identifier: [permid, ...]} items.
+            result_data: Result data saved from a previous run for comparison
 
         Returns:
             The subset of entities that fits within the request budget.
         """
         permid_list = [
-            permid_url for values in permid_data.values() for permid_url in values["result"]
+            permid_url
+            for values in permid_data.values()
+            for permid_url in values["result"]
+            if permid_url not in result_data  # skip already fetched
         ]
 
         batch_permids = permid_list[: self.batch_config.batch_size]
@@ -127,7 +136,7 @@ class CompInfoRetrieval(Retrieval):
         Args:
             permid_url: URL to query to retrieve company info.
             entity_name: Name for entity searched via permid.
-            entity_id: Identifier for entity searched via permid.
+            entity_identifier: Identifier for entity searched via permid.
             batch_stats: Accumulator for run-level statistics.
 
         Returns:
@@ -176,7 +185,7 @@ class CompInfoRetrieval(Retrieval):
             self.identifier_type,
             permid_url,
             data,
-            ticker=self._raw_ticker_map.get(entity_identifier),
+            ticker=self._raw_ticker_map.get(entity_identifier.split("_", 1)[-1]),
         )
         batch_stats.total_company_info += 1
 
