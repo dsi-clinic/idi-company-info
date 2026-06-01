@@ -12,7 +12,7 @@ from idi_ftm2j_shared.storage import load_json
 from idi_company_info.buffer import Buffer, CacheBuffer
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval import Retrieval
-from idi_company_info.types import BatchConfig, BatchStats, FilePaths, PermidResponse
+from idi_company_info.types import BatchConfig, BatchStats, FilePaths, MergeStrategy, PermidResponse
 
 if TYPE_CHECKING:
     from idi_company_info.company_pipeline import ApiClients
@@ -69,37 +69,34 @@ class CompInfoRetrieval(Retrieval):
             len(batch),
         )
 
-        # Re-org data to make it easier to retrieve by permid_url
-        batch_url = {
-            permid_url: entity_value["search"]
-            for entity_key, entity_value in permid_data.items()
-            for permid_url in entity_value["result"]
-        }
-
         # Create the buffer to store the company info
         buffer = Buffer(
             file_path=self.file_paths.result_file,
+            merge=MergeStrategy.COMPANY_INFO,
             buffer_size=self.batch_config.buffer_size,
         )
 
         # Retrieve the company info for each entity in the batch
-        for idx, permid_url in enumerate(batch, 1):
-            self.logger.info("[%d/%d] Processing: %s", idx, len(batch), permid_url)
+        for idx, permid_tuple in enumerate(batch, 1):
+            permid_url = permid_tuple[0]
+            entity_name = permid_tuple[1]
+            entity_id = permid_tuple[2]
+            self.logger.info("[%d/%d] Processing: %s - %s", idx, len(batch), permid_url, entity_name)
+
             company = self._retrieve_entity_company_info(
                 permid_url,
-                batch_url[permid_url]["Name"],
-                batch_url[permid_url]["LocalID"],
+                entity_name,
+                entity_id,
                 batch_stats,
             )
-            buffer.add(data=company)
-            batch_stats.total_entities += 1
 
-        if buffer._buffer:
-            buffer.flush()
+            if company:
+                buffer.add(data=company)
+                batch_stats.total_entities += 1
 
         batch_stats.total_records = len(buffer.load_all()) - num_existing_entities
 
-    def _build_company_info_batch(self, permid_data: dict[str, Any], result_data) -> list[str]:
+    def _build_company_info_batch(self, permid_data: dict[str, Any], result_data) -> list[tuple[str, str, str]]:
         """Select entities to process, capped at batch_size total entity-lookup API calls.
 
         Each entity can have multiple PermIDs; every PermID costs one API request.
@@ -114,9 +111,9 @@ class CompInfoRetrieval(Retrieval):
             The subset of entities that fits within the request budget.
         """
         permid_list = [
-            permid_url
-            for values in permid_data.values()
-            for permid_url in values["result"]
+            (permid_url, permid_value["search"]["Name"], permid_value["search"]["LocalID"])
+            for permid_value in permid_data.values()
+            for permid_url in permid_value["result"]
             if permid_url not in result_data  # skip already fetched
         ]
 
@@ -160,6 +157,7 @@ class CompInfoRetrieval(Retrieval):
                     identifier=entity_identifier,
                     company_data=None,
                 )
+                return {}
 
         # Parse the company info from the response
         data: PermidResponse = response.get("data")
@@ -177,6 +175,7 @@ class CompInfoRetrieval(Retrieval):
                     identifier=entity_identifier,
                     company_data=None,
                 )
+                return {}
 
         # Parse the company info from the response
         company_data = self._parse_company_info(
@@ -200,7 +199,7 @@ class CompInfoRetrieval(Retrieval):
         response: dict[str, Any],
         ticker: str | None = None,
     ) -> dict[str, dict]:
-        """Map a raw entity-lookup response to a CompanyInfo dataclass.
+        """Map a raw entity-lookup response to a result that includes all ids.
 
         Args:
             entity_name: The entity name.
@@ -212,7 +211,7 @@ class CompInfoRetrieval(Retrieval):
                 mode only).  Stored verbatim in the output; ``None`` for CIK mode.
 
         Returns:
-            A populated CompanyInfo dataclass instance.
+            A populated dictionary of search and results data
         """
         return {
             "search": {"permid_url": permid_url},
@@ -232,12 +231,14 @@ class CompInfoRetrieval(Retrieval):
                 "activity_status": response.get("hasActivityStatus"),
                 "last_processed": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
             },
-            "identifier": {
-                "name": entity_name,
-                "identifier": identifier,
-                "identifier_type": identifier_type,
-                "ticker": ticker,
-            },
+            "identifiers": [
+                {
+                    "name": entity_name,
+                    "identifier": identifier,
+                    "identifier_type": identifier_type,
+                    "ticker": ticker,
+                }
+            ],
         }
 
     def _query_geonames_location(self, url: str | None) -> str | None:

@@ -46,8 +46,9 @@ class BatchProcessing:
         """
         # Format processed entities so they are easy to compare
         processed_entities = [
-            (value["identifier"]["name"], value["identifier"]["identifier"])
+            (block["name"], block["identifier"])
             for value in self.result_data.values()
+            for block in value["identifiers"]
         ]
 
         # Get all new entities from input data that are not in processed
@@ -219,10 +220,11 @@ class BatchProcessing:
             cache_name, cache_id_type, cache_id = parse_permid_cache_key(permid_key)
 
             is_stale = any(
-                cache_name == ci["identifier"]["name"]
-                and cache_id_type == ci["identifier"]["identifier_type"]
-                and cache_id == ci["identifier"]["identifier"]
+                cache_name == block["name"]
+                and cache_id_type == block["identifier_type"]
+                and cache_id == block["identifier"].split("_")[-1]
                 for ci in stale_entities.values()
+                for block in ci.get("identifiers", [])
             )
 
             if not is_stale:

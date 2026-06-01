@@ -51,30 +51,6 @@ class APIRateLimits:
 
 
 @dataclass
-class CompanyInfo:
-    """Resolved company information record written to the result buffer."""
-
-    investor_name: str | None
-    original_entity_name: str
-    identifier: str
-    identifier_type: str
-    ticker: str | None
-    permid_id: str
-    permid_url: str | None
-    hq_address: str | None
-    registered_address: str | None
-    fax_number: str | None
-    phone_number: str | None
-    lei: str | None
-    founded_date: str | None
-    incorporated_in: str | None
-    domiciled_in: str | None
-    url: str | None
-    activity_status: str | None
-    last_processed: str
-
-
-@dataclass
 class BatchStats:
     """Counters accumulated during a single pipeline run for reporting."""
 
@@ -119,3 +95,9 @@ class OrchestratorConfig:
     buffer_size: int = 500
     threshold_days: int | None = None
     match_score_threshold: int = 1
+
+
+class MergeStrategy(StrEnum):
+    """Options for results merge operations."""
+    PERMID = "permid"
+    COMPANY_INFO = "company_info"

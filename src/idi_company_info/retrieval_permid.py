@@ -12,7 +12,7 @@ from idi_company_info.buffer import Buffer
 from idi_company_info.cache_keys import permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier, FailureType
 from idi_company_info.retrieval import Retrieval
-from idi_company_info.types import BatchConfig, BatchStats, FilePaths
+from idi_company_info.types import BatchConfig, BatchStats, FilePaths, MergeStrategy
 
 if TYPE_CHECKING:
     from idi_company_info.company_pipeline import ApiClients
@@ -77,32 +77,24 @@ class PermidRetrieval(Retrieval):
         all_records, total_records, total_batches = self._retrieve_records(batch_entities)
 
         buffer = Buffer(
-            file_path=self.file_paths.permid_file, buffer_size=self.batch_config.buffer_size
+            file_path=self.file_paths.permid_file,
+            merge=MergeStrategy.PERMID,
+            buffer_size=self.batch_config.buffer_size
         )
 
-        permid_data = {}
         for batch_start in range(0, total_records, self.RECORD_BATCH_SIZE):
             batch_records = all_records[batch_start : batch_start + self.RECORD_BATCH_SIZE]
             batch_num = batch_start // self.RECORD_BATCH_SIZE + 1
 
             batch_permid_data = self._record_match_batch(
-                batch_records, batch_num, total_batches, batch_stats, buffer
+                batch_records, batch_num, total_batches, batch_stats
             )
 
-            for key, entry in batch_permid_data.items():
-                # Append permid url to existing entity - does not preserve search
-                if key in permid_data:
-                    for url in entry["result"]:
-                        if url not in permid_data[key]["result"]:
-                            permid_data[key]["result"].append(url)
-                # Define a new entry
-                else:
-                    permid_data[key] = entry
+            if batch_permid_data:
+                buffer.add(data=batch_permid_data)
+                batch_stats.total_permids += sum(len(v["result"]) for v in batch_permid_data.values())
 
-        if buffer._buffer:
-            buffer.flush()
-
-        batch_stats.total_permids += sum(len(v["result"]) for v in permid_data.values())
+        permid_data = buffer.load_all()
         return permid_data
 
     def _retrieve_records(
@@ -164,7 +156,6 @@ class PermidRetrieval(Retrieval):
         batch_num: int,
         total_batches: int,
         batch_stats: BatchStats,
-        buffer: Buffer,
     ) -> dict[str, Any]:
         """Send records to the Record Match API and parse the response.
 
@@ -185,9 +176,6 @@ class PermidRetrieval(Retrieval):
             len(batch_records),
         )
         batch_permid_data = self._retrieve_record_match(batch_records, batch_stats)
-        if batch_permid_data:
-            buffer.add(data=batch_permid_data)
-
         return batch_permid_data
 
     def _retrieve_record_match(
