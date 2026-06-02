@@ -278,20 +278,25 @@ class CompanyPipeline(ABC):
     ) -> None:
         """Log the PermID retrieval stats.
 
+        Counts are by *identifier* (the unit batch_size caps), not entity name.
+
         Args:
             needs_permid: The entities that need PermIDs.
             permid_data: The PermID data.
         """
-        retrieved_count = min(len(needs_permid), self.batch_config.batch_size)
+        queued_rows = [
+            (name, identifier) for name, ids in needs_permid.items() for identifier in ids
+        ]
+        attempted = queued_rows[: self.batch_config.batch_size]
         resolved_this_run = sum(
             1
-            for k, ids in list(needs_permid.items())[:retrieved_count]
-            if any(permid_cache_key(k, f"{self.identifier_type}_{i}") in permid_data for i in ids)
+            for name, identifier in attempted
+            if permid_cache_key(name, f"{self.identifier_type}_{identifier}") in permid_data
         )
         self.logger.info(
-            "PermID retrieval complete: %d/%d entities resolved this run",
+            "PermID retrieval complete: %d/%d identifiers resolved this run",
             resolved_this_run,
-            retrieved_count,
+            len(attempted),
         )
 
     def print_stats(self, batch_stats: BatchStats) -> None:

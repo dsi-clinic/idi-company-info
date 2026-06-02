@@ -179,6 +179,21 @@ class TestFilterStaleEntities:
         assert remaining == 1
         assert _PERMID_URL in bp.result_data
 
+    def test_prunes_all_keys_sharing_a_stale_url(self, tmp_path):
+        """When several cache keys share one stale permid_url, ALL of them are pruned."""
+        # Two CUSIPs (share classes) resolving to the same permid_url.
+        permid_data = {
+            **make_permid("ALPHA A", "id1", _PERMID_URL),
+            **make_permid("ALPHA B", "id2", _PERMID_URL),
+        }
+        result_data = {_PERMID_URL: make_result(_PERMID_URL, days_ago=60)}
+        result_file, permid_file = write_files(tmp_path, result_data, permid_data)
+        bp = BatchProcessing(result_data, permid_data, "cik", threshold_days=30)
+        bp.filter_stale_entities(result_file, permid_file)
+        # Both keys pointing at the stale url are gone — not just one.
+        assert bp.permid_data == {}
+        assert json.loads(permid_file.read_text()) == {}
+
     def test_orphan_stale_url_is_noop_on_permid(self, tmp_path):
         """A stale result whose url isn't in any permid entry prunes the result only."""
         result_data = {_PERMID_URL: make_result(_PERMID_URL, days_ago=60)}
@@ -201,7 +216,11 @@ def _permid_entry(name: str, cusip: str, permid_url: str) -> dict:
     """A permid_file entry for a CUSIP row resolving to permid_url."""
     return {
         f"{name}_cusip_{cusip}": {
-            "search": {"Name": name, "LocalID": f"cusip_{cusip}", "Standard Identifier": "ticker:X"},
+            "search": {
+                "Name": name,
+                "LocalID": f"cusip_{cusip}",
+                "Standard Identifier": "ticker:X",
+            },
             "result": [permid_url],
         }
     }

@@ -127,10 +127,10 @@ class PermidRetrieval(Retrieval):
         """Build the flat record list for the Record Match API payload.
 
         Args:
-            batch_entities: List of (entity_name, identifier_list) tuples.
+            batch_entities: List of (entity_name, identifier) tuples.
 
         Returns:
-            Flat list of record dicts ready for DataFrame construction.
+            Flat list of record dicts ({LocalID, Standard Identifier, Name}) for the CSV.
         """
         records = []
         for entity_name, identifier in batch_entities:
@@ -190,7 +190,7 @@ class PermidRetrieval(Retrieval):
             batch_stats: Accumulator for run-level statistics.
 
         Returns:
-            Mapping of entity name → list of {identifier: [permid_url, ...]} items.
+            Mapping of permid_cache_key → {"search": {...}, "result": [permid_url, ...]}.
         """
         records_df = pd.DataFrame(records)
         csv_data = records_df.to_csv(index=False)

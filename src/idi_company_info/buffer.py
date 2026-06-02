@@ -13,18 +13,23 @@ from idi_company_info.types import CacheBuffer, MergeStrategy
 
 
 class Buffer:
-    """PermidBuffer for storing permid data in a sync buffer."""
+    """Accumulates cache entries in memory and flushes them to a JSON file.
+
+    Serves both cache files; the merge strategy (permid vs company_info) selects how
+    colliding keys are combined on flush.
+    """
 
     def __init__(self, file_path: str, merge: MergeStrategy, buffer_size: int = 500) -> None:
-        """Initialize the PermidBuffer.
+        """Initialize the Buffer.
 
         Args:
             file_path: The path to the file.
-            merge: Which result type to merge
-            buffer_size: The size of the buffer.
+            merge: The merge strategy for this file (permid extends URL lists; company_info
+                overwrites the entry).
+            buffer_size: The number of units to accumulate before flushing to disk.
         """
         self.file_path = file_path
-        self.merge = merge  # "permid" | "company_info"
+        self.merge = merge
         self.buffer_size = buffer_size
         self.logger = get_logger(type(self).__name__)
         self._buffer: CacheBuffer = {}

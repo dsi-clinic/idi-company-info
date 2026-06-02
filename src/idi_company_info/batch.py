@@ -1,6 +1,7 @@
 """Batch processing utilities for tracking and managing batch operations."""
 
 # Standard library imports
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -88,13 +89,13 @@ class BatchProcessing:
     def _remove_failed_entities(
         self, entities: dict[str, list[str]]
     ) -> tuple[dict[str, list[str]], int]:
-        """Remove entities that are in the do-not-retry registry from the list.
+        """Remove entities that are in the do-not-retry registry.
 
         Args:
-            entities: List of (entity_name, identifier) tuples.
+            entities: Dict of entity_name -> [identifier, ...].
 
         Returns:
-            Tuple of result with failures removed and number of result excluded
+            Tuple of (entities with failures removed, number of identifiers excluded).
         """
         if not self.failure_registry:
             return entities, 0
@@ -140,11 +141,13 @@ class BatchProcessing:
         if not stale_urls:
             return len(self.result_data)
 
-        # Reverse index: permid_url -> permid_cache_key (a url not present is a no-op).
-        url_to_key = {
-            url: key for key, entry in self.permid_data.items() for url in entry["result"]
-        }
-        stale_keys = {url_to_key[url] for url in stale_urls if url in url_to_key}
+        # Multiple keys can share one permid_url, so map to a list and prune
+        url_to_keys: dict[str, list[str]] = defaultdict(list)
+        for key, entry in self.permid_data.items():
+            for url in entry["result"]:
+                url_to_keys[url].append(key)  # Reverse index: permid_url -> [permid_cache_key, ...]
+
+        stale_keys = {key for url in stale_urls for key in url_to_keys.get(url, [])}
 
         # Prune both caches in place.
         for url in stale_urls:
