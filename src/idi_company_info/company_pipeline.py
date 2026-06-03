@@ -19,7 +19,7 @@ from idi_company_info.api import (
     LsegRecordMatch,
 )
 from idi_company_info.batch import BatchProcessing, find_cusip_collisions
-from idi_company_info.cache_keys import permid_cache_key
+from idi_company_info.buffer import permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval_company_info import CompInfoRetrieval
 from idi_company_info.retrieval_permid import PermidRetrieval

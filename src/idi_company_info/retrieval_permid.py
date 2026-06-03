@@ -8,8 +8,7 @@ import pandas as pd
 from idi_ftm2j_shared.failures import FailureRegistry
 
 # Application imports
-from idi_company_info.buffer import Buffer
-from idi_company_info.cache_keys import permid_cache_key
+from idi_company_info.buffer import Buffer, permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier, FailureType
 from idi_company_info.retrieval import Retrieval
 from idi_company_info.types import BatchConfig, BatchStats, FilePaths, MergeStrategy, PermidEntry

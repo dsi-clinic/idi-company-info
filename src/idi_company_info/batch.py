@@ -12,7 +12,7 @@ from idi_ftm2j_shared.logs import get_logger
 from idi_ftm2j_shared.storage import save_json
 
 # Application imports
-from idi_company_info.cache_keys import permid_cache_key
+from idi_company_info.buffer import permid_cache_key
 
 
 class BatchProcessing:

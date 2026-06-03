@@ -107,3 +107,15 @@ class Buffer:
         """
         self.flush()
         return load_json(self.file_path, return_type="dict")
+
+def permid_cache_key(entity_name: str, identifier: str) -> str:
+    """Build the flat permid_file key for an input row.
+
+    Args:
+        entity_name: Name of entity to search cache for
+        identifier: Identifier to search for
+
+    Returns:
+        Full string cache key for permid retrieval
+    """
+    return f"{entity_name}_{identifier}"
