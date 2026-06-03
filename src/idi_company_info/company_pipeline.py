@@ -387,7 +387,7 @@ class CompanyPipeline(ABC):
             # Prune stale results + their permid keys FIRST so stale rows re-resolve
             # naturally as "unprocessed" below.
             num_not_stale = batch_processing.filter_stale_entities(
-                self.file_paths.result_file, self.file_paths.permid_file
+                self.file_paths.result_file
             )
 
             # Determine what still needs processing against the pruned caches.

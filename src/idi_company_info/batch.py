@@ -116,18 +116,18 @@ class BatchProcessing:
 
         return result, excluded
 
-    def filter_stale_entities(self, result_file: Path, permid_file: Path) -> int:
-        """Prune stale results and their permid_file keys in sync, then persist both.
+    def filter_stale_entities(self, result_file: Path) -> int:
+        """Prune stale company-info results so they re-fetch, then persist result_file.
 
         A result entry is stale when its ``last_processed`` is older than threshold_days.
-        Stale ``permid_url``s are reverse-indexed to their permid_cache_key so the matching
-        permid_file entry is removed too — that way the affected input rows fall back into
-        the "needs permid" bucket and re-resolve. Mutates ``self.result_data`` and
-        ``self.permid_data`` in place.
+        Staleness tracks company-info freshness only — the permid mapping does not age, so
+        ``permid_data`` is left intact. Dropping the url from ``result_data`` is enough: the
+        affected entity then reads as "unprocessed" (its permid_url is no longer in
+        result_data) and the company-info stage re-fetches just that url. Mutates
+        ``self.result_data`` in place.
 
         Args:
             result_file: Path to the result_file (written if anything is pruned).
-            permid_file: Path to the permid_file (written if anything is pruned).
 
         Returns:
             The number of result entries remaining after pruning.
@@ -141,28 +141,11 @@ class BatchProcessing:
         if not stale_urls:
             return len(self.result_data)
 
-        # Multiple keys can share one permid_url, so map to a list and prune
-        url_to_keys: dict[str, list[str]] = defaultdict(list)
-        for key, entry in self.permid_data.items():
-            for url in entry["result"]:
-                url_to_keys[url].append(key)  # Reverse index: permid_url -> [permid_cache_key, ...]
-
-        stale_keys = {key for url in stale_urls for key in url_to_keys.get(url, [])}
-
-        # Prune both caches in place.
         for url in stale_urls:
             self.result_data.pop(url, None)
-        for key in stale_keys:
-            self.permid_data.pop(key, None)
 
         save_json(str(result_file), self.result_data)
-        save_json(str(permid_file), self.permid_data)
-        self.logger.info(
-            "Pruned %d stale result(s) and %d permid key(s) for re-processing",
-            len(stale_urls),
-            len(stale_keys),
-        )
-
+        self.logger.info("Pruned %d stale result(s) for re-fetch", len(stale_urls))
         return len(self.result_data)
 
     def _get_stale_urls(self) -> set[str]:
