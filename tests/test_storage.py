@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_ftm2j_shared.storage."""
+"""Unit tests for idi_ftm2j_shared.storage.
 
-import io
+These exercise the public load_json/save_json contract by behavior — real temp
+files for local paths and a mocked boto3 client for S3 — rather than patching
+module internals, so they survive implementation refactors of the dependency.
+"""
+
 import json
 from unittest.mock import MagicMock, patch
 
@@ -9,141 +13,81 @@ from idi_ftm2j_shared.storage import load_json, save_json
 
 
 class TestLoadJson:
-    """Tests for load_json function."""
+    """Tests for load_json on local filesystem paths."""
 
-    def test_loads_dict_from_local_file(self):
-        """Test loading a JSON object (dict) from a local file path."""
+    def test_loads_dict_from_local_file(self, tmp_path):
+        """A JSON object is loaded back as a dict."""
         data = {"key": "value", "nested": {"a": 1}}
-        mock_stream = io.StringIO(json.dumps(data))
-        mock_stream.__enter__ = MagicMock(return_value=mock_stream)
-        mock_stream.__exit__ = MagicMock(return_value=False)
+        path = tmp_path / "data.json"
+        path.write_text(json.dumps(data))
+        assert load_json(str(path)) == data
 
-        with patch(
-            "idi_ftm2j_shared.storage.smart_open.open", return_value=mock_stream
-        ) as mock_open:
-            result = load_json("/fake/path/data.json")
-            assert result == data
-            mock_open.assert_called_once_with("/fake/path/data.json")
-
-    def test_loads_list_from_local_file(self):
-        """Test loading a JSON array (list) from a local file path."""
+    def test_loads_list_from_local_file(self, tmp_path):
+        """A JSON array is loaded back as a list when return_type='list'."""
         data = [1, 2, {"a": "b"}]
-        mock_stream = io.StringIO(json.dumps(data))
-        mock_stream.__enter__ = MagicMock(return_value=mock_stream)
-        mock_stream.__exit__ = MagicMock(return_value=False)
+        path = tmp_path / "list.json"
+        path.write_text(json.dumps(data))
+        assert load_json(str(path), return_type="list") == data
 
-        with patch("idi_ftm2j_shared.storage.smart_open.open", return_value=mock_stream):
-            result = load_json("/fake/path/list.json")
-            assert result == data
+    def test_returns_empty_dict_when_file_does_not_exist(self, tmp_path):
+        """A missing file yields an empty dict for return_type='dict'."""
+        assert load_json(str(tmp_path / "nope.json"), return_type="dict") == {}
 
-    def test_passes_file_path_to_smart_open(self):
-        """Test that the file path is passed correctly to smart_open."""
-        mock_stream = io.StringIO(json.dumps({}))
-        mock_stream.__enter__ = MagicMock(return_value=mock_stream)
-        mock_stream.__exit__ = MagicMock(return_value=False)
-
-        with patch(
-            "idi_ftm2j_shared.storage.smart_open.open", return_value=mock_stream
-        ) as mock_open:
-            load_json("/my/custom/path.json")
-            mock_open.assert_called_once_with("/my/custom/path.json")
-
-    def test_returns_empty_dict_when_file_does_not_exist(self):
-        """Test that load_json returns empty dict when file does not exist."""
-        with patch(
-            "idi_ftm2j_shared.storage.smart_open.open",
-            side_effect=FileNotFoundError(),
-        ):
-            result = load_json("/nonexistent/path.json", return_type="dict")
-            assert result == {}
-
-    def test_returns_empty_list_when_file_does_not_exist(self):
-        """Test that load_json returns empty list when file does not exist."""
-        with patch(
-            "idi_ftm2j_shared.storage.smart_open.open",
-            side_effect=FileNotFoundError(),
-        ):
-            result = load_json("/nonexistent/path.json", return_type="list")
-            assert result == []
+    def test_returns_empty_list_when_file_does_not_exist(self, tmp_path):
+        """A missing file yields an empty list for return_type='list'."""
+        assert load_json(str(tmp_path / "nope.json"), return_type="list") == []
 
 
 class TestSaveJson:
-    """Tests for save_json function."""
+    """Tests for save_json on local filesystem paths."""
 
-    def test_saves_dict_to_local_file(self):
-        """Test saving a JSON object to a local file path."""
+    def test_saves_dict_to_local_file(self, tmp_path):
+        """A dict is written as JSON to a local path."""
         data = {"key": "value"}
-        written = []
+        path = tmp_path / "out.json"
+        save_json(str(path), data)
+        assert json.loads(path.read_text()) == data
 
-        class CaptureWriter:
-            def write(self, s):
-                written.append(s)
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                return False
-
-        with patch(
-            "idi_ftm2j_shared.storage.smart_open.open", return_value=CaptureWriter()
-        ) as mock_open:
-            save_json("/fake/local/path.json", data)
-            mock_open.assert_called_once_with("/fake/local/path.json", "w")
-            assert json.loads("".join(written)) == data
-
-    def test_saves_list_to_local_file(self):
-        """Test saving a JSON array to a local file path."""
+    def test_saves_list_to_local_file(self, tmp_path):
+        """A list is written as JSON to a local path."""
         data = [1, 2, 3]
-        written = []
+        path = tmp_path / "array.json"
+        save_json(str(path), data)
+        assert json.loads(path.read_text()) == data
 
-        class CaptureWriter:
-            def write(self, s):
-                written.append(s)
+    def test_round_trips_local_file(self, tmp_path):
+        """save_json followed by load_json returns the original data."""
+        data = {"x": 1, "y": [1, 2, 3]}
+        path = tmp_path / "round_trip.json"
+        save_json(str(path), data)
+        assert load_json(str(path)) == data
 
-            def __enter__(self):
-                return self
 
-            def __exit__(self, *args):
-                return False
+class TestS3Json:
+    """Tests for the S3 code paths with the boto3 client mocked."""
 
-        with patch("idi_ftm2j_shared.storage.smart_open.open", return_value=CaptureWriter()):
-            save_json("/fake/local/array.json", data)
-            assert json.loads("".join(written)) == data
-
-    def test_uses_simple_open_for_non_s3_path(self):
-        """Test that non-S3 paths use smart_open without transport_params."""
+    def test_save_json_puts_object_to_s3(self):
+        """save_json to an s3:// path issues a put_object with the JSON body."""
         data = {"x": 1}
-        mock_stream = MagicMock()
-        mock_stream.__enter__ = MagicMock(return_value=mock_stream)
-        mock_stream.__exit__ = MagicMock(return_value=False)
+        client = MagicMock()
+        with patch("idi_ftm2j_shared.storage._get_s3_client", return_value=client):
+            save_json("s3://bucket/key.json", data)
 
-        with patch(
-            "idi_ftm2j_shared.storage.smart_open.open", return_value=mock_stream
-        ) as mock_open:
-            with patch("idi_ftm2j_shared.storage.json.dump") as mock_dump:
-                save_json("/local/path.json", data)
-                mock_open.assert_called_once_with("/local/path.json", "w")
-                mock_dump.assert_called_once_with(data, mock_stream, indent=2)
+        client.put_object.assert_called_once()
+        kwargs = client.put_object.call_args.kwargs
+        assert kwargs["Bucket"] == "bucket"
+        assert kwargs["Key"] == "key.json"
+        assert json.loads(kwargs["Body"].decode()) == data
 
-    def test_uses_transport_params_for_s3_path(self):
-        """Test that S3 paths use smart_open with transport_params and temp file."""
+    def test_load_json_gets_object_from_s3(self):
+        """load_json from an s3:// path reads the object body and parses it."""
         data = {"x": 1}
-        mock_stream = MagicMock()
-        mock_stream.__enter__ = MagicMock(return_value=mock_stream)
-        mock_stream.__exit__ = MagicMock(return_value=False)
+        body = MagicMock()
+        body.read.return_value = json.dumps(data).encode()
+        client = MagicMock()
+        client.get_object.return_value = {"Body": body}
+        with patch("idi_ftm2j_shared.storage._get_s3_client", return_value=client):
+            result = load_json("s3://bucket/key.json")
 
-        with patch(
-            "idi_ftm2j_shared.storage.smart_open.open", return_value=mock_stream
-        ) as mock_open:
-            with patch("idi_ftm2j_shared.storage.tempfile.NamedTemporaryFile") as mock_tmp:
-                mock_tmp_file = MagicMock()
-                mock_tmp.return_value.__enter__ = MagicMock(return_value=mock_tmp_file)
-                mock_tmp.return_value.__exit__ = MagicMock(return_value=False)
-                with patch("idi_ftm2j_shared.storage.json.dump"):
-                    save_json("s3://bucket/key.json", data)
-                    mock_open.assert_called_once()
-                    call_kwargs = mock_open.call_args[1]
-                    assert "transport_params" in call_kwargs
-                    assert "writebuffer" in call_kwargs["transport_params"]
-                    assert call_kwargs["transport_params"]["writebuffer"] == mock_tmp_file
+        assert result == data
+        client.get_object.assert_called_once_with(Bucket="bucket", Key="key.json")
