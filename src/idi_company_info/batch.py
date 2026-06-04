@@ -1,8 +1,7 @@
 """Batch processing utilities for tracking and managing batch operations."""
 
 # Standard library imports
-from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from typing import Any
 
@@ -153,7 +152,7 @@ class BatchProcessing:
         if self.threshold_days is None:
             return set()
 
-        threshold_date = datetime.now() - timedelta(days=self.threshold_days)
+        threshold_date = datetime.now(tz=UTC) - timedelta(days=self.threshold_days)
         stale: set[str] = set()
         for permid_url, entry in self.result_data.items():
             time_str = entry.get("result", {}).get("last_processed")
