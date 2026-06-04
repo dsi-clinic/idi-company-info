@@ -473,7 +473,7 @@ wheels = [
 
 [[package]]
 name = "idi-company-info"
-version = "0.1.1a7"
+version = "0.1.1a8"
 source = { editable = "." }
 dependencies = [
     { name = "idi-ftm2j-shared" },
