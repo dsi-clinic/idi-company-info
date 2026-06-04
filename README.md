@@ -16,7 +16,7 @@ Processing is resumable: interrupted runs pick up where they left off. Stale rec
 | Type | API strategy | Input columns | Notes |
 |---|---|---|---|
 | `cik` | Record Match | `investor_name`, `investor_cik` | CIK sent as `Cik:<value>` Standard Identifier |
-| `cusip` | Record Match | `issuer_name`, `security_cusip`, `stock_ticker` | CUSIP is LocalID; ticker is Standard Identifier; raw ticker stored in output |
+| `cusip` | Record Match | `issuer_name`, `security_cusip`, `stock_ticker` | CUSIP is LocalID; ticker is the Standard Identifier used for Record Match |
 
 ### Output Layout
 
@@ -27,7 +27,7 @@ Processing is resumable: interrupted runs pick up where they left off. Stale rec
   failures/       failures_{type}.json
 ```
 
-Each `company_info_*.json` record includes a `ticker` field (populated for CUSIP runs, `null` for CIK).
+Each `company_info_*.json` record is flat company info keyed by its PermID URL (no `search`/`result` envelope).
 
 Paths support local directories or S3 URLs (`s3://bucket/path`).
 
@@ -102,7 +102,7 @@ orchestrator.py
 
 **Object composition**: `IdentifierFactory.build()` reads the matching `IdentifierSpec` from `IDENTIFIER_REGISTRY`, which bundles the concrete class (`IdentifierCik` or `IdentifierCusip`) and all output filenames. `IdentifierFactory` translates the `OrchestratorConfig` into three typed dataclasses (`FilePaths`, `BatchConfig`, `ApiCredentials`) and instantiates the class.
 
-**CUSIP identifier flow**: `IdentifierCusip.load_data()` returns `{issuer_name: [cusip, ...]}` so that CUSIP is the stable identifier throughout `BatchProcessing`. Two auxiliary maps are built as side effects — `std_ticker_map` (CUSIP → formatted `ticker:X&&mic:Y` string, passed to `PermidRetrieval` as the Record Match Standard Identifier) and `raw_ticker_map` (CUSIP → raw ticker symbol, stored in the `CompanyInfo.ticker` output field).
+**CUSIP identifier flow**: `IdentifierCusip.load_data()` returns `{issuer_name: [cusip, ...]}` so that CUSIP is the stable identifier throughout `BatchProcessing`. As a side effect it builds `std_ticker_map` (CUSIP → formatted `ticker:X&&mic:Y` string, passed to `PermidRetrieval` as the Record Match Standard Identifier).
 
 **Adding a new identifier type**: add one entry to `IDENTIFIER_REGISTRY` in `registry.py`. No other code changes needed.
 

@@ -95,7 +95,7 @@ class TestExtractFilterParquetTicker:
     """Tests for CompanyByCusipPipeline._extract_filter_parquet_ticker.
 
     The method now returns {issuer_name: [cusip, ...]} (not tickers).
-    It also sets self._raw_ticker_map and self._std_ticker_map as side effects.
+    It also sets self._std_ticker_map as a side effect.
     All input DataFrames must include issuer_name, security_cusip, and stock_ticker.
     """
 
@@ -126,19 +126,6 @@ class TestExtractFilterParquetTicker:
         )
         result = instance._extract_filter_parquet_ticker(df)
         assert result == {"Corp A": ["037833100"]}
-
-    def test_builds_raw_ticker_map_as_side_effect(self):
-        """_raw_ticker_map is populated with CUSIP -> raw ticker."""
-        instance = make_cusip_instance()
-        df = pd.DataFrame(
-            {
-                "issuer_name": ["Corp A"],
-                "security_cusip": ["037833100"],
-                "stock_ticker": ["AAPL"],
-            }
-        )
-        instance._extract_filter_parquet_ticker(df)
-        assert instance._raw_ticker_map == {"037833100": "AAPL"}
 
     def test_builds_std_ticker_map_as_side_effect(self):
         """_std_ticker_map is populated with CUSIP -> formatted Standard Identifier."""
@@ -312,7 +299,6 @@ class TestWarnAmbiguousCusips:
             }
         )
         instance._build_ticker_maps(df)
-        assert instance._raw_ticker_map["037833100"] == "AAPL"
         assert instance._std_ticker_map["037833100"] == "ticker:AAPL"
 
 
@@ -355,18 +341,13 @@ class TestGroupByIssuer:
         assert result == {}
 
 
-class TestStdAndRawTickerMapProperties:
-    """Tests for CompanyByCusipPipeline.std_ticker_map and raw_ticker_map properties."""
+class TestStdTickerMapProperty:
+    """Tests for the CompanyByCusipPipeline.std_ticker_map property."""
 
     def test_std_ticker_map_returns_empty_before_load(self):
         """std_ticker_map returns {} when _std_ticker_map has not been set."""
         instance = make_cusip_instance()
         assert instance.std_ticker_map == {}
-
-    def test_raw_ticker_map_returns_empty_before_load(self):
-        """raw_ticker_map returns {} when _raw_ticker_map has not been set."""
-        instance = make_cusip_instance()
-        assert instance.raw_ticker_map == {}
 
     def test_std_ticker_map_returns_set_value(self):
         """std_ticker_map returns the value set by _build_ticker_maps."""
@@ -380,16 +361,3 @@ class TestStdAndRawTickerMapProperties:
         )
         instance._extract_filter_parquet_ticker(df)
         assert instance.std_ticker_map == {"037833100": "ticker:AAPL"}
-
-    def test_raw_ticker_map_returns_set_value(self):
-        """raw_ticker_map returns the value set by _build_ticker_maps."""
-        instance = make_cusip_instance()
-        df = pd.DataFrame(
-            {
-                "issuer_name": ["Corp A"],
-                "security_cusip": ["037833100"],
-                "stock_ticker": ["AAPL"],
-            }
-        )
-        instance._extract_filter_parquet_ticker(df)
-        assert instance.raw_ticker_map == {"037833100": "AAPL"}

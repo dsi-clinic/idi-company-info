@@ -124,14 +124,6 @@ class CompanyPipeline(ABC):
         """
         return {}
 
-    @property
-    def raw_ticker_map(self) -> dict[str, str]:
-        """Raw ticker symbols keyed by local ID, stored in company info output.
-
-        Overridden by CompanyByCusipPipeline; returns empty dict for all other types.
-        """
-        return {}
-
     @staticmethod
     def read_parquet(input_file: str, required_columns: list[str]) -> pd.DataFrame:
         """Read parquet file and validate required columns exist.
