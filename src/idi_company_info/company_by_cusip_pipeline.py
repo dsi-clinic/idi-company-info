@@ -17,10 +17,8 @@ class CompanyByCusipPipeline(CompanyPipeline):
 
     load_data returns {issuer_name: [cusip, ...]} so that CUSIP is the
     stable identifier that flows through BatchProcessing, PermID retrieval, and
-    company-info output.  Two auxiliary maps are built as side-effects:
-
-    - _raw_ticker_map: CUSIP → raw ticker symbol (stored in output).
-    - _std_ticker_map: CUSIP → formatted Standard Identifier for the API.
+    company-info output. As a side effect it builds ``_std_ticker_map``
+    (CUSIP → formatted Standard Identifier) for the Record Match API.
     """
 
     EXCHANGE_TO_MIC = {
@@ -40,11 +38,6 @@ class CompanyByCusipPipeline(CompanyPipeline):
     def std_ticker_map(self) -> dict[str, str]:
         """Formatted Standard Identifier strings keyed by CUSIP, for Record Match API calls."""
         return getattr(self, "_std_ticker_map", {})
-
-    @property
-    def raw_ticker_map(self) -> dict[str, str]:
-        """Raw ticker symbols keyed by CUSIP, for storing in company info output."""
-        return getattr(self, "_raw_ticker_map", {})
 
     def _extract_filter_parquet_ticker(self, df: pd.DataFrame) -> dict[str, list[str]]:
         """Filter and deduplicate rows, build ticker maps, return ``{issuer_name: [cusip, ...]}``.
@@ -88,20 +81,15 @@ class CompanyByCusipPipeline(CompanyPipeline):
         return subset
 
     def _build_ticker_maps(self, subset: pd.DataFrame) -> None:
-        """Populate ``_raw_ticker_map`` and ``_std_ticker_map`` from the filtered subset.
+        """Populate ``_std_ticker_map`` from the filtered subset.
 
         Warns if any CUSIP maps to more than one ticker (data quality issue).
-        Both maps keep only the first occurrence per CUSIP.
+        Keeps only the first occurrence per CUSIP.
 
         Args:
             subset: Deduplicated DataFrame from :meth:`_filter_and_deduplicate`.
         """
         self._warn_ambiguous_cusips(subset)
-
-        cusip_first = subset.drop_duplicates(subset=["security_cusip"])
-        self._raw_ticker_map: dict[str, str] = dict(
-            zip(cusip_first["security_cusip"], cusip_first["stock_ticker"])
-        )
 
         formatted = subset.copy()
         formatted["stock_ticker"] = formatted["stock_ticker"].apply(
@@ -209,9 +197,9 @@ class CompanyByCusipPipeline(CompanyPipeline):
 
     def load_data(self) -> dict[str, list[str]]:
         """Load the input parquet and return ``{issuer_name: [cusip, ...]}``."""
-        df = self.read_parquet(
+        input_df = self.read_parquet(
             self.file_paths.input_file,
             required_columns=["issuer_name", "security_cusip", "stock_ticker"],
         )
-        self.logger.info("Loaded %s rows (ticker mode)", len(df))
-        return self._extract_filter_parquet_ticker(df)
+        self.logger.info("Loaded %s rows (ticker mode)", len(input_df))
+        return self._extract_filter_parquet_ticker(input_df)

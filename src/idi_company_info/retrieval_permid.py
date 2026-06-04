@@ -8,10 +8,10 @@ import pandas as pd
 from idi_ftm2j_shared.failures import FailureRegistry
 
 # Application imports
-from idi_company_info.buffer import Buffer
+from idi_company_info.buffer import Buffer, permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier, FailureType
 from idi_company_info.retrieval import Retrieval
-from idi_company_info.types import BatchConfig, BatchStats, FilePaths
+from idi_company_info.types import BatchConfig, BatchStats, FilePaths, MergeStrategy, PermidEntry
 
 if TYPE_CHECKING:
     from idi_company_info.company_pipeline import ApiClients
@@ -66,52 +66,51 @@ class PermidRetrieval(Retrieval):
         Returns:
             The permid data.
         """
-        items = list(entities_to_process.keys())[:batch_size]
-        all_records, total_records, total_batches = self._retrieve_records(
-            items, entities_to_process
-        )
+        all_entities = [
+            (entity_name, identifier)
+            for entity_name, identifiers in entities_to_process.items()
+            for identifier in identifiers
+        ]
+        batch_entities = all_entities[:batch_size]
+
+        all_records, total_records, total_batches = self._retrieve_records(batch_entities)
 
         buffer = Buffer(
             file_path=self.file_paths.permid_file,
+            merge=MergeStrategy.PERMID,
             buffer_size=self.batch_config.buffer_size,
-            mode="dict",
         )
 
-        permid_data = {}
         for batch_start in range(0, total_records, self.RECORD_BATCH_SIZE):
             batch_records = all_records[batch_start : batch_start + self.RECORD_BATCH_SIZE]
             batch_num = batch_start // self.RECORD_BATCH_SIZE + 1
 
             batch_permid_data = self._record_match_batch(
-                batch_records, batch_num, total_batches, batch_stats, buffer
+                batch_records, batch_num, total_batches, batch_stats
             )
-            for entity_name, permids in batch_permid_data.items():
-                permid_data.setdefault(entity_name, []).extend(permids)
 
-        if buffer._buffer:
-            buffer.flush()
+            if batch_permid_data:
+                buffer.add(data=batch_permid_data)
+                batch_stats.total_permids += sum(
+                    len(v["result"]) for v in batch_permid_data.values()
+                )
 
-        batch_stats.total_permids += sum(len(permid_list) for permid_list in permid_data.values())
+        permid_data = buffer.load_all()
         return permid_data
 
     def _retrieve_records(
-        self, items: list[str], entities_to_process: dict[str, Any]
+        self, batch_entities: list[tuple[str, str]]
     ) -> tuple[list[dict[str, Any]], int, int]:
         """Retrieve records from the Record Match API.
 
         Args:
-            items: The items to process.
-            entities_to_process: The entities to process.
+            batch_entities: The entities to process.
 
         Returns:
             A tuple of (all_records, total_records, total_batches).
         """
-        self.logger.info("Retrieving PermIDs for %d entities", len(items))
-
-        # Build the flat record list first — each entity may have multiple identifiers,
-        # so the total row count can exceed the entity count. Batch by rows, not entities.
-        all_entities = [(item, entities_to_process[item]) for item in items]
-        all_records = self._build_records(all_entities)
+        self.logger.info("Retrieving PermIDs for %d entities", len(batch_entities))
+        all_records = self._build_records(batch_entities)
 
         total_records = len(all_records)
         total_batches = (total_records + self.RECORD_BATCH_SIZE - 1) // self.RECORD_BATCH_SIZE
@@ -121,37 +120,35 @@ class PermidRetrieval(Retrieval):
             total_batches,
             self.RECORD_BATCH_SIZE,
         )
-
         return all_records, total_records, total_batches
 
-    def _build_records(self, batch_entities: list[tuple[str, list[str]]]) -> list[dict[str, Any]]:
+    def _build_records(self, batch_entities: list[tuple[str, str]]) -> list[dict[str, Any]]:
         """Build the flat record list for the Record Match API payload.
 
         Args:
-            batch_entities: List of (entity_name, identifier_list) tuples.
+            batch_entities: List of (entity_name, identifier) tuples.
 
         Returns:
-            Flat list of record dicts ready for DataFrame construction.
+            Flat list of record dicts ({LocalID, Standard Identifier, Name}) for the CSV.
         """
         records = []
-        for entity_name, identifier_list in batch_entities:
-            for identifier in identifier_list:
-                if self.identifier_type == "cusip":
-                    local_id = identifier  # CUSIP is the stable LocalID
-                    standard_identifier = self._std_ticker_map[identifier]
-                elif self.identifier_type == "cik":
-                    local_id = identifier
-                    standard_identifier = f"Cik:{identifier}"
-                else:
-                    raise ValueError(f"Invalid identifier type: {self.identifier_type}")
+        for entity_name, identifier in batch_entities:
+            if self.identifier_type == "cusip":
+                local_id = f"cusip_{identifier}"  # CUSIP is the stable LocalID
+                standard_identifier = self._std_ticker_map[identifier]
+            elif self.identifier_type == "cik":
+                local_id = f"cik_{identifier}"
+                standard_identifier = f"Cik:{identifier}"
+            else:
+                raise ValueError(f"Invalid identifier type: {self.identifier_type}")
 
-                records.append(
-                    {
-                        "LocalID": local_id,
-                        "Standard Identifier": standard_identifier,
-                        "Name": entity_name,
-                    }
-                )
+            records.append(
+                {
+                    "LocalID": local_id,
+                    "Standard Identifier": standard_identifier,
+                    "Name": entity_name,
+                }
+            )
         return records
 
     def _record_match_batch(
@@ -160,7 +157,6 @@ class PermidRetrieval(Retrieval):
         batch_num: int,
         total_batches: int,
         batch_stats: BatchStats,
-        buffer: Buffer,
     ) -> dict[str, Any]:
         """Send records to the Record Match API and parse the response.
 
@@ -181,9 +177,6 @@ class PermidRetrieval(Retrieval):
             len(batch_records),
         )
         batch_permid_data = self._retrieve_record_match(batch_records, batch_stats)
-        if batch_permid_data:
-            buffer.add(data=batch_permid_data)
-
         return batch_permid_data
 
     def _retrieve_record_match(
@@ -196,10 +189,10 @@ class PermidRetrieval(Retrieval):
             batch_stats: Accumulator for run-level statistics.
 
         Returns:
-            Mapping of entity name → list of {identifier: [permid_url, ...]} items.
+            Mapping of permid_cache_key → {"search": {...}, "result": [permid_url, ...]}.
         """
-        df = pd.DataFrame(records)
-        csv_data = df.to_csv(index=False)
+        records_df = pd.DataFrame(records)
+        csv_data = records_df.to_csv(index=False)
 
         parsed_response: dict[str, Any] = {}
         try:
@@ -281,20 +274,38 @@ class PermidRetrieval(Retrieval):
         s = match.get("Match Score")
         return float(str(s).rstrip("%")) / 100 if s else 0
 
-    def _parse_record_match_response(self, response: list[dict[str, Any]]) -> dict[str, Any]:
+    def _parse_record_match_response(
+        self, response: list[dict[str, Any]]
+    ) -> dict[str, PermidEntry]:
         """Convert filtered Record Match records into the permid_data structure.
 
         Args:
             response: Filtered list of match records.
 
         Returns:
-            Mapping of entity name → list of {identifier: [permid_url, ...]} items.
+            Mapping of permid_cache_key → {search, result: [permid_url, ...]}.
         """
-        permid_data: dict[str, list] = {}
+        permid_data: dict[str, PermidEntry] = {}
         for record in response:
-            permid_data.setdefault(record.get("Input_Name"), []).append(
-                {record.get("Input_LocalID"): [record.get("Match OpenPermID")]}
-            )
+            permid_url = record.get("Match OpenPermID")
+            name = record.get("Input_Name")
+            local_id = record.get("Input_LocalID")
+            standard_id = record.get("Input_Standard Identifier")
+
+            if not (name and local_id and permid_url):
+                continue
+
+            value: PermidEntry = {
+                "search": {"Name": name, "LocalID": local_id, "Standard Identifier": standard_id},
+                "result": [],
+            }
+
+            key = permid_cache_key(name, local_id)
+            entry = permid_data.setdefault(key, value)
+
+            if permid_url not in entry["result"]:
+                entry["result"].append(permid_url)
+
         return permid_data
 
     def _handle_failures(

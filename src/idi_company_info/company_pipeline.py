@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 from idi_ftm2j_shared.failures import FailureRegistry
 from idi_ftm2j_shared.logs import get_logger
-from idi_ftm2j_shared.storage import load_json, save_json
+from idi_ftm2j_shared.storage import load_json
 
 # Application imports
 from idi_company_info.api import (
@@ -18,7 +18,8 @@ from idi_company_info.api import (
     LSEGEntityLookup,
     LsegRecordMatch,
 )
-from idi_company_info.batch import BatchProcessing
+from idi_company_info.batch import BatchProcessing, find_cusip_collisions
+from idi_company_info.buffer import permid_cache_key
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval_company_info import CompInfoRetrieval
 from idi_company_info.retrieval_permid import PermidRetrieval
@@ -123,14 +124,6 @@ class CompanyPipeline(ABC):
         """
         return {}
 
-    @property
-    def raw_ticker_map(self) -> dict[str, str]:
-        """Raw ticker symbols keyed by local ID, stored in company info output.
-
-        Overridden by CompanyByCusipPipeline; returns empty dict for all other types.
-        """
-        return {}
-
     @staticmethod
     def read_parquet(input_file: str, required_columns: list[str]) -> pd.DataFrame:
         """Read parquet file and validate required columns exist.
@@ -142,18 +135,18 @@ class CompanyPipeline(ABC):
         Returns:
             The dataframe with the required columns.
         """
-        df = pd.read_parquet(input_file)
+        input_df = pd.read_parquet(input_file)
 
         # Validate required columns
-        missing_columns = [col for col in required_columns if col not in df.columns]
+        missing_columns = [col for col in required_columns if col not in input_df.columns]
         if missing_columns:
             raise ValueError(f"Required columns {missing_columns} not found in dataframe")
 
-        return df
+        return input_df
 
     def process_entities(
         self, entities_to_process: dict[str, Any], num_existing_entities: int
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[BatchStats, set[str]]:
         """Process the entities.
 
         For entities that already have PermIDs stored from a previous run, skip the
@@ -166,17 +159,15 @@ class CompanyPipeline(ABC):
             num_existing_entities: The number of existing entities.
 
         Returns:
-            The batch stats.
+            A tuple of (batch stats, permid cache keys resolved during this run).
         """
         batch_stats = BatchStats()
 
         # Partition: entities that already have PermIDs vs those that still need retrieval
-        existing_permid_data = load_json(self.file_paths.permid_file, return_type="dict")
-        needs_permid = {
-            k: v for k, v in entities_to_process.items() if k not in existing_permid_data
-        }
-        has_permid_count = len(entities_to_process) - len(needs_permid)
+        needs_permid, has_permid_count = self._determine_needs_permid(entities_to_process)
+        needs_count = sum(len(identifiers) for identifiers in needs_permid.values())
 
+        # Shared date between retrievals
         shared = {
             "file_paths": self.file_paths,
             "batch_config": self.batch_config,
@@ -186,11 +177,73 @@ class CompanyPipeline(ABC):
         }
 
         # Retrieve the PermIDs for the entities that need them
+        permid_data, resolved_keys = self._retrieve_permid(
+            needs_permid, needs_count, has_permid_count, shared, batch_stats
+        )
+
+        # Retrieve the company info for the entities that have PermIDs
+        company_info_retriever = CompInfoRetrieval(**shared)
+        company_info_retriever.retrieve(permid_data, num_existing_entities, batch_stats)
+        return batch_stats, resolved_keys
+
+    def _determine_needs_permid(
+        self, entities_to_process: dict[str, list[str]]
+    ) -> tuple[dict[str, list[str]], int]:
+        """Determine what entities need permids and what already have them
+
+        Args:
+            entities_to_process: Dictonary of entities to process
+
+        Returns:
+            Tuple of entities that need a permid and the count of ones that don't
+        """
+        existing_permid_data = load_json(self.file_paths.permid_file, return_type="dict")
+
+        needs_permid = {}
+        for entity_name, identifiers in entities_to_process.items():
+            for identifier in identifiers:
+                key = permid_cache_key(entity_name, f"{self.identifier_type}_{identifier}")
+                if key not in existing_permid_data:
+                    needs_permid.setdefault(entity_name, []).append(identifier)
+
+        needs_count = sum(len(identifiers) for identifiers in needs_permid.values())
+        entity_count = sum(len(identifiers) for identifiers in entities_to_process.values())
+        has_permid_count = entity_count - needs_count
+
+        return needs_permid, has_permid_count
+
+    def _retrieve_permid(
+        self,
+        needs_permid: dict[str, list[str]],
+        needs_count: int,
+        has_permid_count: int,
+        shared: dict[str, Any],
+        batch_stats: BatchStats,
+    ) -> tuple[dict[str, dict], set[str]]:
+        """Retrieve PermIDs for entities that need them and return the refreshed cache.
+
+        When ``needs_permid`` is non-empty, runs the Record Match API then reloads
+        ``permid_file``. When empty, skips retrieval and just reloads the existing
+        cache. Do-not-retry entities (in the failure registry) are filtered out of the
+        returned cache so the company-info stage does not re-fetch them every run.
+
+        Args:
+            needs_permid: Mapping of entity_name -> [identifier, ...]
+            needs_count: Total number of identifiers across ``needs_permid`` (queued count).
+            has_permid_count: Number of to-process identifiers already resolved in the cache.
+            shared: Common keyword args (file_paths, batch_config, api_clients, failure_registry, identifier_type).
+            batch_stats: Accumulator for run-level statistics, mutated in place.
+
+        Returns:
+            A tuple of (reloaded permid_data, resolved_keys), where permid_data is
+            ``{cache_key: {"search": {...}, "result": [permid_url, ...]}}`` and resolved_keys
+            is the set of cache keys from ``needs_permid`` resolved during this run.
+        """
         if needs_permid:
-            retrieval_count = min(len(needs_permid), self.batch_config.batch_size)
+            retrieval_count = min(needs_count, self.batch_config.batch_size)
             self.logger.info(
                 "PermID retrieval: %d queued, %d will be retrieved this run, %d already resolved",
-                len(needs_permid),
+                needs_count,
                 retrieval_count,
                 has_permid_count,
             )
@@ -209,35 +262,47 @@ class CompanyPipeline(ABC):
         # Reload after retrieval so newly resolved PermIDs are included
         permid_data = load_json(self.file_paths.permid_file, return_type="dict")
 
+        # Cache keys from this run's queue that are now resolved
+        resolved_keys = {
+            key
+            for name, ids in needs_permid.items()
+            for identifier in ids
+            if (key := permid_cache_key(name, f"{self.identifier_type}_{identifier}"))
+            in permid_data
+        }
+
         # Log how many of the queued entities were successfully resolved
         if needs_permid:
-            self._log_permid_retrieval_stats(needs_permid, permid_data)
+            self._log_permid_retrieval_stats(needs_permid, resolved_keys)
 
-        # Retrieve the company info for the entities that have PermIDs
-        all_entities = list(entities_to_process.keys())
-        company_info_retriever = CompInfoRetrieval(**shared, raw_ticker_map=self.raw_ticker_map)
-        company_info_retriever.retrieve(
-            permid_data, all_entities, num_existing_entities, batch_stats
-        )
-        return batch_stats
+        # Drop do-not-retry entities before the company-info stage consumes this cache.
+        if self.failure_registry:
+            permid_data = {
+                key: entry
+                for key, entry in permid_data.items()
+                if (entry["search"]["Name"], entry["search"]["LocalID"])
+                not in self.failure_registry
+            }
+
+        return permid_data, resolved_keys
 
     def _log_permid_retrieval_stats(
-        self, needs_permid: dict[str, Any], permid_data: dict[str, Any]
+        self, needs_permid: dict[str, Any], resolved_keys: set[str]
     ) -> None:
         """Log the PermID retrieval stats.
 
+        Counts are by *identifier* (the unit batch_size caps), not entity name.
+
         Args:
             needs_permid: The entities that need PermIDs.
-            permid_data: The PermID data.
+            resolved_keys: Cache keys from ``needs_permid`` resolved during this run.
         """
-        retrieved_count = min(len(needs_permid), self.batch_config.batch_size)
-        resolved_this_run = sum(
-            1 for k in list(needs_permid.keys())[:retrieved_count] if k in permid_data
-        )
+        queued_count = sum(len(ids) for ids in needs_permid.values())
+        attempted = min(queued_count, self.batch_config.batch_size)
         self.logger.info(
-            "PermID retrieval complete: %d/%d entities resolved this run",
-            resolved_this_run,
-            retrieved_count,
+            "PermID retrieval complete: %d/%d identifiers resolved this run",
+            len(resolved_keys),
+            attempted,
         )
 
     def print_stats(self, batch_stats: BatchStats) -> None:
@@ -278,44 +343,84 @@ class CompanyPipeline(ABC):
         )
         self.logger.info("=" * 50)
 
+    def _report_cusip_collisions(self, resolved_keys: set[str]) -> None:
+        """Warn about PermIDs reached by multiple CUSIP issuers (likely false matches).
+
+        Detection only — no API calls, nothing pruned. Membership is computed over the full
+        permid_file (so a CUSIP resolved this run that collides with a previously-cached CUSIP
+        is caught), but reporting is scoped to PermIDs reached during this run so historical
+        collisions are not re-warned on every run.
+
+        Args:
+            resolved_keys: Cache keys for the CUSIPs resolved during this run.
+        """
+        permid_data = load_json(self.file_paths.permid_file, return_type="dict")
+        result_data = load_json(self.file_paths.result_file, return_type="dict")
+        collisions = find_cusip_collisions(permid_data)
+
+        # Scope to PermIDs reached by a CUSIP resolved this run.
+        current_urls = {
+            url for key in resolved_keys for url in permid_data.get(key, {}).get("result", [])
+        }
+        collisions = {url: members for url, members in collisions.items() if url in current_urls}
+
+        for permid_url, members in collisions.items():
+            canonical = result_data.get(permid_url, {}).get("result", {}).get("investor_name")
+            detail = ", ".join(f"{cusip} ({name})" for cusip, name in sorted(members.items()))
+            self.logger.warning(
+                "Possible false match: %d CUSIPs across multiple issuers resolved to "
+                "PermID %s (%s): %s",
+                len(members),
+                permid_url,
+                canonical,
+                detail,
+            )
+
+        if collisions:
+            self.logger.warning(
+                "CUSIP collision summary: %d PermID(s) reached by multiple CUSIP issuers "
+                "(review for false Record Match hits)",
+                len(collisions),
+            )
+
     def run(self) -> None:
         """Run the identifier pipeline."""
         try:
             # Load identifier data
             identifier_data = self.load_data()
 
-            # Load existing results
-            existing_results = load_json(self.file_paths.result_file, return_type="list")
+            # Load existing caches
+            result_data = load_json(self.file_paths.result_file, return_type="dict")
+            permid_data = load_json(self.file_paths.permid_file, return_type="dict")
 
-            # Load previous batch processing data
             batch_processing = BatchProcessing(
-                existing_results,
+                result_data,
+                permid_data,
+                self.identifier_type,
                 self.batch_config.threshold_days,
                 failure_registry=self.failure_registry,
             )
-            unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
-            filtered_results, stale_identifiers = batch_processing.filter_stale_entities()
 
-            for entity, ids in stale_identifiers.items():
-                unprocessed_entities.setdefault(entity, []).extend(ids)
-            to_process = sum(len(v) for v in unprocessed_entities.values())
+            # Prune stale results + their permid keys FIRST so stale rows re-resolve
+            # naturally as "unprocessed" below.
+            num_not_stale = batch_processing.filter_stale_entities(self.file_paths.result_file)
+
+            # Determine what still needs processing against the pruned caches.
+            unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)
+            to_process = sum(len(ids) for ids in unprocessed_entities.values())
             self.logger.info(
-                "To process: %d | Not to process: %d", to_process, len(filtered_results)
+                "To process: %d | Remaining saved results: %d", to_process, num_not_stale
             )
 
-            # If stale entities were removed, persist the pruned list so the buffer
-            # appends fresh results without duplicating the old stale records.
-            if stale_identifiers:
-                self.logger.info(
-                    "Removing %d stale record(s) from result file", len(stale_identifiers)
-                )
-                save_json(self.file_paths.result_file, filtered_results)
-
             # Process entities
-            batch_stats = self.process_entities(unprocessed_entities, len(filtered_results))
+            batch_stats, resolved_keys = self.process_entities(unprocessed_entities, num_not_stale)
 
             # Print stats
             self.print_stats(batch_stats)
+
+            # CUSIP: flag likely false Record Match collisions (no extra API calls).
+            if self.identifier_type == "cusip":
+                self._report_cusip_collisions(resolved_keys)
         finally:
             # Persist any buffered failures so partial buffers (<flush_every)
             # and end-of-run failures aren't lost on exit.

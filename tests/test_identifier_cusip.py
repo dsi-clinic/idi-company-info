@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Unit tests for idi_company_info.processors.company_by_cusip_pipeline."""
 
+import json
 from unittest.mock import MagicMock
 
 import pandas as pd
 
 from idi_company_info.company_by_cusip_pipeline import CompanyByCusipPipeline
+from idi_company_info.types import FilePaths
 
 
 def make_cusip_instance():
@@ -95,7 +97,7 @@ class TestExtractFilterParquetTicker:
     """Tests for CompanyByCusipPipeline._extract_filter_parquet_ticker.
 
     The method now returns {issuer_name: [cusip, ...]} (not tickers).
-    It also sets self._raw_ticker_map and self._std_ticker_map as side effects.
+    It also sets self._std_ticker_map as a side effect.
     All input DataFrames must include issuer_name, security_cusip, and stock_ticker.
     """
 
@@ -126,19 +128,6 @@ class TestExtractFilterParquetTicker:
         )
         result = instance._extract_filter_parquet_ticker(df)
         assert result == {"Corp A": ["037833100"]}
-
-    def test_builds_raw_ticker_map_as_side_effect(self):
-        """_raw_ticker_map is populated with CUSIP -> raw ticker."""
-        instance = make_cusip_instance()
-        df = pd.DataFrame(
-            {
-                "issuer_name": ["Corp A"],
-                "security_cusip": ["037833100"],
-                "stock_ticker": ["AAPL"],
-            }
-        )
-        instance._extract_filter_parquet_ticker(df)
-        assert instance._raw_ticker_map == {"037833100": "AAPL"}
 
     def test_builds_std_ticker_map_as_side_effect(self):
         """_std_ticker_map is populated with CUSIP -> formatted Standard Identifier."""
@@ -312,7 +301,6 @@ class TestWarnAmbiguousCusips:
             }
         )
         instance._build_ticker_maps(df)
-        assert instance._raw_ticker_map["037833100"] == "AAPL"
         assert instance._std_ticker_map["037833100"] == "ticker:AAPL"
 
 
@@ -355,18 +343,77 @@ class TestGroupByIssuer:
         assert result == {}
 
 
-class TestStdAndRawTickerMapProperties:
-    """Tests for CompanyByCusipPipeline.std_ticker_map and raw_ticker_map properties."""
+_PERMID_URL = "https://permid.org/1-test"
+
+
+def _collision_permid_data() -> dict:
+    """A permid_file with two different issuers (ABBOTT, ABACUS) on one PermID."""
+    return {
+        "ABBOTT_cusip_002824100": {
+            "search": {
+                "Name": "ABBOTT",
+                "LocalID": "cusip_002824100",  # issuer 002824
+                "Standard Identifier": "ticker:ABT",
+            },
+            "result": [_PERMID_URL],
+        },
+        "ABACUS_cusip_00258Y104": {
+            "search": {
+                "Name": "ABACUS",
+                "LocalID": "cusip_00258Y104",  # issuer 00258Y
+                "Standard Identifier": "ticker:ABL",
+            },
+            "result": [_PERMID_URL],
+        },
+    }
+
+
+def make_cusip_instance_with_files(tmp_path, permid_data) -> CompanyByCusipPipeline:
+    """A CUSIP pipeline instance whose file_paths point at written temp caches."""
+    permid_file = tmp_path / "permid.json"
+    result_file = tmp_path / "result.json"
+    permid_file.write_text(json.dumps(permid_data))
+    result_file.write_text(json.dumps({}))
+
+    instance = make_cusip_instance()
+    instance.file_paths = FilePaths(
+        input_file="",
+        result_file=str(result_file),
+        permid_file=str(permid_file),
+    )
+    return instance
+
+
+class TestReportCusipCollisions:
+    """Tests for CompanyPipeline._report_cusip_collisions scoping to the current run."""
+
+    def test_no_warning_when_collision_not_resolved_this_run(self, tmp_path):
+        """A historical collision is not re-warned when this run resolved none of it."""
+        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
+        instance._report_cusip_collisions(resolved_keys=set())
+        instance.logger.warning.assert_not_called()
+
+    def test_warns_when_a_member_resolved_this_run(self, tmp_path):
+        """The collision is reported when this run resolved one of its CUSIPs."""
+        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
+        instance._report_cusip_collisions(resolved_keys={"ABBOTT_cusip_002824100"})
+        # One per-collision warning + one summary warning.
+        assert instance.logger.warning.call_count == 2
+
+    def test_unrelated_resolved_key_does_not_warn(self, tmp_path):
+        """A key resolved this run that reaches no colliding PermID warns nothing."""
+        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
+        instance._report_cusip_collisions(resolved_keys={"OTHER_cusip_999999999"})
+        instance.logger.warning.assert_not_called()
+
+
+class TestStdTickerMapProperty:
+    """Tests for the CompanyByCusipPipeline.std_ticker_map property."""
 
     def test_std_ticker_map_returns_empty_before_load(self):
         """std_ticker_map returns {} when _std_ticker_map has not been set."""
         instance = make_cusip_instance()
         assert instance.std_ticker_map == {}
-
-    def test_raw_ticker_map_returns_empty_before_load(self):
-        """raw_ticker_map returns {} when _raw_ticker_map has not been set."""
-        instance = make_cusip_instance()
-        assert instance.raw_ticker_map == {}
 
     def test_std_ticker_map_returns_set_value(self):
         """std_ticker_map returns the value set by _build_ticker_maps."""
@@ -380,16 +427,3 @@ class TestStdAndRawTickerMapProperties:
         )
         instance._extract_filter_parquet_ticker(df)
         assert instance.std_ticker_map == {"037833100": "ticker:AAPL"}
-
-    def test_raw_ticker_map_returns_set_value(self):
-        """raw_ticker_map returns the value set by _build_ticker_maps."""
-        instance = make_cusip_instance()
-        df = pd.DataFrame(
-            {
-                "issuer_name": ["Corp A"],
-                "security_cusip": ["037833100"],
-                "stock_ticker": ["AAPL"],
-            }
-        )
-        instance._extract_filter_parquet_ticker(df)
-        assert instance.raw_ticker_map == {"037833100": "AAPL"}
