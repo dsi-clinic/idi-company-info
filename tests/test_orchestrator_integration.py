@@ -289,10 +289,10 @@ class TestCikPipelineIntegration:
         )
         records = _read_output(result_file)
 
-        # result_file is pure company info keyed by permid_url
+        # result_file is flat company info keyed by permid_url (no envelope)
         assert len(records) == 1
         assert _PERMID_URL in records
-        assert records[_PERMID_URL]["result"]["permid_id"] == "4295904307"
+        assert records[_PERMID_URL]["permid_id"] == "4295904307"
 
         # linkage (name, identifier) -> permid_url lives in permid_file
         permid = _read_output(permid_file)
@@ -406,12 +406,12 @@ class TestCusipPipelineIntegration:
 
         assert len(records) == 1
         assert _PERMID_URL in records
-        assert records[_PERMID_URL]["result"]["permid_id"] == "4295904307"
+        assert records[_PERMID_URL]["permid_id"] == "4295904307"
         permid = _read_output(permid_file)
         assert permid[f"{entity_name}_cusip_{cusip}"]["result"] == [_PERMID_URL]
 
     def test_result_file_is_pure_company_info(self, tmp_path):
-        """result_file entries hold only search + result — no identifiers/ticker block."""
+        """result_file entries are flat company info — no search/result envelope, no ticker."""
         entity_name = "Corp Beta"
         cusip = "037833100"
         parquet = tmp_path / "data.parquet"
@@ -438,10 +438,13 @@ class TestCusipPipelineIntegration:
         result_file, _, _ = _paths_for(tmp_path / "out", tmp_path / "out", IdentifierType.CUSIP)
         records = _read_output(result_file)
         record = list(records.values())[0]
-        assert set(record.keys()) == {"search", "result"}
-        assert record["search"] == {"permid_url": _PERMID_URL}
+        # Flat company info: no "search"/"result" envelope, fields sit at the top level.
+        assert "search" not in record
+        assert "result" not in record
+        assert "permid_id" in record
+        assert "last_processed" in record
         assert "identifiers" not in record
-        assert "ticker" not in record["result"]
+        assert "ticker" not in record
 
     def test_produces_empty_output_when_no_permid_match(self, tmp_path):
         parquet = tmp_path / "data.parquet"

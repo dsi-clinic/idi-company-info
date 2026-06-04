@@ -277,7 +277,8 @@ class CompanyPipeline(ABC):
             permid_data = {
                 key: entry
                 for key, entry in permid_data.items()
-                if (entry["search"]["Name"], entry["search"]["LocalID"]) not in self.failure_registry
+                if (entry["search"]["Name"], entry["search"]["LocalID"])
+                not in self.failure_registry
             }
 
         return permid_data
@@ -395,9 +396,7 @@ class CompanyPipeline(ABC):
 
             # Prune stale results + their permid keys FIRST so stale rows re-resolve
             # naturally as "unprocessed" below.
-            num_not_stale = batch_processing.filter_stale_entities(
-                self.file_paths.result_file
-            )
+            num_not_stale = batch_processing.filter_stale_entities(self.file_paths.result_file)
 
             # Determine what still needs processing against the pruned caches.
             unprocessed_entities = batch_processing.get_unprocessed_entities(identifier_data)

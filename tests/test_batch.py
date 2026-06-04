@@ -13,12 +13,9 @@ _PERMID_URL_2 = "https://permid.org/1-test2"
 
 
 def make_result(permid_url: str, days_ago: int = 0) -> dict:
-    """Build a result_file entry (keyed by permid_url) — no identifiers block."""
+    """Build a result_file entry (keyed by permid_url) — flat company info, no envelope."""
     ts = datetime.now() - timedelta(days=days_ago)
-    return {
-        "search": {"permid_url": permid_url},
-        "result": {"last_processed": ts.strftime("%Y%m%dT%H%M%S")},
-    }
+    return {"last_processed": ts.strftime("%Y%m%dT%H%M%S")}
 
 
 def make_permid(

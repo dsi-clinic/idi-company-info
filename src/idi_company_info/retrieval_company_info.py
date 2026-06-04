@@ -184,26 +184,24 @@ class CompInfoRetrieval(Retrieval):
             response: The ``data`` payload from the entity-lookup response.
 
         Returns:
-            {search: {permid_url}, result: {API fields + last_processed}}.
+            A flat company-info entry (API fields + last_processed). The permid_url is
+            the dict key — there is no ``search``/``result`` envelope.
         """
         return {
-            "search": {"permid_url": permid_url},
-            "result": {
-                "investor_name": response.get("vcard:organization-name"),
-                "permid_id": response.get("tr-common:hasPermId") or permid_url.split("/")[-1],
-                "permid_url": response.get("@id") or permid_url,
-                "hq_address": response.get("mdaas:HeadquartersAddress"),
-                "registered_address": response.get("mdaas:RegisteredAddress"),
-                "fax_number": response.get("tr-org:hasHeadquartersFaxNumber"),
-                "phone_number": response.get("tr-org:hasHeadquartersPhoneNumber"),
-                "lei": response.get("tr-org:hasLEI"),
-                "founded_date": response.get("hasLatestOrganizationFoundedDate"),
-                "incorporated_in": self._query_geonames_location(response.get("isIncorporatedIn")),
-                "domiciled_in": self._query_geonames_location(response.get("isDomiciledIn")),
-                "url": response.get("hasURL"),
-                "activity_status": response.get("hasActivityStatus"),
-                "last_processed": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
-            },
+            "investor_name": response.get("vcard:organization-name"),
+            "permid_id": response.get("tr-common:hasPermId") or permid_url.split("/")[-1],
+            "permid_url": response.get("@id") or permid_url,
+            "hq_address": response.get("mdaas:HeadquartersAddress"),
+            "registered_address": response.get("mdaas:RegisteredAddress"),
+            "fax_number": response.get("tr-org:hasHeadquartersFaxNumber"),
+            "phone_number": response.get("tr-org:hasHeadquartersPhoneNumber"),
+            "lei": response.get("tr-org:hasLEI"),
+            "founded_date": response.get("hasLatestOrganizationFoundedDate"),
+            "incorporated_in": self._query_geonames_location(response.get("isIncorporatedIn")),
+            "domiciled_in": self._query_geonames_location(response.get("isDomiciledIn")),
+            "url": response.get("hasURL"),
+            "activity_status": response.get("hasActivityStatus"),
+            "last_processed": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
         }
 
     def _query_geonames_location(self, url: str | None) -> str | None:

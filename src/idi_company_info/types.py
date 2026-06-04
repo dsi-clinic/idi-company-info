@@ -28,12 +28,6 @@ class PermidEntry(TypedDict):
     result: list[str]
 
 
-class ResultSearch(TypedDict):
-    """The search block of a result_file entry."""
-
-    permid_url: str
-
-
 class CompanyResult(TypedDict):
     """Company info returned by the entity-lookup API for one PermID."""
 
@@ -53,11 +47,8 @@ class CompanyResult(TypedDict):
     last_processed: str
 
 
-class ResultEntry(TypedDict):
-    """A result_file entry: pure company info keyed by permid_url."""
-
-    search: ResultSearch
-    result: CompanyResult
+# A result_file entry IS the company info, flat and keyed by permid_url
+ResultEntry = CompanyResult
 
 
 @dataclass

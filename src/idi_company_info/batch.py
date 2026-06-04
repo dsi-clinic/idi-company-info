@@ -1,7 +1,7 @@
 """Batch processing utilities for tracking and managing batch operations."""
 
 # Standard library imports
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -155,11 +155,13 @@ class BatchProcessing:
         threshold_date = datetime.now(tz=UTC) - timedelta(days=self.threshold_days)
         stale: set[str] = set()
         for permid_url, entry in self.result_data.items():
-            time_str = entry.get("result", {}).get("last_processed")
+            time_str = entry.get("last_processed")
             if not time_str:
                 continue
             try:
-                time_dt = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
+                # Stored as UTC wall-clock by _parse_company_info; parse back as UTC-aware
+                # so it compares against the tz-aware threshold_date.
+                time_dt = datetime.strptime(time_str, "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
             except ValueError:
                 continue
             if time_dt < threshold_date:
