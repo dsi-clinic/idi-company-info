@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Unit tests for idi_company_info.processors.company_by_cusip_pipeline."""
 
+import json
 from unittest.mock import MagicMock
 
 import pandas as pd
 
 from idi_company_info.company_by_cusip_pipeline import CompanyByCusipPipeline
+from idi_company_info.types import FilePaths
 
 
 def make_cusip_instance():
@@ -339,6 +341,70 @@ class TestGroupByIssuer:
         df = pd.DataFrame({"issuer_name": [], "security_cusip": [], "stock_ticker": []})
         result = instance._group_by_issuer(df)
         assert result == {}
+
+
+_PERMID_URL = "https://permid.org/1-test"
+
+
+def _collision_permid_data() -> dict:
+    """A permid_file with two different issuers (ABBOTT, ABACUS) on one PermID."""
+    return {
+        "ABBOTT_cusip_002824100": {
+            "search": {
+                "Name": "ABBOTT",
+                "LocalID": "cusip_002824100",  # issuer 002824
+                "Standard Identifier": "ticker:ABT",
+            },
+            "result": [_PERMID_URL],
+        },
+        "ABACUS_cusip_00258Y104": {
+            "search": {
+                "Name": "ABACUS",
+                "LocalID": "cusip_00258Y104",  # issuer 00258Y
+                "Standard Identifier": "ticker:ABL",
+            },
+            "result": [_PERMID_URL],
+        },
+    }
+
+
+def make_cusip_instance_with_files(tmp_path, permid_data) -> CompanyByCusipPipeline:
+    """A CUSIP pipeline instance whose file_paths point at written temp caches."""
+    permid_file = tmp_path / "permid.json"
+    result_file = tmp_path / "result.json"
+    permid_file.write_text(json.dumps(permid_data))
+    result_file.write_text(json.dumps({}))
+
+    instance = make_cusip_instance()
+    instance.file_paths = FilePaths(
+        input_file="",
+        result_file=str(result_file),
+        permid_file=str(permid_file),
+    )
+    return instance
+
+
+class TestReportCusipCollisions:
+    """Tests for CompanyPipeline._report_cusip_collisions scoping to the current run."""
+
+    def test_no_warning_when_collision_not_resolved_this_run(self, tmp_path):
+        """A historical collision is not re-warned when this run resolved none of it."""
+        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
+        instance._report_cusip_collisions(resolved_keys=set())
+        instance.logger.warning.assert_not_called()
+
+    def test_warns_when_a_member_resolved_this_run(self, tmp_path):
+        """The collision is reported when this run resolved one of its CUSIPs."""
+        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
+        instance._report_cusip_collisions(resolved_keys={"ABBOTT_cusip_002824100"})
+        # One per-collision warning + one summary warning.
+        assert instance.logger.warning.call_count == 2
+
+    def test_unrelated_resolved_key_does_not_warn(self, tmp_path):
+        """A key resolved this run that reaches no colliding PermID warns nothing."""
+        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
+        instance._report_cusip_collisions(resolved_keys={"OTHER_cusip_999999999"})
+        instance.logger.warning.assert_not_called()
 
 
 class TestStdTickerMapProperty:
