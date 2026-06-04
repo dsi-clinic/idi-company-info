@@ -232,7 +232,8 @@ class CompanyPipeline(ABC):
 
         When ``needs_permid`` is non-empty, runs the Record Match API then reloads
         ``permid_file``. When empty, skips retrieval and just reloads the existing
-        cache.
+        cache. Do-not-retry entities (in the failure registry) are filtered out of the
+        returned cache so the company-info stage does not re-fetch them every run.
 
         Args:
             needs_permid: Mapping of entity_name -> [identifier, ...]
@@ -270,6 +271,14 @@ class CompanyPipeline(ABC):
         # Log how many of the queued entities were successfully resolved
         if needs_permid:
             self._log_permid_retrieval_stats(needs_permid, permid_data)
+
+        # Drop do-not-retry entities before the company-info stage consumes this cache.
+        if self.failure_registry:
+            permid_data = {
+                key: entry
+                for key, entry in permid_data.items()
+                if (entry["search"]["Name"], entry["search"]["LocalID"]) not in self.failure_registry
+            }
 
         return permid_data
 
