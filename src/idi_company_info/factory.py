@@ -5,7 +5,8 @@ import pathlib
 
 # Application imports
 from idi_company_info.company_pipeline import CompanyPipeline
-from idi_company_info.registry import IDENTIFIER_REGISTRY
+from idi_company_info.input import Input
+from idi_company_info.registry import INPUT_REGISTRY
 from idi_company_info.types import (
     ApiCredentials,
     BatchConfig,
@@ -22,7 +23,7 @@ def _join(base: str | pathlib.Path, name: str) -> str:
     return str(pathlib.Path(base_str) / name)
 
 
-class IdentifierFactory:
+class PipelineFactory:
     """Builds a configured CompanyPipeline instance from an OrchestratorConfig.
 
     Single responsibility: translate orchestrator-level config into the
@@ -43,15 +44,14 @@ class IdentifierFactory:
         Raises:
             KeyError: If config.identifier_type is not in IDENTIFIER_REGISTRY.
         """
-        spec = IDENTIFIER_REGISTRY[config.identifier_type]
+        input_spec = INPUT_REGISTRY[config.input_type]
+        input_source = input_spec.cls(config.input_file)
 
-        type_subdir = str(config.identifier_type)
-        output_subdir = _join(config.output_dir, type_subdir)
+        output_subdir = _join(config.output_dir, str(config.input_type).lower())
         file_paths = FilePaths(
-            input_file=str(config.input_file),
-            result_file=_join(output_subdir, spec.result_filename),
-            permid_file=_join(output_subdir, spec.permid_filename),
-            failure_file=_join(config.failure_dir, spec.failure_filename),
+            result_file=_join(output_subdir, "permid_data.json"),
+            permid_file=_join(output_subdir, "permid_url.json"),
+            failure_file=_join(config.failure_dir, "failure.json"),
         )
 
         batch_config = BatchConfig(
@@ -65,9 +65,10 @@ class IdentifierFactory:
             geonames_user=config.geonames_user,
         )
 
-        return spec.cls(
+        return CompanyPipeline(
+            input_source=input_source,
             file_paths=file_paths,
             batch_config=batch_config,
             api_credentials=api_credentials,
-            match_score_threshold=config.match_score_threshold,
+            match_score_threshold=config.match_score_threshold
         )

@@ -20,8 +20,8 @@ from datetime import datetime
 from idi_ftm2j_shared.logs import get_logger
 
 # Application imports
-from idi_company_info.factory import IdentifierFactory
-from idi_company_info.types import IdentifierType, OrchestratorConfig
+from idi_company_info.factory import PipelineFactory
+from idi_company_info.types import InputSource, OrchestratorConfig
 
 
 class PipelineOrchestrator:
@@ -69,15 +69,15 @@ class PipelineOrchestrator:
 
         input_display = input_str.split("/")[-1] if "/" in input_str else input_str
         self._log_banner(
-            f"Starting pipeline | type={self.config.identifier_type} | input={input_display}"
+            f"Starting pipeline | type={self.config.input_type} | input={input_display}"
         )
         self._log_config()
 
         start_time = datetime.now()
 
         try:
-            identifier = IdentifierFactory.build(self.config)
-            identifier.run()
+            pipeline = PipelineFactory.build(self.config)
+            pipeline.run()
 
         except KeyboardInterrupt:
             self.logger.info("Pipeline interrupted by user")
@@ -120,9 +120,9 @@ def get_args() -> argparse.Namespace:
         help="Directory for the permanent failures file (local path or s3:// URL)",
     )
     parser.add_argument(
-        "--type",
-        type=IdentifierType,
-        choices=list(IdentifierType),
+        "--input-type",
+        type=InputSource,
+        choices=list(InputSource),
         required=True,
         help="Identifier type: cik (CIK Record Match), cusip (Ticker Record Match)",
     )
@@ -187,7 +187,7 @@ def main() -> None:
         input_file=args.input_file,
         output_dir=args.output_directory,
         failure_dir=args.failure_directory,
-        identifier_type=args.type,
+        input_type=args.input_type,
         api_key=api_key,
         geonames_user=geonames_user,
         batch_size=args.batch_size,

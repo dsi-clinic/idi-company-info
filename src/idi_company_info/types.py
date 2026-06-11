@@ -55,7 +55,6 @@ ResultEntry = CompanyResult
 class FilePaths:
     """File paths for pipeline input and output."""
 
-    input_file: str
     result_file: str
     permid_file: str
     failure_file: str = ""
@@ -101,11 +100,13 @@ class BatchStats:
     duplicates_ids_removed: int = 0
 
 
-class IdentifierType(StrEnum):
-    """Supported identifier types."""
+class InputSource(StrEnum):
+    """Supported input sources."""
 
-    CIK = "cik"
-    CUSIP = "cusip"
+    SHAREHOLDER_TRACKER_CIK = "shareholder_tracker_cik"
+    SHAREHOLDER_TRACKER_CUSIP = "shareholder_tracker_cusip"
+    COMMERCIAL_DEBT_TRACKER = "commercial_debt_tracker"
+    CORPORATE_SUBSIDIARIES = "corporate_subsidiaries"
 
 
 class StageStatus(Enum):
@@ -125,7 +126,7 @@ class OrchestratorConfig:
     input_file: str | pathlib.Path
     output_dir: str | pathlib.Path
     failure_dir: str | pathlib.Path
-    identifier_type: IdentifierType
+    input_type: InputSource
     api_key: str
     geonames_user: str
     batch_size: int = 2450
