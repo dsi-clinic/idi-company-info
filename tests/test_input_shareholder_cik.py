@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.processors.company_by_cik_pipeline."""
+"""Unit tests for idi_company_info.input.ShareholderInputCik."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pandas as pd
 
-from idi_company_info.company_by_cik_pipeline import CompanyByCikPipeline
+from idi_company_info.input import ShareholderInputCik
 
 
-def make_cik_instance():
-    """Create an CompanyByCikPipeline with mocked dependencies."""
-    with patch("idi_company_info.company_pipeline.Path"):
-        with patch("idi_company_info.company_pipeline.FailureRegistry"):
-            instance = CompanyByCikPipeline.__new__(CompanyByCikPipeline)
-            instance.logger = MagicMock()
-            return instance
+def make_instance() -> ShareholderInputCik:
+    """Create a ShareholderInputCik with a mocked logger and dummy input path."""
+    instance = ShareholderInputCik("")
+    instance.logger = MagicMock()
+    return instance
+
+
+class TestIdentifierType:
+    """The CIK shareholder input reports the cik identifier type."""
+
+    def test_identifier_type_is_cik(self):
+        assert make_instance().identifier_type == "cik"
 
 
 class TestExtractFilterParquetCik:
-    """Tests for CompanyByCikPipeline._extract_filter_parquet_cik."""
+    """Tests for ShareholderInputCik._extract_filter_parquet_cik."""
 
     def test_returns_dict_grouped_by_investor_name(self):
-        """Test that the result groups ciks by investor_name."""
-        instance = make_cik_instance()
+        """The result groups ciks by investor_name."""
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "investor_name": ["Firm A", "Firm A", "Firm B"],
@@ -35,8 +40,8 @@ class TestExtractFilterParquetCik:
         assert result["Firm B"] == ["0003333333"]
 
     def test_filters_out_null_ciks(self):
-        """Test that rows with null investor_cik are dropped."""
-        instance = make_cik_instance()
+        """Rows with null investor_cik are dropped."""
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "investor_name": ["Firm A", "Firm B"],
@@ -48,8 +53,8 @@ class TestExtractFilterParquetCik:
         assert "Firm B" in result
 
     def test_filters_out_empty_string_ciks(self):
-        """Test that rows with empty-string investor_cik are dropped."""
-        instance = make_cik_instance()
+        """Rows with empty-string investor_cik are dropped."""
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "investor_name": ["Firm A", "Firm B"],
@@ -61,8 +66,8 @@ class TestExtractFilterParquetCik:
         assert "Firm B" in result
 
     def test_removes_cik_prefix(self):
-        """Test that CIK prefix is stripped from values."""
-        instance = make_cik_instance()
+        """The CIK prefix is stripped from values."""
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "investor_name": ["Firm A"],
@@ -73,8 +78,8 @@ class TestExtractFilterParquetCik:
         assert result["Firm A"] == ["0001546531"]
 
     def test_deduplicates_name_cik_pairs(self):
-        """Test that duplicate investor_name/investor_cik pairs are removed."""
-        instance = make_cik_instance()
+        """Duplicate investor_name/investor_cik pairs are removed."""
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "investor_name": ["Firm A", "Firm A"],
@@ -85,15 +90,15 @@ class TestExtractFilterParquetCik:
         assert result["Firm A"] == ["0001111111"]
 
     def test_returns_empty_dict_for_empty_dataframe(self):
-        """Test that an empty dataframe returns an empty dict."""
-        instance = make_cik_instance()
+        """An empty dataframe returns an empty dict."""
+        instance = make_instance()
         df = pd.DataFrame({"investor_name": [], "investor_cik": []})
         result = instance._extract_filter_parquet_cik(df)
         assert result == {}
 
     def test_cik_values_are_strings(self):
-        """Test that CIK values are cast to string."""
-        instance = make_cik_instance()
+        """CIK values are cast to string."""
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "investor_name": ["Firm A"],
