@@ -1,0 +1,30 @@
+config:
+  aws:region: us-east-2
+  idi:app_name: company-info
+  idi:bucket_name: idi-dev-ftm2j-shared-processor-storage
+  idi:output_dir: s3://idi-dev-ftm2j-shared-processor-storage/company-info/output
+  idi:input_sources:
+    - source: shareholder_tracker_cik
+      input_file: s3://idi-dev-ftm2j-shared-processor-storage/company-info/input/shareholder_tracker_release_20251218.parquet.parquet
+      cron: cron(0 2 * * ? *)
+      batch_size: "2450"
+    - source: commercial_debt_tracker
+      input_file: s3://idi-dev-ftm2j-shared-processor-storage/processors/cdt/debt-instruments
+      cron: cron(30 2 * * ? *)
+      batch_size: "2450"
+    - source: corporate_subsidiaries
+      input_file: s3://idi-dev-ftm2j-shared-processor-storage/processors/corporate-structure/output/subsidiaries.parquet
+      cron: cron(0 3 * * ? *)
+      batch_size: "2450"
+  idi:cpu: "1024"
+  idi:memory: "4096"
+  idi:buffer_size: "500"
+  idi:threshold_days: ""
+  idi:match_score_threshold: "1"
+  idi:schedule_enabled: "false"
+  idi:geonames_user:
+    secure: v1:JDS3kUrxy6ubN1Mt:Z+OzSuChdcwSwGm6ep01wd3KNRrja7XP
+  idi:shared_dlq_name: idi-dev-ftm2j-shared-scheduler-dlq
+  idi:permid_api_key:
+    secure: v1:xy5tKHf1NsbyVbXW:HawmNdQPLMZZCr2clhCnp1HPcCo5JH8UYfuizuZGSounKqwTCiaDtbPY/87Lv6Xu
+encryptionsalt: v1:jdR6bBdu0L0=:v1:rko3nQ2aYJtrw1rx:KOqk30SRaH22sdr87/ZUy+E5LKwMJw==

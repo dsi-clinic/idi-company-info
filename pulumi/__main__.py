@@ -42,11 +42,10 @@ pulumi.export("task_definition_arn", ecs.task_definition.arn)
 pulumi.export("permid_secret_arn", secrets.permid_secret.arn)
 pulumi.export("permid_secret_name", secrets.permid_secret.name)
 
-# Scheduling
-pulumi.export("schedule_cik_name", scheduling.schedule_cik.name)
-pulumi.export("schedule_cik_arn", scheduling.schedule_cik.arn)
-pulumi.export("schedule_cusip_name", scheduling.schedule_cusip.name)
-pulumi.export("schedule_cusip_arn", scheduling.schedule_cusip.arn)
+# Scheduling — one schedule per configured input source
+for _source, _schedule in scheduling.schedules.items():
+    pulumi.export(f"schedule_{_source}_name", _schedule.name)
+    pulumi.export(f"schedule_{_source}_arn", _schedule.arn)
 pulumi.export("scheduler_role_arn", scheduling.scheduler_role.arn)
 pulumi.export("scheduler_role_name", scheduling.scheduler_role.name)
 pulumi.export("shared_dlq_arn", scheduling.shared_dlq.arn)
