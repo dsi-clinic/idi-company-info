@@ -1,6 +1,6 @@
 .PHONY: help install install-dev test test-verbose test-coverage clean clean-all
-.PHONY: run-cik run-cusip
-.PHONY: docker-build docker-up docker-down docker-run-cik docker-run-cusip
+.PHONY: run-shareholder-cik run-cdt run-subsidiaries
+.PHONY: docker-build docker-up docker-down docker-run-cik docker-run-cdt docker-run-subsidiaries
 
 # ── Python runner ────────────────────────────────────────────────────────────
 RUN := uv run
@@ -33,9 +33,9 @@ define check-creds
 endef
 
 define check-input
-	@if [ ! -f "$(INPUT_PARQUET)" ]; then \
-		echo "Error: input file not found: $(INPUT_PARQUET)"; \
-		echo "Set INPUT_PARQUET=path/to/file.parquet"; \
+	@if [ ! -e "$(INPUT_PARQUET)" ]; then \
+		echo "Error: input not found: $(INPUT_PARQUET)"; \
+		echo "Set INPUT_PARQUET=path/to/file.parquet (or a shard directory for CDT)"; \
 		exit 1; \
 	fi
 endef
@@ -49,9 +49,10 @@ help:
 	@echo "  make install          Install production dependencies"
 	@echo "  make install-dev      Install dev dependencies (includes tests)"
 	@echo ""
-	@echo "Local pipeline runs:"
-	@echo "  make run-cik          CIK pipeline  (Record Match, input: investor_name + investor_cik)"
-	@echo "  make run-cusip        CUSIP pipeline (Record Match, input: issuer_name + security_cusip + stock_ticker)"
+	@echo "Local pipeline runs (each writes to OUTPUT_DIR/<input-source>/):"
+	@echo "  make run-shareholder-cik  Shareholder CIK  (input: investor_name + investor_cik)"
+	@echo "  make run-cdt           Commercial Debt     (input: shard DIRECTORY of company_name + cik)"
+	@echo "  make run-subsidiaries  Corporate Subsidiaries (input: parent_name + parent_cik)"
 	@echo ""
 	@echo "  Common options (pass as make args):"
 	@echo "    INPUT_PARQUET=path/to/file.parquet  (default: $(INPUT_PARQUET))"
@@ -74,8 +75,9 @@ help:
 	@echo "  make docker-build     Build orchestrator image"
 	@echo "  make docker-up        Start scheduler stack (runs on schedule)"
 	@echo "  make docker-down      Stop Docker Compose stack"
-	@echo "  make docker-run-cik   Manual CIK run via Docker"
-	@echo "  make docker-run-cusip Manual CUSIP run via Docker"
+	@echo "  make docker-run-cik           Manual Shareholder CIK run via Docker"
+	@echo "  make docker-run-cdt           Manual Commercial Debt run via Docker"
+	@echo "  make docker-run-subsidiaries  Manual Corporate Subsidiaries run via Docker"
 	@echo ""
 	@echo "Utility:"
 	@echo "  make clean            Remove output and log files"
@@ -84,7 +86,7 @@ help:
 	@echo "Example:"
 	@echo "  export PERMID_API_KEY='your-api-key'"
 	@echo "  export GEONAMES_USER='your-username'"
-	@echo "  make run-cik INPUT_PARQUET=data/input/investors.parquet OUTPUT_DIR=data/output"
+	@echo "  make run-shareholder-cik INPUT_PARQUET=data/input/investors.parquet OUTPUT_DIR=data/output"
 
 # ── Installation ──────────────────────────────────────────────────────────────
 install:
@@ -104,21 +106,29 @@ _orchestrator_args = \
 	--match-score-threshold $(MATCH_SCORE) \
 	$(if $(THRESHOLD_DAYS),--threshold-days $(THRESHOLD_DAYS),)
 
-run-cik:
+run-shareholder-cik:
 	$(call check-creds)
 	$(call check-input)
 	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m idi_company_info.processors.orchestrator \
+	$(RUN) -m idi_company_info.orchestrator \
 		$(_orchestrator_args) \
-		--type cik
+		--input-type shareholder_tracker_cik
 
-run-cusip:
+run-cdt:
 	$(call check-creds)
 	$(call check-input)
 	@mkdir -p $(OUTPUT_DIR)
-	$(RUN) -m idi_company_info.processors.orchestrator \
+	$(RUN) -m idi_company_info.orchestrator \
 		$(_orchestrator_args) \
-		--type cusip
+		--input-type commercial_debt_tracker
+
+run-subsidiaries:
+	$(call check-creds)
+	$(call check-input)
+	@mkdir -p $(OUTPUT_DIR)
+	$(RUN) -m idi_company_info.orchestrator \
+		$(_orchestrator_args) \
+		--input-type corporate_subsidiaries
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 test:
@@ -135,7 +145,9 @@ test-coverage:
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 clean:
 	@echo "Removing output and log files..."
-	rm -rf $(OUTPUT_DIR)/company_info $(OUTPUT_DIR)/permid_data $(OUTPUT_DIR)/failures
+	rm -rf $(OUTPUT_DIR)/shareholder_tracker_cik \
+		$(OUTPUT_DIR)/commercial_debt_tracker \
+		$(OUTPUT_DIR)/corporate_subsidiaries
 	rm -f $(LOG_DIR)/orchestrator_*.log
 	@echo "Done"
 
@@ -160,9 +172,13 @@ docker-down:
 	docker compose down
 
 docker-run-cik:
-	@echo "Running CIK pipeline via Docker..."
+	@echo "Running Shareholder CIK pipeline via Docker..."
 	docker compose run --rm orchestrator-cik
 
-docker-run-cusip:
-	@echo "Running CUSIP pipeline via Docker..."
-	docker compose run --rm orchestrator-cusip
+docker-run-cdt:
+	@echo "Running Commercial Debt pipeline via Docker..."
+	docker compose run --rm orchestrator-cdt
+
+docker-run-subsidiaries:
+	@echo "Running Corporate Subsidiaries pipeline via Docker..."
+	docker compose run --rm orchestrator-subsidiaries

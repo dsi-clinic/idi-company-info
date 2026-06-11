@@ -17,20 +17,66 @@ cd pulumi
 pulumi login s3://your-pulumi-state-bucket
 pulumi stack select dev   # or: pulumi stack init dev
 
-# Required
-pulumi config set aws:region us-east-2
-
-# For local developemt set secret values
+# All non-secret config is committed in Pulumi.<stack>.yaml (see below).
+# The only value you set by hand is the secret — once per stack:
 pulumi config set --secret idi:permid_api_key YOUR_KEY
-pulumi config set idi:geonames_user YOUR_USERNAME
-
-# Optional overrides
-pulumi config set idi:instance_type t2.small
-pulumi config set idi:key_name your-key-pair   # omit to use SSM-only access
 
 pulumi preview   # Validate
 pulumi up        # Deploy
 ```
+
+---
+
+## Configuration: dev vs prod
+
+Each environment is a Pulumi stack with its own committed config file
+(`Pulumi.dev.yaml`, `Pulumi.prod.yaml`). **The committed stack file is the single
+source of truth for that environment's pipeline arguments** — CI does not inject
+them. The branch→stack mapping lives in `.github/workflows/deploy.yml`
+(`main` → `prod`, every other branch → `dev`).
+
+### What lives where
+
+| Kind | Where | Examples |
+|---|---|---|
+| Non-secret pipeline args | **Committed** in `Pulumi.<stack>.yaml` | `input_sources`, `output_dir`, `bucket_name`, `cpu`, `memory`, `buffer_size`, `threshold_days`, `match_score_threshold`, `schedule_enabled`, `geonames_user`, `shared_dlq_name`, `aws:region`, `app_name` |
+| The one secret | `pulumi config set --secret` (CI-injected from the `PERMID_API_KEY` GitHub secret, or set manually per stack) | `permid_api_key` |
+| Deploy plumbing | GitHub repo secrets only | `PULUMI_ACCESS_TOKEN`, `PULUMI_CONFIG_PASSPHRASE`, `PULUMI_STATE_BUCKET`, `AWS_ROLE_ARN_*` |
+
+`permid_api_key` is **never committed in plaintext**. It is encrypted per stack
+against that stack's `encryptionsalt`, so it must be set **once per stack** and CI
+must use the **same** `PULUMI_CONFIG_PASSPHRASE` that encrypted it:
+
+```bash
+pulumi stack select dev   # then again for prod
+pulumi config set --secret idi:permid_api_key <key>
+```
+
+### Scheduled input sources
+
+Schedules are driven entirely by the `idi:input_sources` list in each stack file —
+one EventBridge schedule per entry. The active set is exactly three:
+`shareholder_tracker_cik`, `commercial_debt_tracker`, `corporate_subsidiaries`.
+(`shareholder_tracker_cusip` remains a valid `InputSource` but is intentionally not
+scheduled.) Each entry is `{source, input_file, cron, batch_size}`; for
+`commercial_debt_tracker`, `input_file` is the **shard directory**
+(`…/processors/cdt/debt-instruments`), not a single parquet. `idi:schedule_enabled`
+is currently `"false"` in both stacks — set it to `"true"` per stack to arm the crons.
+
+### Bringing up prod (first deploy)
+
+`Pulumi.prod.yaml` ships as a scaffold with `REPLACE_ME` placeholders. Before the
+first `main` deploy:
+
+1. Fill every `REPLACE_ME` — prod `bucket_name`/`output_dir`, the per-source
+   `input_file` URIs, `geonames_user`, `shared_dlq_name`.
+2. Set the secret: `pulumi stack select prod && pulumi config set --secret idi:permid_api_key <prod-key>`.
+3. Validate: `pulumi stack select prod && pulumi preview` — expect three (disabled)
+   schedules and no missing-config errors.
+4. Flip `idi:schedule_enabled` to `"true"` when ready to arm the schedules.
+
+> **Note:** the previously committed dev PermID key was exposed in git history —
+> rotate it and update the `PERMID_API_KEY` GitHub secret.
 
 ---
 
