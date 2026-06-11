@@ -384,6 +384,7 @@ class CdtInput(Input):
 
         # Remove duplicates
         subset["cik"] = subset["cik"].astype(str)    # convert identifier row to str
+        subset["cik"] = subset["cik"].astype(str).str.zfill(10)    # Pad with zero
         subset = subset.drop_duplicates(subset=["company_name", "cik"])
         self.logger.info(
             "After normalization and deduplication: %s unique name/CIK pairs", len(subset)
