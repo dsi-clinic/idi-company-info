@@ -5,7 +5,6 @@ import pathlib
 
 # Application imports
 from idi_company_info.company_pipeline import CompanyPipeline
-from idi_company_info.input import Input
 from idi_company_info.registry import INPUT_REGISTRY
 from idi_company_info.types import (
     ApiCredentials,
@@ -27,22 +26,22 @@ class PipelineFactory:
     """Builds a configured CompanyPipeline instance from an OrchestratorConfig.
 
     Single responsibility: translate orchestrator-level config into the
-    dataclasses expected by the CompanyPipeline base class, then instantiate the
-    correct subclass.
+    dataclasses the CompanyPipeline expects, compose the input source's Input
+    loader, and instantiate the pipeline.
     """
 
     @staticmethod
     def build(config: OrchestratorConfig) -> CompanyPipeline:
-        """Build and return the appropriate CompanyPipeline for the given config.
+        """Build and return a configured CompanyPipeline for the given config.
 
         Args:
             config: Orchestrator configuration.
 
         Returns:
-            A fully configured CompanyPipeline subclass instance.
+            A fully configured CompanyPipeline instance.
 
         Raises:
-            KeyError: If config.identifier_type is not in IDENTIFIER_REGISTRY.
+            KeyError: If config.input_type is not in INPUT_REGISTRY.
         """
         input_spec = INPUT_REGISTRY[config.input_type]
         input_source = input_spec.cls(config.input_file)
@@ -70,5 +69,5 @@ class PipelineFactory:
             file_paths=file_paths,
             batch_config=batch_config,
             api_credentials=api_credentials,
-            match_score_threshold=config.match_score_threshold
+            match_score_threshold=config.match_score_threshold,
         )

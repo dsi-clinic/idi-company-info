@@ -1,13 +1,11 @@
 """Processes identifiers for company information."""
 
 # Standard library imports
-from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 # Third party imports
-import pandas as pd
 from idi_ftm2j_shared.failures import FailureRegistry
 from idi_ftm2j_shared.logs import get_logger
 from idi_ftm2j_shared.storage import load_json
@@ -42,8 +40,8 @@ class ApiClients:
     geonames_api: GeonamesApi
 
 
-class CompanyPipeline(ABC):
-    """Base class for identifier types."""
+class CompanyPipeline:
+    """Runs the company-info pipeline for a single composed input source."""
 
     def __init__(
         self,
@@ -53,12 +51,13 @@ class CompanyPipeline(ABC):
         input_source: Input,
         match_score_threshold: int = 1,
     ) -> None:
-        """Initialize the Identifier.
+        """Initialize the pipeline.
 
         Args:
             file_paths: The file paths.
             batch_config: The batch config.
             api_credentials: The API credentials.
+            input_source: The input source loader to pull entity data from.
             match_score_threshold: The match score threshold.
         """
         self.file_paths = file_paths
@@ -159,7 +158,9 @@ class CompanyPipeline(ABC):
         needs_permid = {}
         for entity_name, identifiers in entities_to_process.items():
             for identifier in identifiers:
-                key = permid_cache_key(entity_name, f"{self.input_source.identifier_type}_{identifier}")
+                key = permid_cache_key(
+                    entity_name, f"{self.input_source.identifier_type}_{identifier}"
+                )
                 if key not in existing_permid_data:
                     needs_permid.setdefault(entity_name, []).append(identifier)
 

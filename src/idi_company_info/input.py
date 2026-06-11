@@ -17,8 +17,8 @@ from idi_ftm2j_shared.logs import get_logger
 class Input(ABC):
     """Abstract base class for all pipeline input sources."""
 
-    def __init__(self, input_file) -> None:
-        """"""
+    def __init__(self, input_file: str) -> None:
+        """Store the input path (parquet file or shard directory; local or s3://)."""
         self.input_file = input_file
         self.logger = get_logger(type(self).__name__)
 
@@ -383,8 +383,8 @@ class CdtInput(Input):
         self.logger.info("Found %s rows with valid CIKs", len(subset))
 
         # Remove duplicates
-        subset["cik"] = subset["cik"].astype(str)    # convert identifier row to str
-        subset["cik"] = subset["cik"].astype(str).str.zfill(10)    # Pad with zero
+        subset["cik"] = subset["cik"].astype(str)  # convert identifier row to str
+        subset["cik"] = subset["cik"].astype(str).str.zfill(10)  # Pad with zero
         subset = subset.drop_duplicates(subset=["company_name", "cik"])
         self.logger.info(
             "After normalization and deduplication: %s unique name/CIK pairs", len(subset)
@@ -394,9 +394,7 @@ class CdtInput(Input):
 
     def load_data(self) -> dict[str, list[str]]:
         """Load all CDT debt-instrument shards and return ``{company_name: [cik, ...]}``."""
-        input_df = self.read_parquet(
-            self.input_file, required_columns=["cik", "company_name"]
-        )
+        input_df = self.read_parquet(self.input_file, required_columns=["cik", "company_name"])
         return self._extract_filter_parquet_cik(input_df)
 
 
@@ -429,14 +427,11 @@ class SubsidiaryInput(Input):
         self.logger.info("Found %s total rows", len(subset))
 
         # Filter out rows with null or empty values
-        subset = subset[
-            (subset["parent_name"].notna())
-            & (subset["parent_cik"].astype(str) != "")
-        ]
+        subset = subset[(subset["parent_name"].notna()) & (subset["parent_cik"].astype(str) != "")]
         self.logger.info("Found %s rows with valid CIKs", len(subset))
 
         # Remove duplicates
-        subset["parent_cik"] = subset["parent_cik"].astype(str)    # convert identifier row to str
+        subset["parent_cik"] = subset["parent_cik"].astype(str)  # convert identifier row to str
         subset = subset.drop_duplicates(subset=["parent_name", "parent_cik"])
         self.logger.info(
             "After normalization and deduplication: %s unique name/CIK pairs", len(subset)

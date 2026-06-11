@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Pipeline Orchestrator - Runs the identifier processing pipeline for a specified input file.
+"""Pipeline Orchestrator - Runs the company-info pipeline for a specified input source.
 
-Supports three identifier types:
-  cik    — CIK-based Record Match (CompanyByCikPipeline)
-  cusip  — CUSIP-based Record Match(CompanyByCusipPipeline)
+The input source (see InputSource) selects the Input loader and identifier type:
+  shareholder_tracker_cik    — shareholder CIK Record Match
+  shareholder_tracker_cusip  — shareholder CUSIP (ticker) Record Match
+  commercial_debt_tracker    — CDT debt-instrument shards (CIK)
+  corporate_subsidiaries     — subsidiary parent CIKs
 
-To add a new identifier type, register it in IDENTIFIER_REGISTRY.
+To add a new input source, register it in INPUT_REGISTRY.
 """
 
 # Standard library imports
@@ -96,8 +98,8 @@ def get_args() -> argparse.Namespace:
     """Parse and return command-line arguments."""
     parser = argparse.ArgumentParser(
         description=(
-            "Run the identifier processing pipeline for a parquet input file. "
-            "Supports cik, cusip, and ticker identifier types."
+            "Run the company-info pipeline for one input source. "
+            "Use --input-type to select the source (see InputSource)."
         )
     )
 
@@ -118,7 +120,7 @@ def get_args() -> argparse.Namespace:
         type=InputSource,
         choices=list(InputSource),
         required=True,
-        help="Identifier type: cik (CIK Record Match), cusip (Ticker Record Match)",
+        help="Input source to process (selects the Input loader and identifier type)",
     )
     parser.add_argument(
         "--permid-api-key",
