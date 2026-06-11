@@ -51,7 +51,7 @@ class PipelineFactory:
         file_paths = FilePaths(
             result_file=_join(output_subdir, "permid_data.json"),
             permid_file=_join(output_subdir, "permid_url.json"),
-            failure_file=_join(config.failure_dir, "failure.json"),
+            failure_file=_join(output_subdir, "failure.json"),
         )
 
         batch_config = BatchConfig(

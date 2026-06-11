@@ -114,12 +114,6 @@ def get_args() -> argparse.Namespace:
         help="Directory for the company info result and PermID tracking files (local path or s3:// URL)",
     )
     parser.add_argument(
-        "--failure-directory",
-        type=str,
-        required=True,
-        help="Directory for the permanent failures file (local path or s3:// URL)",
-    )
-    parser.add_argument(
         "--input-type",
         type=InputSource,
         choices=list(InputSource),
@@ -186,7 +180,6 @@ def main() -> None:
     config = OrchestratorConfig(
         input_file=args.input_file,
         output_dir=args.output_directory,
-        failure_dir=args.failure_directory,
         input_type=args.input_type,
         api_key=api_key,
         geonames_user=geonames_user,
