@@ -58,7 +58,7 @@ OUTPUT_COLUMNS: list[str] = [
     *COMPANY_FIELDS,
 ]
 
-DEFAULT_OUTPUT_NAME = "company_info.parquet"
+DEFAULT_OUTPUT_NAME = "latest.parquet"
 
 
 class Output:
