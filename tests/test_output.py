@@ -122,5 +122,5 @@ class TestAggregate:
         out = tmp_path / "out"
         out.mkdir()
         path = Output(str(out)).aggregate()
-        assert path.endswith("company_info.parquet")
-        assert (out / "company_info.parquet").exists()
+        assert path.endswith("latest.parquet")
+        assert (out / "latest.parquet").exists()
