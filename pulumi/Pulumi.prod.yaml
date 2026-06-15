@@ -19,7 +19,7 @@ config:
       cron: cron(0 2 * * ? *)
       batch_size: "2450"
     - source: commercial_debt_tracker
-      input_file: s3://REPLACE_ME-prod-bucket/processors/cdt/debt-instruments
+      input_file: s3://REPLACE_ME-prod-bucket/processors/cdt/debt-instruments/latest.parquet
       cron: cron(30 2 * * ? *)
       batch_size: "2450"
     - source: corporate_subsidiaries

@@ -10,7 +10,6 @@ from abc import ABC, abstractmethod
 
 # Third party imports
 import pandas as pd
-import pyarrow.dataset as ds
 from idi_ftm2j_shared.logs import get_logger
 
 
@@ -18,7 +17,7 @@ class Input(ABC):
     """Abstract base class for all pipeline input sources."""
 
     def __init__(self, input_file: str) -> None:
-        """Store the input path (parquet file or shard directory; local or s3://)."""
+        """Store the input parquet path (local or s3://)."""
         self.input_file = input_file
         self.logger = get_logger(type(self).__name__)
 
@@ -319,11 +318,11 @@ class ShareholderInputCusip(Input):
 
 
 class CdtInput(Input):
-    """Input for CDT debt-instrument shards partitioned by ``cik_shard=*``.
+    """Input for the CDT debt-instruments parquet file.
 
-    ``input_file`` must point to the shard root directory (local or ``s3://``),
-    not a single file. Expects columns ``company_name`` and ``cik``.
-    Returns ``{company_name: [cik, ...]}``.
+    ``input_file`` is a single parquet file (local or ``s3://``) — e.g.
+    ``.../processors/cdt/debt-instruments/latest.parquet``. Expects columns
+    ``company_name`` and ``cik``. Returns ``{company_name: [cik, ...]}``.
     """
 
     @property
@@ -334,28 +333,6 @@ class CdtInput(Input):
             The identifier type.
         """
         return "cik"
-
-    @staticmethod
-    def read_parquet(input_file: str, required_columns: list[str]) -> pd.DataFrame:
-        """Read all ``cik_shard=*`` partitions under ``input_file`` as a single DataFrame.
-
-        Overrides the base implementation because CDT output is a partitioned dataset
-        rather than a single file. ``required_columns`` is accepted for interface
-        compatibility but ignored — only ``company_name`` and ``cik`` are projected.
-
-        Args:
-            input_file: Path to the shard root directory (local path or ``s3://`` URI).
-            required_columns: Unused; present for interface compatibility.
-
-        Returns:
-            DataFrame with columns ``company_name`` and ``cik``.
-        """
-        # A pyarrow dataset over the root reads every cik_shard partition in one go,
-        # whether shard_root is local or on S3 (s3fs resolves the s3:// scheme).
-        dataset = ds.dataset(input_file, format="parquet")
-        table = dataset.to_table(columns=["company_name", "cik"])
-        df = table.to_pandas()
-        return df
 
     def _extract_filter_parquet_cik(self, df: pd.DataFrame) -> dict[str, list[str]]:
         """Filter and deduplicate CDT rows, returning ``{company_name: [cik, ...]}``.
@@ -393,7 +370,7 @@ class CdtInput(Input):
         return subset.groupby("company_name")["cik"].apply(list).to_dict()
 
     def load_data(self) -> dict[str, list[str]]:
-        """Load all CDT debt-instrument shards and return ``{company_name: [cik, ...]}``."""
+        """Load the CDT debt-instruments parquet and return ``{company_name: [cik, ...]}``."""
         input_df = self.read_parquet(self.input_file, required_columns=["cik", "company_name"])
         return self._extract_filter_parquet_cik(input_df)
 

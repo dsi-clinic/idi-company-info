@@ -476,6 +476,7 @@ name = "idi-company-info"
 version = "0.1.1a8"
 source = { editable = "." }
 dependencies = [
+    { name = "boto3" },
     { name = "idi-ftm2j-shared" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -503,6 +504,7 @@ pulumi = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", specifier = ">=1.35.0" },
     { name = "idi-ftm2j-shared", specifier = ">=0.1.3" },
     { name = "pandas", specifier = ">=3.0.0" },
     { name = "pyarrow", specifier = ">=23.0.0" },

@@ -52,7 +52,7 @@ services:
         compress: "true"
 
   # ---------------------------------------------------------------------------
-  # Commercial Debt Tracker pipeline (input is a shard DIRECTORY)
+  # Commercial Debt Tracker pipeline (input is a single parquet FILE)
   # ---------------------------------------------------------------------------
   orchestrator-cdt:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
@@ -71,8 +71,8 @@ services:
       - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
-      # CDT input is a directory of cik_shard=* partitions, mounted at /data/input.
-      - INPUT_DIR_ORCHESTRATOR_CDT=${INPUT_DIR_ORCHESTRATOR_CDT:-/data/input}
+      # CDT input is a single parquet file inside the /data/input mount.
+      - INPUT_DIR_ORCHESTRATOR_CDT=${INPUT_DIR_ORCHESTRATOR_CDT:-/data/input/latest.parquet}
 
     volumes:
       - ${INPUT_VOLUME_SPEC_CDT:-${INPUT_DIR_CDT:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input:ro}

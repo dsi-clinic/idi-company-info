@@ -43,8 +43,7 @@ config:
       List of input sources to schedule. Each entry: {source, input_file, cron,
       batch_size}. `source` must be a valid InputSource slug (e.g.
       shareholder_tracker_cik, commercial_debt_tracker, corporate_subsidiaries);
-      `input_file` is an S3 URI to a parquet file or, for commercial_debt_tracker,
-      the shard-root directory.
+      `input_file` is an S3 URI to a parquet file.
 
   idi:buffer_size:
     description: Orchestrator write buffer size

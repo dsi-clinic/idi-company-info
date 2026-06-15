@@ -58,9 +58,9 @@ Schedules are driven entirely by the `idi:input_sources` list in each stack file
 one EventBridge schedule per entry. The active set is exactly three:
 `shareholder_tracker_cik`, `commercial_debt_tracker`, `corporate_subsidiaries`.
 (`shareholder_tracker_cusip` remains a valid `InputSource` but is intentionally not
-scheduled.) Each entry is `{source, input_file, cron, batch_size}`; for
-`commercial_debt_tracker`, `input_file` is the **shard directory**
-(`…/processors/cdt/debt-instruments`), not a single parquet. `idi:schedule_enabled`
+scheduled.) Each entry is `{source, input_file, cron, batch_size}`; `input_file` is a
+single parquet file (for `commercial_debt_tracker`,
+`…/processors/cdt/debt-instruments/latest.parquet`). `idi:schedule_enabled`
 is currently `"false"` in both stacks — set it to `"true"` per stack to arm the crons.
 
 ### Bringing up prod (first deploy)
