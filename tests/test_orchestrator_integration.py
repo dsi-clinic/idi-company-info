@@ -27,6 +27,7 @@ from idi_company_info.input import (
     SubsidiaryInput,
 )
 from idi_company_info.orchestrator import PipelineOrchestrator
+from idi_company_info.output import Output
 from idi_company_info.types import InputSource, OrchestratorConfig
 
 # Filenames the factory writes under output_dir/<input_type>/ — keep in sync
@@ -306,6 +307,33 @@ class TestCikPipelineIntegration:
 
         permid = _read_output(permid_file)
         assert permid[f"{entity_name}_cik_{cik}"]["result"] == [_PERMID_URL]
+
+    def test_aggregation_failure_does_not_fail_the_run(self, tmp_path):
+        """A failing final-output aggregation is logged but the run still succeeds.
+
+        The scraped caches are durable once pipeline.run() returns, so aggregation errors
+        must not flip the exit code (which would trigger an ECS retry).
+        """
+        entity_name = "Firm Alpha"
+        cik = "0001234567"
+        parquet = tmp_path / "data.parquet"
+        pd.DataFrame({"investor_name": [entity_name], "investor_cik": [cik]}).to_parquet(parquet)
+        config = _make_config(parquet, tmp_path / "out", self._SOURCE)
+
+        with (
+            patch.object(
+                LsegRecordMatch, "query_endpoint", return_value=_record_match_hit(entity_name, cik)
+            ),
+            patch.object(LSEGEntityLookup, "query_endpoint", return_value=_ENTITY_LOOKUP_HIT),
+            patch.object(GeonamesApi, "query_endpoint", return_value=_GEONAMES_MISS),
+            patch.object(Output, "aggregate", side_effect=RuntimeError("boom")),
+        ):
+            result = PipelineOrchestrator(config).run()
+
+        # Run reports success despite the aggregation failure, and caches are written.
+        assert result is True
+        result_file, _, _ = _paths_for(tmp_path / "out", self._SOURCE)
+        assert _PERMID_URL in _read_output(result_file)
 
     def test_produces_empty_output_when_no_permid_match(self, tmp_path):
         parquet = tmp_path / "data.parquet"

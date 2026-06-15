@@ -82,13 +82,6 @@ class PipelineOrchestrator:
             pipeline = PipelineFactory.build(self.config)
             pipeline.run()
 
-            # Regenerate the combined final parquet from every processor's caches.
-            if not self.config.skip_final_output:
-                Output(
-                    output_dir=self.config.output_dir,
-                    final_output_file=self.config.final_output_file,
-                ).aggregate()
-
         except KeyboardInterrupt:
             self.logger.info("Pipeline interrupted by user")
             return False
@@ -96,6 +89,18 @@ class PipelineOrchestrator:
         except Exception:
             self.logger.exception("Pipeline failed with an unexpected error")
             return False
+
+        # Regenerate the combined final parquet from every processor's caches
+        if not self.config.skip_final_output:
+            try:
+                Output(
+                    output_dir=self.config.output_dir,
+                    final_output_file=self.config.final_output_file,
+                ).aggregate()
+            except Exception:
+                self.logger.exception(
+                    "Final output aggregation failed (pipeline results are saved)"
+                )  # failure here is logged, do not trigger an ECS retry that re-burns API quota
 
         elapsed = datetime.now() - start_time
         self._log_banner(f"Pipeline completed successfully in {elapsed}")
@@ -170,7 +175,7 @@ def get_args() -> argparse.Namespace:
         "--final-output-file",
         type=str,
         default=None,
-        help="Aggregated parquet path (default: <output-directory>/company_info.parquet)",
+        help="Aggregated parquet path (default: <output-directory>/latest.parquet)",
     )
     parser.add_argument(
         "--skip-final-output",

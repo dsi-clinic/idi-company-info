@@ -2,7 +2,7 @@
 
 # Application imports
 from idi_company_info.company_pipeline import CompanyPipeline
-from idi_company_info.paths import join_path
+from idi_company_info.fs import join_path
 from idi_company_info.registry import INPUT_REGISTRY
 from idi_company_info.types import (
     ApiCredentials,

@@ -124,3 +124,25 @@ class TestAggregate:
         path = Output(str(out)).aggregate()
         assert path.endswith("latest.parquet")
         assert (out / "latest.parquet").exists()
+
+    def test_skips_processor_with_unparseable_cache(self, tmp_path):
+        """A malformed cache (e.g. mid-write) is skipped; valid processors still aggregate."""
+        out = tmp_path / "out"
+        url = "https://permid.org/1-1"
+        _write_processor(
+            out,
+            InputSource.SHAREHOLDER_TRACKER_CIK,
+            {"Firm A_cik_0000000001": _permid_entry("Firm A", "cik_0000000001", "Cik:1", [url])},
+            {url: _company(url, "Firm A Inc")},
+        )
+        # Write a truncated/invalid permid_url.json for a second processor.
+        bad_subdir = out / str(InputSource.COMMERCIAL_DEBT_TRACKER).lower()
+        bad_subdir.mkdir(parents=True)
+        (bad_subdir / "permid_url.json").write_text('{"Debt Co": {"search": ')  # truncated
+        (bad_subdir / "permid_data.json").write_text("{}")
+
+        df = pd.read_parquet(Output(str(out)).aggregate())
+
+        # Bad processor skipped; good processor's row present.
+        assert set(df["input_source"]) == {"shareholder_tracker_cik"}
+        assert len(df) == 1

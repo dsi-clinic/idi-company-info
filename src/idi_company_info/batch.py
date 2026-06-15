@@ -12,6 +12,7 @@ from idi_ftm2j_shared.storage import save_json
 
 # Application imports
 from idi_company_info.buffer import permid_cache_key
+from idi_company_info.fs import atomic_write
 
 
 class BatchProcessing:
@@ -143,7 +144,7 @@ class BatchProcessing:
         for url in stale_urls:
             self.result_data.pop(url, None)
 
-        save_json(str(result_file), self.result_data)
+        atomic_write(str(result_file), lambda p: save_json(p, self.result_data))
         self.logger.info("Pruned %d stale result(s) for re-fetch", len(stale_urls))
         return len(self.result_data)
 

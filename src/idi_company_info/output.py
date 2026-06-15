@@ -14,9 +14,8 @@ final file.
 
 # Standard library imports
 import argparse
-import pathlib
+import json
 import sys
-import uuid
 
 # Third party imports
 import pandas as pd
@@ -24,8 +23,8 @@ from idi_ftm2j_shared.logs import get_logger
 from idi_ftm2j_shared.storage import key_exists, load_json
 
 # Application imports
+from idi_company_info.fs import atomic_write, join_path
 from idi_company_info.lock import FileLock
-from idi_company_info.paths import join_path
 from idi_company_info.types import InputSource
 
 # Company-info fields carried over from each result entry (CompanyResult), excluding
@@ -76,7 +75,7 @@ class Output:
             output_dir: Root output directory holding one subdir per input source
                 (local path or ``s3://`` URL).
             final_output_file: Destination parquet path. Defaults to
-                ``{output_dir}/company_info.parquet``.
+                ``{output_dir}/latest.parquet``.
             lock_timeout: Max seconds to wait for the write lock.
         """
         self.output_dir = str(output_dir)
@@ -99,8 +98,17 @@ class Output:
             if not key_exists(permid_file):
                 continue
             result_file = join_path(subdir, "permid_data.json")
-            permid_data = load_json(permid_file, return_type="dict")
-            result_data = load_json(result_file, return_type="dict")
+            try:
+                permid_data = load_json(permid_file, return_type="dict")
+                result_data = load_json(result_file, return_type="dict")
+            except json.JSONDecodeError:
+                # A cache mid-write by a concurrent run can be unparseable; skip this
+                # processor for this run rather than failing the whole aggregation.
+                self.logger.warning(
+                    "Skipping %s: cache not parseable this run (will be picked up next run)",
+                    input_type,
+                )
+                continue
             rows.extend(self._build_rows(str(input_type), permid_data, result_data))
 
         output_df = pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
@@ -151,13 +159,8 @@ class Output:
         return rows
 
     def _write_parquet(self, df: pd.DataFrame) -> None:
-        """Write ``df`` to the final path. Local writes go via a temp file + atomic rename."""
-        if self.final_output_file.startswith("s3://"):
-            df.to_parquet(self.final_output_file, index=False)
-            return
-        tmp_path = f"{self.final_output_file}.tmp.{uuid.uuid4().hex}"
-        df.to_parquet(tmp_path, index=False)
-        pathlib.Path(tmp_path).replace(self.final_output_file)
+        """Write ``df`` to the final path atomically (local temp + rename; S3 direct)."""
+        atomic_write(self.final_output_file, lambda p: df.to_parquet(p, index=False))
 
 
 def get_args() -> argparse.Namespace:
@@ -175,7 +178,7 @@ def get_args() -> argparse.Namespace:
         "--final-output-file",
         type=str,
         default=None,
-        help="Destination parquet path (default: <output-directory>/company_info.parquet)",
+        help="Destination parquet path (default: <output-directory>/latest.parquet)",
     )
     parser.add_argument(
         "--lock-timeout",
