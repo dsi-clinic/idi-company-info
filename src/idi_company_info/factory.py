@@ -1,10 +1,8 @@
 """Builds configured CompanyPipeline instances from a top-level OrchestratorConfig."""
 
-# Standard library imports
-import pathlib
-
 # Application imports
 from idi_company_info.company_pipeline import CompanyPipeline
+from idi_company_info.paths import join_path
 from idi_company_info.registry import INPUT_REGISTRY
 from idi_company_info.types import (
     ApiCredentials,
@@ -12,14 +10,6 @@ from idi_company_info.types import (
     FilePaths,
     OrchestratorConfig,
 )
-
-
-def _join(base: str | pathlib.Path, name: str) -> str:
-    """Join a filename onto a base directory, supporting both local paths and s3:// URLs."""
-    base_str = str(base)
-    if base_str.startswith("s3://"):
-        return f"{base_str.rstrip('/')}/{name}"
-    return str(pathlib.Path(base_str) / name)
 
 
 class PipelineFactory:
@@ -46,11 +36,11 @@ class PipelineFactory:
         input_spec = INPUT_REGISTRY[config.input_type]
         input_source = input_spec.cls(config.input_file)
 
-        output_subdir = _join(config.output_dir, str(config.input_type).lower())
+        output_subdir = join_path(config.output_dir, str(config.input_type).lower())
         file_paths = FilePaths(
-            result_file=_join(output_subdir, "permid_data.json"),
-            permid_file=_join(output_subdir, "permid_url.json"),
-            failure_file=_join(output_subdir, "failure.json"),
+            result_file=join_path(output_subdir, "permid_data.json"),
+            permid_file=join_path(output_subdir, "permid_url.json"),
+            failure_file=join_path(output_subdir, "failure.json"),
         )
 
         batch_config = BatchConfig(

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Unit tests for idi_company_info.input.CdtInput.
 
-CdtInput reads a *directory* of CDT debt-instrument shards
-(``cik_shard=*/part-0000.parquet``), projects company_name/cik, drops null and
-literal ``"nan"`` company names, zero-pads CIKs to 10 digits, and groups by
-company_name.
+CdtInput reads a single CDT debt-instruments parquet file, projects company_name/cik,
+drops null and literal ``"nan"`` company names, zero-pads CIKs to 10 digits, and groups
+by company_name.
 """
 
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
 from idi_company_info.input import CdtInput
 
@@ -19,14 +19,6 @@ def make_instance(input_file: str = "") -> CdtInput:
     instance = CdtInput(input_file)
     instance.logger = MagicMock()
     return instance
-
-
-def _write_shards(root, shards: dict[str, pd.DataFrame]) -> None:
-    """Write each DataFrame to ``root/cik_shard=<key>/part-0000.parquet``."""
-    for shard, df in shards.items():
-        part_dir = root / f"cik_shard={shard}"
-        part_dir.mkdir(parents=True)
-        df.to_parquet(part_dir / "part-0000.parquet")
 
 
 class TestIdentifierType:
@@ -107,20 +99,38 @@ class TestExtractFilterParquetCik:
 
 
 class TestReadParquetAndLoad:
-    """CdtInput.read_parquet / load_data sweep an entire shard directory."""
+    """CdtInput.read_parquet / load_data read a single parquet file."""
 
-    def test_reads_all_shards_in_directory(self, tmp_path):
-        _write_shards(
-            tmp_path,
+    def test_reads_single_parquet_file(self, tmp_path):
+        input_file = tmp_path / "latest.parquet"
+        pd.DataFrame(
             {
-                "0000": pd.DataFrame({"company_name": ["Co A"], "cik": ["1002910"]}),
-                "0001": pd.DataFrame(
-                    {"company_name": ["Co B", "nan"], "cik": ["2078008", "1461755"]}
-                ),
-            },
-        )
-        instance = make_instance(str(tmp_path))
+                "company_name": ["Co A", "Co B", "nan"],
+                "cik": ["1002910", "2078008", "1461755"],
+            }
+        ).to_parquet(input_file)
+        instance = make_instance(str(input_file))
         result = instance.load_data()
 
         # Both real companies appear, the literal "nan" row is dropped, CIKs padded.
         assert result == {"Co A": ["0001002910"], "Co B": ["0002078008"]}
+
+    def test_ignores_extra_columns(self, tmp_path):
+        """Wide schemas (e.g. lenders_json) are fine — only company_name/cik are used."""
+        input_file = tmp_path / "latest.parquet"
+        pd.DataFrame(
+            {
+                "debt_instrument_id": ["dim::1"],
+                "company_name": ["Co A"],
+                "cik": ["1002910"],
+                "lenders_json": ["[]"],
+            }
+        ).to_parquet(input_file)
+        result = make_instance(str(input_file)).load_data()
+        assert result == {"Co A": ["0001002910"]}
+
+    def test_raises_when_required_column_missing(self, tmp_path):
+        input_file = tmp_path / "latest.parquet"
+        pd.DataFrame({"company_name": ["Co A"]}).to_parquet(input_file)
+        with pytest.raises(ValueError):
+            make_instance(str(input_file)).load_data()

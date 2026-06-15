@@ -132,6 +132,10 @@ class OrchestratorConfig:
     buffer_size: int = 500
     threshold_days: int | None = None
     match_score_threshold: int = 1
+    final_output_file: str | None = (
+        None  # aggregated parquet; None = <output_dir>/company_info.parquet
+    )
+    skip_final_output: bool = False  # when True, do not aggregate after the pipeline run
 
 
 class MergeStrategy(StrEnum):

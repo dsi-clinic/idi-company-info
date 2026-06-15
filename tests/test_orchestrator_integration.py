@@ -369,7 +369,7 @@ class TestCikPipelineIntegration:
 
 
 class TestCommercialDebtPipelineIntegration:
-    """End-to-end integration for the CDT pipeline (shard-directory input)."""
+    """End-to-end integration for the CDT pipeline (single-file parquet input)."""
 
     _SOURCE = InputSource.COMMERCIAL_DEBT_TRACKER
 
@@ -378,14 +378,10 @@ class TestCommercialDebtPipelineIntegration:
         raw_cik = "1234567"
         padded_cik = "0001234567"  # CdtInput zero-pads to 10 digits
 
-        # CDT input is a directory of cik_shard partitions.
-        shard_dir = tmp_path / "debt_instruments" / "cik_shard=0000"
-        shard_dir.mkdir(parents=True)
-        pd.DataFrame({"company_name": [entity_name], "cik": [raw_cik]}).to_parquet(
-            shard_dir / "part-0000.parquet"
-        )
-        input_dir = tmp_path / "debt_instruments"
-        config = _make_config(input_dir, tmp_path / "out", self._SOURCE)
+        # CDT input is a single parquet file.
+        input_file = tmp_path / "debt_instruments.parquet"
+        pd.DataFrame({"company_name": [entity_name], "cik": [raw_cik]}).to_parquet(input_file)
+        config = _make_config(input_file, tmp_path / "out", self._SOURCE)
 
         with (
             patch.object(

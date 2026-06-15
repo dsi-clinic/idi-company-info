@@ -4,7 +4,7 @@
 The input source (see InputSource) selects the Input loader and identifier type:
   shareholder_tracker_cik    — shareholder CIK Record Match
   shareholder_tracker_cusip  — shareholder CUSIP (ticker) Record Match
-  commercial_debt_tracker    — CDT debt-instrument shards (CIK)
+  commercial_debt_tracker    — CDT debt instruments parquet (CIK)
   corporate_subsidiaries     — subsidiary parent CIKs
 
 To add a new input source, register it in INPUT_REGISTRY.
@@ -23,6 +23,7 @@ from idi_ftm2j_shared.logs import get_logger
 
 # Application imports
 from idi_company_info.factory import PipelineFactory
+from idi_company_info.output import Output
 from idi_company_info.types import InputSource, OrchestratorConfig
 
 
@@ -80,6 +81,13 @@ class PipelineOrchestrator:
         try:
             pipeline = PipelineFactory.build(self.config)
             pipeline.run()
+
+            # Regenerate the combined final parquet from every processor's caches.
+            if not self.config.skip_final_output:
+                Output(
+                    output_dir=self.config.output_dir,
+                    final_output_file=self.config.final_output_file,
+                ).aggregate()
 
         except KeyboardInterrupt:
             self.logger.info("Pipeline interrupted by user")
@@ -158,6 +166,17 @@ def get_args() -> argparse.Namespace:
         default=1,
         help="Minimum Record Match score to accept (default: 1 = 100%%)",
     )
+    parser.add_argument(
+        "--final-output-file",
+        type=str,
+        default=None,
+        help="Aggregated parquet path (default: <output-directory>/company_info.parquet)",
+    )
+    parser.add_argument(
+        "--skip-final-output",
+        action="store_true",
+        help="Skip aggregating the combined final parquet after the pipeline run",
+    )
 
     return parser.parse_args()
 
@@ -189,6 +208,8 @@ def main() -> None:
         buffer_size=args.buffer_size,
         threshold_days=args.threshold_days,
         match_score_threshold=args.match_score_threshold,
+        final_output_file=args.final_output_file,
+        skip_final_output=args.skip_final_output,
     )
 
     orchestrator = PipelineOrchestrator(config)
