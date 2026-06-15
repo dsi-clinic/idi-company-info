@@ -87,3 +87,56 @@ task_definition = aws.ecs.TaskDefinition(
     container_definitions=container_definitions,
     tags=config.tags(),
 )
+
+# -----------------------------------------------------------------------------
+# Aggregate Task Definition (on-demand `aws ecs run-task`)
+#
+# Runs the final-output aggregator (idi_company_info.output) instead of the
+# orchestrator.
+# -----------------------------------------------------------------------------
+AGGREGATE_CONTAINER_NAME = "company-info-aggregate"
+
+aggregate_container_definitions = pulumi.Output.all(
+    image=ecr.orchestrator_image,
+    log_group_name=logs.log_group.name,
+    region=config.aws_region,
+).apply(
+    lambda args: json.dumps(
+        [
+            {
+                "name": AGGREGATE_CONTAINER_NAME,
+                "image": args["image"],
+                "essential": True,
+                "entryPoint": ["python", "-m", "idi_company_info.output"],
+                "command": ["--help"],
+                "environment": [
+                    {"name": "AWS_REGION", "value": args["region"]},
+                    {"name": "CLOUDWATCH_LOGS_ENABLED", "value": "false"},
+                    {"name": "PYTHONUNBUFFERED", "value": "1"},
+                ],
+                "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {
+                        "awslogs-group": args["log_group_name"],
+                        "awslogs-region": args["region"],
+                        "awslogs-stream-prefix": "aggregate",
+                    },
+                },
+                "stopTimeout": 30,
+            }
+        ]
+    )
+)
+
+aggregate_task_definition = aws.ecs.TaskDefinition(
+    "idi-ecs-aggregate-task-definition",
+    family=f"{config.name_prefix}-aggregate",
+    requires_compatibilities=["FARGATE"],
+    network_mode="awsvpc",
+    cpu=cpu,
+    memory=memory,
+    execution_role_arn=iam.task_execution_role.arn,
+    task_role_arn=iam.task_role.arn,
+    container_definitions=aggregate_container_definitions,
+    tags=config.tags(),
+)

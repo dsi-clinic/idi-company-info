@@ -78,6 +78,31 @@ first `main` deploy:
 > **Note:** the previously committed dev PermID key was exposed in git history —
 > rotate it and update the `PERMID_API_KEY` GitHub secret.
 
+### Running the final aggregation on demand
+
+Each per-processor run regenerates the combined `latest.parquet` automatically. To force a
+re-aggregation out of band, run the dedicated **aggregate task definition**
+(`{prefix}-aggregate`). It runs `idi_company_info.output` instead of the orchestrator — the
+image ENTRYPOINT is `pipeline` and ECS `containerOverrides` cannot change `entryPoint`, so a
+separate task definition (with its own entryPoint) is required; passing aggregate args to the
+orchestrator task definition would not work.
+
+```bash
+aws ecs run-task \
+  --cluster "$(pulumi stack output ecs_cluster_name)" \
+  --task-definition "$(pulumi stack output aggregate_task_definition_arn)" \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[$(pulumi stack output primary_subnet_id)],securityGroups=[$(pulumi stack output ecs_sg_id)],assignPublicIp=ENABLED}" \
+  --overrides '{"containerOverrides":[{"name":"company-info-aggregate","command":["--output-directory","s3://<bucket>/company-info/output"]}]}' \
+  --region us-east-2
+```
+
+`command` accepts the aggregate CLI flags (`--output-directory` is required; `--final-output-file`
+and `--lock-timeout` are optional). Logs stream to CloudWatch under the `aggregate/...` prefix.
+
+> The IAM identity invoking `run-task` needs `ecs:RunTask` on the aggregate task-definition
+> arn and `iam:PassRole` on both the task execution and task roles.
+
 ---
 
 ## Resources Created

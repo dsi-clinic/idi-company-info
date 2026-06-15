@@ -37,6 +37,7 @@ pulumi.export("ecr_orchestrator_image", ecr.orchestrator_image)
 pulumi.export("ecs_cluster_arn", ecs.cluster.arn)
 pulumi.export("ecs_cluster_name", ecs.cluster.name)
 pulumi.export("task_definition_arn", ecs.task_definition.arn)
+pulumi.export("aggregate_task_definition_arn", ecs.aggregate_task_definition.arn)
 
 # Secrets
 pulumi.export("permid_secret_arn", secrets.permid_secret.arn)
