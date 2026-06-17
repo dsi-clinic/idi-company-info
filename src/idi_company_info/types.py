@@ -53,13 +53,13 @@ class CompanyResult(TypedDict):
     ticker: str | None
     exchange: str | None
     exchange_code: str | None
-    mic: str | None
     ric: str | None
     last_processed: str
 
 
 # A result_file entry IS the company info, flat and keyed by permid_url
 ResultEntry = CompanyResult
+
 
 @dataclass(frozen=True)
 class QuoteInfo:
@@ -68,7 +68,6 @@ class QuoteInfo:
     ticker: str | None = None
     exchange: str | None = None
     exchange_code: str | None = None
-    mic: str | None = None
     ric: str | None = None
 
 

@@ -108,10 +108,12 @@ class CompInfoRetrieval(Retrieval):
     def _build_company_info_batch(
         self, permid_data: dict[str, Any], result_data: dict[str, Any]
     ) -> list[str]:
-        """Select the unique permid URLs to fetch, capped at batch_size API calls.
+        """Select the unique permid URLs to fetch, capped at batch_size companies.
 
-        Every entity-lookup call costs one request, so one company == one request. URLs
-        already present in result_data are skipped (self-heal / backlog drain).
+        The cap counts companies, not requests. Each company is one entity-lookup call
+        plus, when ``enrich_metadata`` is on, up to 4 follow-up calls (3 sectors + 1
+        quote) — so a full batch can cost up to ``batch_size * 5`` requests. URLs already
+        present in result_data are skipped (self-heal / backlog drain).
 
         Args:
             permid_data: The permid cache: {cache_key: {search, result: [permid_url, ...]}}.
@@ -183,13 +185,14 @@ class CompInfoRetrieval(Retrieval):
         """Map a raw entity-lookup response to a pure permid_url-keyed result entry.
 
         Sectors arrive as linked permid.org URLs (resolved via follow-up entity-lookup
-        calls); the primary quote is one linked URL whose record carries ticker AND
-        exchange inline. When ``batch_config.enrich_metadata`` is off these five fields
-        stay None and cost no extra calls. Worst case: 3 sector + 1 quote follow-ups.
+        calls into a label + comment each); the primary quote is one linked URL whose
+        record carries the ticker and exchange identifiers inline. When
+        ``batch_config.enrich_metadata`` is off these ten enrichment fields stay None and
+        cost no extra calls. Worst case: 3 sector + 1 quote follow-ups.
 
-        Note: organization-level link keys are bare (``hasPrimaryBusinessSector``,
+        Note: organization-level link keys are read bare (``hasPrimaryBusinessSector``,
         ``hasOrganizationPrimaryQuote``) per the JSON-LD context — same convention as
-        ``hasActivityStatus``/``hasURL`` above — with the ``tr-org:`` form as a fallback.
+        ``hasActivityStatus``/``hasURL`` above.
 
         Args:
             permid_url: The PermID URL used in the request.
@@ -202,9 +205,15 @@ class CompInfoRetrieval(Retrieval):
         """
         quote_info = self._resolve_quote(response.get("hasOrganizationPrimaryQuote"), batch_stats)
 
-        bus_label, bus_comment = self._resolve_sector_name(response.get("hasPrimaryBusinessSector"), batch_stats)
-        eco_label, eco_comment = self._resolve_sector_name(response.get("hasPrimaryEconomicSector"), batch_stats)
-        ind_label, ind_comment = self._resolve_sector_name(response.get("hasPrimaryIndustryGroup"), batch_stats)
+        bus_label, bus_comment = self._resolve_sector_name(
+            response.get("hasPrimaryBusinessSector"), batch_stats
+        )
+        eco_label, eco_comment = self._resolve_sector_name(
+            response.get("hasPrimaryEconomicSector"), batch_stats
+        )
+        ind_label, ind_comment = self._resolve_sector_name(
+            response.get("hasPrimaryIndustryGroup"), batch_stats
+        )
 
         return {
             "investor_name": response.get("vcard:organization-name"),
@@ -229,7 +238,6 @@ class CompInfoRetrieval(Retrieval):
             "ticker": quote_info.ticker,
             "exchange": quote_info.exchange,
             "exchange_code": quote_info.exchange_code,
-            "mic": quote_info.mic,
             "ric": quote_info.ric,
             "last_processed": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
         }
@@ -265,40 +273,34 @@ class CompInfoRetrieval(Retrieval):
             return None
         return response.get("data")
 
-    def _resolve_quote(
-        self, url: str | None, batch_stats: BatchStats) -> QuoteInfo:
+    def _resolve_quote(self, url: str | None, batch_stats: BatchStats) -> QuoteInfo:
         """Resolve the primary-quote permid URL to ``QuoteInfo``.
 
-        A ``tr-fin:Quote`` record carries both the ticker and the exchange inline, so a
-        single follow-up call yields both — no further lookup is needed.
+        A ``tr-fin:Quote`` record carries the ticker and the exchange identifiers inline,
+        so a single follow-up call yields all of them — no further lookup is needed.
 
         Args:
             url: The primary-quote permid URL, or None.
             batch_stats: Accumulator for run-level statistics.
 
         Returns:
-            A (ticker, exchange) tuple; either element is None when unresolved.
+            A ``QuoteInfo`` (ticker, exchange, exchange_code, ric); each field is None
+            when the quote is unresolved or the field is absent.
         """
         data = self._resolve_permid_link(url, batch_stats)
         if not data:
             return QuoteInfo()
 
-
         ticker = data.get("tr-fin:hasExchangeTicker")
-        exchange = data.get("tr-fin:hasExchangeTicker")
+        exchange = data.get("tr-fin:hasMic")
         exchange_code = data.get("tr-fin:hasExchangeCode")
-        mic = data.get("tr-fin:hasMic")
         ric = data.get("tr-fin:hasRic")
 
-        return QuoteInfo(
-            ticker=ticker,
-            exchange=exchange,
-            exchange_code=exchange_code,
-            mic=mic,
-            ric=ric
-        )
+        return QuoteInfo(ticker=ticker, exchange=exchange, exchange_code=exchange_code, ric=ric)
 
-    def _resolve_sector_name(self, url: str | None, batch_stats: BatchStats) -> tuple[str | None, str | None]:
+    def _resolve_sector_name(
+        self, url: str | None, batch_stats: BatchStats
+    ) -> tuple[str | None, str | None]:
         """Resolve a linked sector/industry permid URL to its human-readable label.
 
         Args:
@@ -312,11 +314,7 @@ class CompInfoRetrieval(Retrieval):
         if not data:
             return None, None
 
-        label = (
-            data.get("prefLabel")
-            or data.get("rdfs:label")
-            or None
-        )
+        label = data.get("prefLabel") or data.get("rdfs:label") or None
         comment = data.get("rdfs:comment")
 
         return (label, comment)

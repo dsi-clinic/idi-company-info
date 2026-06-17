@@ -26,13 +26,14 @@ _ENTITY_DATA = {
     "hasOrganizationPrimaryQuote": _QUOTE_URL,
 }
 
-# Linked records returned by the follow-up calls, keyed by the URL queried. The quote
-# record carries ticker AND exchange inline (no further lookup) — modelled on a real
+# Linked records returned by the follow-up calls, keyed by the URL queried. Sector
+# records expose a bare ``prefLabel`` (with ``rdfs:comment``); the quote record carries
+# ticker and exchange identifiers inline (no further lookup) — modelled on a real
 # tr-fin:Quote (e.g. AAL on LSE: ticker "AAL", code "LSE", MIC "XLON", RIC "AAL.L").
 _LINKED_RECORDS = {
-    _BUSINESS_SECTOR_URL: {"skos:prefLabel": "Technology"},
-    _ECONOMIC_SECTOR_URL: {"skos:prefLabel": "Information Technology"},
-    _INDUSTRY_GROUP_URL: {"skos:prefLabel": "Software & IT Services"},
+    _BUSINESS_SECTOR_URL: {"prefLabel": "Technology", "rdfs:comment": "Tech sector"},
+    _ECONOMIC_SECTOR_URL: {"prefLabel": "Information Technology"},
+    _INDUSTRY_GROUP_URL: {"prefLabel": "Software & IT Services"},
     _QUOTE_URL: {
         "tr-fin:hasExchangeTicker": "TEST",
         "tr-fin:hasRic": "TEST.O",
@@ -63,17 +64,22 @@ def _make_retriever(enrich_metadata: bool = True) -> CompInfoRetrieval:
 class TestParseCompanyInfoEnrichment:
     """_parse_company_info resolves sector and quote links when enrichment is on."""
 
-    def test_populates_all_five_fields(self):
+    def test_populates_all_enrichment_fields(self):
         retriever = _make_retriever(enrich_metadata=True)
         stats = BatchStats()
 
         entry = retriever._parse_company_info(_PERMID_URL, _ENTITY_DATA, stats)
 
-        assert entry["primary_business_sector"] == "Technology"
-        assert entry["primary_economic_sector"] == "Information Technology"
-        assert entry["primary_industry_group"] == "Software & IT Services"
+        assert entry["primary_business_sector_label"] == "Technology"
+        assert entry["primary_economic_sector_label"] == "Information Technology"
+        assert entry["primary_industry_group_label"] == "Software & IT Services"
+        assert entry["primary_business_sector_comment"] == "Tech sector"
+        assert entry["primary_economic_sector_comment"] is None
+        # exchange is the MIC; exchange_code and ric come from their own quote fields.
         assert entry["ticker"] == "TEST"
-        assert entry["exchange"] == "NSM"
+        assert entry["exchange"] == "XNGS"
+        assert entry["exchange_code"] == "NSM"
+        assert entry["ric"] == "TEST.O"
 
     def test_counts_follow_up_calls(self):
         retriever = _make_retriever(enrich_metadata=True)
@@ -93,11 +99,16 @@ class TestParseCompanyInfoEnrichment:
         assert stats.total_follow_up_calls == 0
         retriever.api_clients.entity_lookup.query_endpoint.assert_not_called()
         for field in (
-            "primary_business_sector",
-            "primary_economic_sector",
-            "primary_industry_group",
+            "primary_business_sector_label",
+            "primary_economic_sector_label",
+            "primary_industry_group_label",
+            "primary_business_sector_comment",
+            "primary_economic_sector_comment",
+            "primary_industry_group_comment",
             "ticker",
             "exchange",
+            "exchange_code",
+            "ric",
         ):
             assert entry[field] is None
 
@@ -112,7 +123,7 @@ class TestParseCompanyInfoEnrichment:
         )
 
         assert stats.total_follow_up_calls == 0
-        assert entry["primary_business_sector"] is None
+        assert entry["primary_business_sector_label"] is None
         assert entry["ticker"] is None
         assert entry["exchange"] is None
 
@@ -122,10 +133,10 @@ class TestParseCompanyInfoEnrichment:
 
         entry = retriever._parse_company_info(
             _PERMID_URL,
-            {"@id": _PERMID_URL, "tr-org:hasPrimaryBusinessSector": "https://permid.org/1-missing"},
+            {"@id": _PERMID_URL, "hasPrimaryBusinessSector": "https://permid.org/1-missing"},
             stats,
         )
 
         # The call was attempted (and counted) but returned a non-200.
         assert stats.total_follow_up_calls == 1
-        assert entry["primary_business_sector"] is None
+        assert entry["primary_business_sector_label"] is None
