@@ -47,6 +47,7 @@ class PipelineFactory:
             batch_size=config.batch_size,
             buffer_size=config.buffer_size,
             threshold_days=config.threshold_days,
+            enrich_metadata=config.enrich_metadata,
         )
 
         api_credentials = ApiCredentials(

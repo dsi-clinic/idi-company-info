@@ -294,6 +294,10 @@ class CompanyPipeline:
             company_rate,
         )
         self.logger.info(
+            "Metadata follow-ups:  %d additional API calls (sectors + ticker/exchange)",
+            stats["total_follow_up_calls"],
+        )
+        self.logger.info(
             "Processed:   Entities: %d | Records: %d | Duplicates removed: %d",
             stats["total_entities"],
             stats["total_records"],

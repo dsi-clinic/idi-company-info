@@ -44,6 +44,11 @@ def _company(url: str, name: str) -> dict:
         "domiciled_in": None,
         "url": None,
         "activity_status": "Active",
+        "primary_business_sector": None,
+        "primary_economic_sector": None,
+        "primary_industry_group": None,
+        "ticker": None,
+        "exchange": None,
         "last_processed": "20260611T101530",
     }
 

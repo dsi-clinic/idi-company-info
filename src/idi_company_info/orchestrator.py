@@ -182,6 +182,12 @@ def get_args() -> argparse.Namespace:
         action="store_true",
         help="Skip aggregating the combined final parquet after the pipeline run",
     )
+    parser.add_argument(
+        "--no-enrich-metadata",
+        dest="enrich_metadata",
+        action="store_false",
+        help="Skip sector and ticker/exchange follow-up lookups (1 API call per company)",
+    )
 
     return parser.parse_args()
 
@@ -215,6 +221,7 @@ def main() -> None:
         match_score_threshold=args.match_score_threshold,
         final_output_file=args.final_output_file,
         skip_final_output=args.skip_final_output,
+        enrich_metadata=args.enrich_metadata,
     )
 
     orchestrator = PipelineOrchestrator(config)

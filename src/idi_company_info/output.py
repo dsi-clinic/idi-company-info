@@ -42,6 +42,11 @@ COMPANY_FIELDS: list[str] = [
     "domiciled_in",
     "url",
     "activity_status",
+    "primary_business_sector",
+    "primary_economic_sector",
+    "primary_industry_group",
+    "ticker",
+    "exchange",
     "last_processed",
 ]
 

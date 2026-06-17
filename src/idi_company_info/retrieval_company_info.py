@@ -18,6 +18,7 @@ from idi_company_info.types import (
     FilePaths,
     MergeStrategy,
     PermidResponse,
+    QuoteInfo,
     ResultEntry,
 )
 
@@ -172,21 +173,39 @@ class CompInfoRetrieval(Retrieval):
             self._handle_failures(response, failure_pairs)
             return {}
 
-        company_data = self._parse_company_info(permid_url, data)
+        company_data = self._parse_company_info(permid_url, data, batch_stats)
         batch_stats.total_company_info += 1
         return {permid_url: company_data}
 
-    def _parse_company_info(self, permid_url: str, response: dict[str, Any]) -> ResultEntry:
+    def _parse_company_info(
+        self, permid_url: str, response: dict[str, Any], batch_stats: BatchStats
+    ) -> ResultEntry:
         """Map a raw entity-lookup response to a pure permid_url-keyed result entry.
+
+        Sectors arrive as linked permid.org URLs (resolved via follow-up entity-lookup
+        calls); the primary quote is one linked URL whose record carries ticker AND
+        exchange inline. When ``batch_config.enrich_metadata`` is off these five fields
+        stay None and cost no extra calls. Worst case: 3 sector + 1 quote follow-ups.
+
+        Note: organization-level link keys are bare (``hasPrimaryBusinessSector``,
+        ``hasOrganizationPrimaryQuote``) per the JSON-LD context — same convention as
+        ``hasActivityStatus``/``hasURL`` above — with the ``tr-org:`` form as a fallback.
 
         Args:
             permid_url: The PermID URL used in the request.
             response: The ``data`` payload from the entity-lookup response.
+            batch_stats: Accumulator for run-level statistics; follow-up calls are counted.
 
         Returns:
             A flat company-info entry (API fields + last_processed). The permid_url is
             the dict key — there is no ``search``/``result`` envelope.
         """
+        quote_info = self._resolve_quote(response.get("hasOrganizationPrimaryQuote"), batch_stats)
+
+        bus_label, bus_comment = self._resolve_sector_name(response.get("hasPrimaryBusinessSector"), batch_stats)
+        eco_label, eco_comment = self._resolve_sector_name(response.get("hasPrimaryEconomicSector"), batch_stats)
+        ind_label, ind_comment = self._resolve_sector_name(response.get("hasPrimaryIndustryGroup"), batch_stats)
+
         return {
             "investor_name": response.get("vcard:organization-name"),
             "permid_id": response.get("tr-common:hasPermId") or permid_url.split("/")[-1],
@@ -201,8 +220,106 @@ class CompInfoRetrieval(Retrieval):
             "domiciled_in": self._query_geonames_location(response.get("isDomiciledIn")),
             "url": response.get("hasURL"),
             "activity_status": response.get("hasActivityStatus"),
+            "primary_business_sector_label": bus_label,
+            "primary_economic_sector_label": eco_label,
+            "primary_industry_group_label": ind_label,
+            "primary_business_sector_comment": bus_comment,
+            "primary_economic_sector_comment": eco_comment,
+            "primary_industry_group_comment": ind_comment,
+            "ticker": quote_info.ticker,
+            "exchange": quote_info.exchange,
+            "exchange_code": quote_info.exchange_code,
+            "mic": quote_info.mic,
+            "ric": quote_info.ric,
             "last_processed": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
         }
+
+    def _resolve_permid_link(
+        self, url: str | None, batch_stats: BatchStats
+    ) -> dict[str, Any] | None:
+        """Resolve a linked permid.org URL via a follow-up entity-lookup call.
+
+        Generalizes the follow-up-query pattern used by ``_query_geonames_location`` for
+        the entity-lookup client. Each attempted call is counted against
+        ``batch_stats.total_follow_up_calls`` so the added daily-call cost is observable.
+        No-op (and no call) when enrichment is disabled or the URL is absent.
+
+        Args:
+            url: The linked permid.org URL to resolve, or None.
+            batch_stats: Accumulator for run-level statistics.
+
+        Returns:
+            The ``data`` payload of the linked record, or None on absent URL / non-200.
+        """
+        if not self.batch_config.enrich_metadata or not url:
+            return None
+
+        batch_stats.total_follow_up_calls += 1
+        response = self.api_clients.entity_lookup.query_endpoint(permid_url=url)
+        if response.get("status_code") != self._HTTP_OK:
+            self.logger.warning(
+                "Follow-up lookup failed for linked PermID %s: %s",
+                url,
+                response.get("error"),
+            )
+            return None
+        return response.get("data")
+
+    def _resolve_quote(
+        self, url: str | None, batch_stats: BatchStats) -> QuoteInfo:
+        """Resolve the primary-quote permid URL to ``QuoteInfo``.
+
+        A ``tr-fin:Quote`` record carries both the ticker and the exchange inline, so a
+        single follow-up call yields both — no further lookup is needed.
+
+        Args:
+            url: The primary-quote permid URL, or None.
+            batch_stats: Accumulator for run-level statistics.
+
+        Returns:
+            A (ticker, exchange) tuple; either element is None when unresolved.
+        """
+        data = self._resolve_permid_link(url, batch_stats)
+        if not data:
+            return QuoteInfo()
+
+
+        ticker = data.get("tr-fin:hasExchangeTicker")
+        exchange = data.get("tr-fin:hasExchangeTicker")
+        exchange_code = data.get("tr-fin:hasExchangeCode")
+        mic = data.get("tr-fin:hasMic")
+        ric = data.get("tr-fin:hasRic")
+
+        return QuoteInfo(
+            ticker=ticker,
+            exchange=exchange,
+            exchange_code=exchange_code,
+            mic=mic,
+            ric=ric
+        )
+
+    def _resolve_sector_name(self, url: str | None, batch_stats: BatchStats) -> tuple[str | None, str | None]:
+        """Resolve a linked sector/industry permid URL to its human-readable label.
+
+        Args:
+            url: The sector/industry permid URL, or None.
+            batch_stats: Accumulator for run-level statistics.
+
+        Returns:
+            The sector label and comment, or None, None if unresolved.
+        """
+        data = self._resolve_permid_link(url, batch_stats)
+        if not data:
+            return None, None
+
+        label = (
+            data.get("prefLabel")
+            or data.get("rdfs:label")
+            or None
+        )
+        comment = data.get("rdfs:comment")
+
+        return (label, comment)
 
     def _query_geonames_location(self, url: str | None) -> str | None:
         """Query the Geonames API for a human-readable location name.

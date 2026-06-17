@@ -44,11 +44,32 @@ class CompanyResult(TypedDict):
     domiciled_in: str | None
     url: str | None
     activity_status: str | None
+    primary_business_sector_label: str | None
+    primary_economic_sector_label: str | None
+    primary_industry_group_label: str | None
+    primary_business_sector_comment: str | None
+    primary_economic_sector_comment: str | None
+    primary_industry_group_comment: str | None
+    ticker: str | None
+    exchange: str | None
+    exchange_code: str | None
+    mic: str | None
+    ric: str | None
     last_processed: str
 
 
 # A result_file entry IS the company info, flat and keyed by permid_url
 ResultEntry = CompanyResult
+
+@dataclass(frozen=True)
+class QuoteInfo:
+    """Resolved primary-quote fields from a tr-fin:Quote record."""
+
+    ticker: str | None = None
+    exchange: str | None = None
+    exchange_code: str | None = None
+    mic: str | None = None
+    ric: str | None = None
 
 
 @dataclass
@@ -67,6 +88,10 @@ class BatchConfig:
     batch_size: int = 2450  # number of records to process in a single execution
     buffer_size: int = 500  # max size of buffer before data is written to disk
     threshold_days: int | None = None  # number of days to look for stale entities
+    # When True, resolve linked sector and quote (ticker/exchange) URLs via follow-up
+    # entity-lookup calls. Each company can then cost up to 5 API calls instead of 1
+    # (1 entity + 3 sectors + 1 quote; the quote carries ticker and exchange inline).
+    enrich_metadata: bool = True
 
 
 @dataclass
@@ -97,6 +122,7 @@ class BatchStats:
     total_permid_failed: int = 0
     total_company_info: int = 0
     total_company_info_failed: int = 0
+    total_follow_up_calls: int = 0
     duplicates_ids_removed: int = 0
 
 
@@ -131,6 +157,7 @@ class OrchestratorConfig:
     batch_size: int = 2450
     buffer_size: int = 500
     threshold_days: int | None = None
+    enrich_metadata: bool = True  # resolve sector + ticker/exchange links (extra API calls)
     match_score_threshold: int = 1
     final_output_file: str | None = None  # aggregated parquet; None = <output_dir>/latest.parquet
     skip_final_output: bool = False  # when True, do not aggregate after the pipeline run
