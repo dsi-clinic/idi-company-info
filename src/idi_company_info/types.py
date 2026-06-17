@@ -84,7 +84,7 @@ class FilePaths:
 class BatchConfig:
     """Configuration for batch processing behaviour."""
 
-    batch_size: int = 2450  # number of records to process in a single execution
+    batch_size: int = 330  # companies per run; with enrichment ~5 PermID calls each
     buffer_size: int = 500  # max size of buffer before data is written to disk
     threshold_days: int | None = None  # number of days to look for stale entities
     # When True, resolve linked sector and quote (ticker/exchange) URLs via follow-up
@@ -153,7 +153,7 @@ class OrchestratorConfig:
     input_type: InputSource
     api_key: str
     geonames_user: str
-    batch_size: int = 2450
+    batch_size: int = 330
     buffer_size: int = 500
     threshold_days: int | None = None
     enrich_metadata: bool = True  # resolve sector + ticker/exchange links (extra API calls)

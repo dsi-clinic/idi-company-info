@@ -7,15 +7,15 @@ config:
     - source: shareholder_tracker_cik
       input_file: s3://idi-dev-ftm2j-shared-processor-storage/company-info/input/shareholder_tracker_release_20251218.parquet.parquet
       cron: cron(0 2 * * ? *)
-      batch_size: "2450"
+      batch_size: "330"
     - source: commercial_debt_tracker
       input_file: s3://idi-dev-ftm2j-shared-processor-storage/database/cdt/debt-instruments/latest.parquet
       cron: cron(30 2 * * ? *)
-      batch_size: "2450"
+      batch_size: "330"
     - source: corporate_subsidiaries
       input_file: s3://idi-dev-ftm2j-shared-processor-storage/processors/corporate-structure/output/subsidiaries.parquet
       cron: cron(0 3 * * ? *)
-      batch_size: "2450"
+      batch_size: "330"
   idi:cpu: "1024"
   idi:memory: "4096"
   idi:buffer_size: "500"

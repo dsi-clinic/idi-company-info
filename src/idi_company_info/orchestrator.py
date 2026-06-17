@@ -150,8 +150,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=2450,
-        help="Number of entities to process per batch (default: 2450)",
+        default=330,
+        help="Number of entities to process per batch (default: 330)",
     )
     parser.add_argument(
         "--buffer-size",

@@ -79,7 +79,7 @@ uv run pipeline \
 | `--type` | Yes | — | `cik` or `cusip` |
 | `--permid-api-key` | Env/CLI | `$PERMID_API_KEY` | LSEG PermID access token |
 | `--geonames-user` | Env/CLI | `$GEONAMES_USER` | Geonames username |
-| `--batch-size` | No | `2450` | Max entities per run |
+| `--batch-size` | No | `330` | Max entities per run (with enrichment ~5 PermID calls each; keeps 3 daily sources under the 5K/day quota) |
 | `--buffer-size` | No | `500` | Write-buffer flush size |
 | `--threshold-days` | No | `None` | Re-process records older than N days |
 | `--match-score-threshold` | No | `1` | Minimum Record Match score (0–1); `1` = 100% match required |
