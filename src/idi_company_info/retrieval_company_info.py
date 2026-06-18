@@ -314,10 +314,28 @@ class CompInfoRetrieval(Retrieval):
         if not data:
             return None, None
 
-        label = data.get("prefLabel") or data.get("rdfs:label") or None
-        comment = data.get("rdfs:comment")
+        label = self._scalar_text(data.get("prefLabel") or data.get("rdfs:label"), url)
+        comment = self._scalar_text(data.get("rdfs:comment"), url)
 
         return (label, comment)
+
+    def _scalar_text(self, value: object, url: str | None) -> str | None:
+        """Coerce a sector label/comment to a single string.
+
+        PermID occasionally returns ``prefLabel`` as a list of variant spellings of the
+        same label (observed: ``["Freight&Logistics Services", "Freight & Logistics Services"]``)
+        rather than a scalar. A list reaching ``to_parquet`` raises
+        ``ArrowTypeError: Expected bytes, got a 'list'``, so the first non-empty value is returned.
+        """
+        if isinstance(value, list):
+            if len(value) > 1:
+                self.logger.warning(
+                    "Multi-value label for %s: %s",
+                    url or "sector",
+                    ", ".join(str(item) for item in value),
+                )
+            value = next((item for item in value if item), None)
+        return value or None
 
     def _query_geonames_location(self, url: str | None) -> str | None:
         """Query the Geonames API for a human-readable location name.

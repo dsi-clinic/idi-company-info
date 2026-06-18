@@ -140,3 +140,78 @@ class TestParseCompanyInfoEnrichment:
         # The call was attempted (and counted) but returned a non-200.
         assert stats.total_follow_up_calls == 1
         assert entry["primary_business_sector_label"] is None
+
+
+class TestScalarText:
+    """_scalar_text flattens a list-valued JSON-LD label/comment to a single string.
+
+    PermID intermittently returns ``prefLabel`` as a list of spelling variants; a raw list
+    reaching ``to_parquet`` raises ``ArrowTypeError: Expected bytes, got a 'list'``.
+    """
+
+    def test_passes_through_plain_string(self):
+        assert (
+            _make_retriever()._scalar_text("Software & IT Services", None)
+            == "Software & IT Services"
+        )
+
+    def test_returns_first_item_of_list(self):
+        assert _make_retriever()._scalar_text(["Software & IT Services", "Other"], None) == (
+            "Software & IT Services"
+        )
+
+    def test_none_and_empty_collapse_to_none(self):
+        retriever = _make_retriever()
+        assert retriever._scalar_text(None, None) is None
+        assert retriever._scalar_text([], None) is None
+        assert retriever._scalar_text("", None) is None
+
+    def test_string_value_is_not_logged(self, caplog):
+        retriever = _make_retriever()
+        with caplog.at_level("WARNING"):
+            retriever._scalar_text("Software & IT Services", "https://permid.org/1-x")
+        assert caplog.text == ""
+
+    def test_list_value_logs_url_and_full_list(self, caplog):
+        retriever = _make_retriever()
+        url = "https://permid.org/1-4294952757"
+        with caplog.at_level("WARNING"):
+            result = retriever._scalar_text(
+                ["Freight&Logistics Services", "Freight & Logistics Services"], url
+            )
+        assert result == "Freight&Logistics Services"
+        assert "Multi-value label" in caplog.text
+        assert url in caplog.text
+        # The full list is logged (both variants), not the collapsed scalar's characters.
+        assert "Freight&Logistics Services, Freight & Logistics Services" in caplog.text
+
+    def test_empty_list_logs_without_crashing(self, caplog):
+        retriever = _make_retriever()
+        with caplog.at_level("WARNING"):
+            assert retriever._scalar_text([], "https://permid.org/1-x") is None
+
+    def test_single_item_list_collapses_to_scalar_without_warning(self, caplog):
+        retriever = _make_retriever()
+        with caplog.at_level("WARNING"):
+            # A single-element list must still be flattened to its scalar (it would
+            # otherwise reach to_parquet as a list), but it is not worth a warning.
+            result = retriever._scalar_text(["Software & IT Services"], "https://permid.org/1-x")
+        assert result == "Software & IT Services"
+        assert caplog.text == ""
+
+    def test_list_valued_label_does_not_leak_into_entry(self):
+        retriever = _make_retriever(enrich_metadata=True)
+        stats = BatchStats()
+        url = "https://permid.org/1-listlabel"
+        retriever.api_clients.entity_lookup.query_endpoint.side_effect = lambda permid_url: {
+            "status_code": 200,
+            "data": {"prefLabel": ["A", "B"]},
+        }
+
+        entry = retriever._parse_company_info(
+            _PERMID_URL,
+            {"@id": _PERMID_URL, "hasPrimaryIndustryGroup": url},
+            stats,
+        )
+
+        assert entry["primary_industry_group_label"] == "A"
