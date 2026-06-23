@@ -29,7 +29,7 @@ class TestIdentifierType:
 
 
 class TestExtractFilterParquetCik:
-    """Tests for CdtInput._extract_filter_parquet_cik."""
+    """Tests for CdtInput's CIK filter/group logic (Input._filter_group_cik)."""
 
     def test_groups_ciks_by_company_name(self):
         instance = make_instance()
@@ -39,7 +39,7 @@ class TestExtractFilterParquetCik:
                 "cik": ["0001111111", "0002222222", "0003333333"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "company_name", "cik")
         assert set(result.keys()) == {"Co A", "Co B"}
         assert set(result["Co A"]) == {"0001111111", "0002222222"}
         assert result["Co B"] == ["0003333333"]
@@ -52,7 +52,7 @@ class TestExtractFilterParquetCik:
                 "cik": ["0001111111", "0002222222"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "company_name", "cik")
         assert list(result.keys()) == ["Co B"]
 
     def test_drops_literal_nan_company_name(self):
@@ -64,7 +64,7 @@ class TestExtractFilterParquetCik:
                 "cik": ["0001461755", "0002222222"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "company_name", "cik")
         assert "nan" not in result
         assert list(result.keys()) == ["Co B"]
 
@@ -77,7 +77,7 @@ class TestExtractFilterParquetCik:
                 "cik": ["1002910"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "company_name", "cik")
         assert result["Co A"] == ["0001002910"]
 
     def test_deduplicates_name_cik_pairs(self):
@@ -88,13 +88,13 @@ class TestExtractFilterParquetCik:
                 "cik": ["0001111111", "0001111111"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "company_name", "cik")
         assert result["Co A"] == ["0001111111"]
 
     def test_returns_empty_dict_for_empty_dataframe(self):
         instance = make_instance()
         df = pd.DataFrame({"company_name": [], "cik": []})
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "company_name", "cik")
         assert result == {}
 
 

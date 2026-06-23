@@ -86,13 +86,17 @@ class Input(ABC):
         subset = df[[name_col, cik_col]].copy()
         self.logger.info("Found %s total rows", len(subset))
 
-        # Cast to string up front so the null/junk filter works on one form
+        # Cast to string up front so the null filter operates on one form.
         subset[name_col] = subset[name_col].astype(str)
         subset[cik_col] = subset[cik_col].astype(str)
 
-        # Filter out rows with null or empty values
+        # Filter out null and empty values - notna() is required: for str dtype
+        # a true null stays NA after astype(str)
         subset = subset[
-            ~subset[name_col].isin(["", "nan", "None"]) & ~subset[cik_col].isin(["", "nan", "None"])
+            subset[name_col].notna()
+            & ~subset[name_col].isin(["", "nan", "None"])
+            & subset[cik_col].notna()
+            & ~subset[cik_col].isin(["", "nan", "None"])
         ]
         self.logger.info("Found %s rows with valid CIKs", len(subset))
 
