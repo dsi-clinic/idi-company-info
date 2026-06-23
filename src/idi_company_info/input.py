@@ -354,9 +354,10 @@ class CdtInput(Input):
 
         # Filter out rows with null or empty values
         subset = subset[
-            (subset["company_name"].notna())
-            & (subset["company_name"] != "nan")
-            & (subset["cik"].astype(str) != "")
+            subset["company_name"].notna()
+            & ~subset["company_name"].isin(["", "nan", "None"])
+            & subset["cik"].notna()
+            & ~subset["cik"].isin(["", "nan", "None"])
         ]
         self.logger.info("Found %s rows with valid CIKs", len(subset))
 
