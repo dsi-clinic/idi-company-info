@@ -114,14 +114,6 @@ jobs:
     env:
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
       PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
-      BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
-      PERMID_API_KEY: ${{ secrets.PERMID_API_KEY }}
-      GEONAMES_USER: ${{ secrets.GEONAMES_USER }}
-      INPUT_FILE_CIK: ${{ secrets.INPUT_FILE_CIK }}
-      INPUT_FILE_CUSIP: ${{ secrets.INPUT_FILE_CUSIP }}
-      OUTPUT_DIR: ${{ secrets.OUTPUT_DIR }}
-      FAILURE_DIR: ${{ secrets.FAILURE_DIR }}
-      SHARED_DLQ_NAME: ${{ secrets.SHARED_DLQ_NAME }}
     steps:
       - uses: actions/checkout@v4
 
@@ -146,14 +138,4 @@ jobs:
           cd pulumi
           pulumi login s3://${{ secrets.PULUMI_STATE_BUCKET }}
           pulumi stack select dev 2>/dev/null || pulumi stack init dev
-          pulumi config set aws:region ${{ secrets.AWS_REGION || 'us-east-2' }}
-          pulumi config set idi:app_name ${{ env.APP_NAME }}
-          [ -n "$BUCKET_NAME" ] && pulumi config set idi:bucket_name "$BUCKET_NAME"
-          [ -n "$PERMID_API_KEY" ] && pulumi config set --secret idi:permid_api_key "$PERMID_API_KEY"
-          [ -n "$GEONAMES_USER" ] && pulumi config set idi:geonames_user "$GEONAMES_USER"
-          [ -n "$INPUT_FILE_CIK" ] && pulumi config set idi:input_file_cik "$INPUT_FILE_CIK"
-          [ -n "$INPUT_FILE_CUSIP" ] && pulumi config set idi:input_file_cusip "$INPUT_FILE_CUSIP"
-          [ -n "$SHARED_DLQ_NAME" ] && pulumi config set idi:shared_dlq_name "$SHARED_DLQ_NAME"
-          [ -n "$OUTPUT_DIR" ] && pulumi config set idi:output_dir "$OUTPUT_DIR"
-          [ -n "$FAILURE_DIR" ] && pulumi config set idi:failure_dir "$FAILURE_DIR"
           uv run pulumi preview --non-interactive

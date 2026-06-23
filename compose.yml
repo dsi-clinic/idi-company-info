@@ -29,10 +29,10 @@ services:
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "python -m idi_company_info.processors.orchestrator
+      "python -m idi_company_info.orchestrator
       --input-file $${INPUT_FILE_ORCHESTRATOR_CIK:-/data/input/data.parquet}
       --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
-      --type cik
+      --input-type shareholder_tracker_cik
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
       --batch-size ${BATCH_SIZE_CIK:-2450}
@@ -52,11 +52,11 @@ services:
         compress: "true"
 
   # ---------------------------------------------------------------------------
-  # CUSIP pipeline
+  # Commercial Debt Tracker pipeline (input is a single parquet FILE)
   # ---------------------------------------------------------------------------
-  orchestrator-cusip:
+  orchestrator-cdt:
     image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
-    container_name: idi-company-info-orchestrator-cusip
+    container_name: idi-company-info-orchestrator-cdt
 
     profiles:
       - manual
@@ -65,34 +65,84 @@ services:
       - AWS_REGION=${AWS_REGION:-us-east-2}
       - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
       - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
-      - BATCH_SIZE_CUSIP=${BATCH_SIZE_CUSIP:-2450}
+      - BATCH_SIZE_CDT=${BATCH_SIZE_CDT:-2450}
       - BUFFER_SIZE=${BUFFER_SIZE:-500}
       - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
       - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
       - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
       - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
-      - INPUT_FILE_ORCHESTRATOR_CUSIP=${INPUT_FILE_ORCHESTRATOR_CUSIP:-/data/input/data.parquet}
+      # CDT input is a single parquet file inside the /data/input mount.
+      - INPUT_DIR_ORCHESTRATOR_CDT=${INPUT_DIR_ORCHESTRATOR_CDT:-/data/input/latest.parquet}
 
     volumes:
-      - ${INPUT_VOLUME_SPEC_CUSIP:-${INPUT_FILE_CUSIP:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}
+      - ${INPUT_VOLUME_SPEC_CDT:-${INPUT_DIR_CDT:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input:ro}
       - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
       - ${LOG_DIR:-./logs}:/logs
 
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "python -m idi_company_info.processors.orchestrator
-      --input-file $${INPUT_FILE_ORCHESTRATOR_CUSIP:-/data/input/data.parquet}
+      "python -m idi_company_info.orchestrator
+      --input-file $${INPUT_DIR_ORCHESTRATOR_CDT:-/data/input}
       --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
-      --type cusip
+      --input-type commercial_debt_tracker
       --permid-api-key ${PERMID_API_KEY}
       --geonames-user ${GEONAMES_USER}
-      --batch-size ${BATCH_SIZE_CUSIP:-2450}
+      --batch-size ${BATCH_SIZE_CDT:-2450}
       --buffer-size ${BUFFER_SIZE:-500}
       --threshold-days ${THRESHOLD_DAYS:-30}
       --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
-      2>&1 | tee /logs/orchestrator_cusip_$(date +%Y%m%d_%H%M%S).log"
+      2>&1 | tee /logs/orchestrator_cdt_$(date +%Y%m%d_%H%M%S).log"
 
-    # Retry up to 3 times if the process exits with a non-zero code
+    restart: on-failure
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+
+  # ---------------------------------------------------------------------------
+  # Corporate Subsidiaries pipeline
+  # ---------------------------------------------------------------------------
+  orchestrator-subsidiaries:
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
+    container_name: idi-company-info-orchestrator-subsidiaries
+
+    profiles:
+      - manual
+
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-2}
+      - PERMID_API_KEY=${PERMID_API_KEY:?PERMID_API_KEY is required}
+      - GEONAMES_USER=${GEONAMES_USER:?GEONAMES_USER is required}
+      - BATCH_SIZE_SUBSIDIARIES=${BATCH_SIZE_SUBSIDIARIES:-2450}
+      - BUFFER_SIZE=${BUFFER_SIZE:-500}
+      - THRESHOLD_DAYS=${THRESHOLD_DAYS:-30}
+      - MATCH_SCORE_THRESHOLD=${MATCH_SCORE_THRESHOLD:-1}
+      - OUTPUT_DIR_ORCHESTRATOR=${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      - CLOUDWATCH_LOGS_ENABLED=${CLOUDWATCH_LOGS_ENABLED:-false}
+      - INPUT_FILE_ORCHESTRATOR_SUBSIDIARIES=${INPUT_FILE_ORCHESTRATOR_SUBSIDIARIES:-/data/input/data.parquet}
+
+    volumes:
+      - ${INPUT_VOLUME_SPEC_SUBSIDIARIES:-${INPUT_FILE_SUBSIDIARIES:-${INPUT_MOUNT_SOURCE:-./data/input}}:/data/input/data.parquet:ro}
+      - ${OUTPUT_MOUNT_SOURCE:-./data/output}:/data/output
+      - ${LOG_DIR:-./logs}:/logs
+
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "python -m idi_company_info.orchestrator
+      --input-file $${INPUT_FILE_ORCHESTRATOR_SUBSIDIARIES:-/data/input/data.parquet}
+      --output-directory $${OUTPUT_DIR_ORCHESTRATOR:-/data/output}
+      --input-type corporate_subsidiaries
+      --permid-api-key ${PERMID_API_KEY}
+      --geonames-user ${GEONAMES_USER}
+      --batch-size ${BATCH_SIZE_SUBSIDIARIES:-2450}
+      --buffer-size ${BUFFER_SIZE:-500}
+      --threshold-days ${THRESHOLD_DAYS:-30}
+      --match-score-threshold ${MATCH_SCORE_THRESHOLD:-1}
+      2>&1 | tee /logs/orchestrator_subsidiaries_$(date +%Y%m%d_%H%M%S).log"
+
     restart: on-failure
 
     logging:

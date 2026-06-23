@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Pipeline Orchestrator - Runs the identifier processing pipeline for a specified input file.
+"""Pipeline Orchestrator - Runs the company-info pipeline for a specified input source.
 
-Supports three identifier types:
-  cik    — CIK-based Record Match (CompanyByCikPipeline)
-  cusip  — CUSIP-based Record Match(CompanyByCusipPipeline)
+The input source (see InputSource) selects the Input loader and identifier type:
+  shareholder_tracker_cik    — shareholder CIK Record Match
+  shareholder_tracker_cusip  — shareholder CUSIP (ticker) Record Match
+  commercial_debt_tracker    — CDT debt instruments parquet (CIK)
+  corporate_subsidiaries     — subsidiary parent CIKs
 
-To add a new identifier type, register it in IDENTIFIER_REGISTRY.
+To add a new input source, register it in INPUT_REGISTRY.
 """
 
 # Standard library imports
@@ -20,8 +22,9 @@ from datetime import datetime
 from idi_ftm2j_shared.logs import get_logger
 
 # Application imports
-from idi_company_info.factory import IdentifierFactory
-from idi_company_info.types import IdentifierType, OrchestratorConfig
+from idi_company_info.factory import PipelineFactory
+from idi_company_info.output import Output
+from idi_company_info.types import InputSource, OrchestratorConfig
 
 
 class PipelineOrchestrator:
@@ -69,15 +72,15 @@ class PipelineOrchestrator:
 
         input_display = input_str.split("/")[-1] if "/" in input_str else input_str
         self._log_banner(
-            f"Starting pipeline | type={self.config.identifier_type} | input={input_display}"
+            f"Starting pipeline | type={self.config.input_type} | input={input_display}"
         )
         self._log_config()
 
         start_time = datetime.now()
 
         try:
-            identifier = IdentifierFactory.build(self.config)
-            identifier.run()
+            pipeline = PipelineFactory.build(self.config)
+            pipeline.run()
 
         except KeyboardInterrupt:
             self.logger.info("Pipeline interrupted by user")
@@ -86,6 +89,18 @@ class PipelineOrchestrator:
         except Exception:
             self.logger.exception("Pipeline failed with an unexpected error")
             return False
+
+        # Regenerate the combined final parquet from every processor's caches
+        if not self.config.skip_final_output:
+            try:
+                Output(
+                    output_dir=self.config.output_dir,
+                    final_output_file=self.config.final_output_file,
+                ).aggregate()
+            except Exception:
+                self.logger.exception(
+                    "Final output aggregation failed (pipeline results are saved)"
+                )  # failure here is logged, do not trigger an ECS retry that re-burns API quota
 
         elapsed = datetime.now() - start_time
         self._log_banner(f"Pipeline completed successfully in {elapsed}")
@@ -96,8 +111,8 @@ def get_args() -> argparse.Namespace:
     """Parse and return command-line arguments."""
     parser = argparse.ArgumentParser(
         description=(
-            "Run the identifier processing pipeline for a parquet input file. "
-            "Supports cik, cusip, and ticker identifier types."
+            "Run the company-info pipeline for one input source. "
+            "Use --input-type to select the source (see InputSource)."
         )
     )
 
@@ -114,17 +129,11 @@ def get_args() -> argparse.Namespace:
         help="Directory for the company info result and PermID tracking files (local path or s3:// URL)",
     )
     parser.add_argument(
-        "--failure-directory",
-        type=str,
+        "--input-type",
+        type=InputSource,
+        choices=list(InputSource),
         required=True,
-        help="Directory for the permanent failures file (local path or s3:// URL)",
-    )
-    parser.add_argument(
-        "--type",
-        type=IdentifierType,
-        choices=list(IdentifierType),
-        required=True,
-        help="Identifier type: cik (CIK Record Match), cusip (Ticker Record Match)",
+        help="Input source to process (selects the Input loader and identifier type)",
     )
     parser.add_argument(
         "--permid-api-key",
@@ -162,6 +171,17 @@ def get_args() -> argparse.Namespace:
         default=1,
         help="Minimum Record Match score to accept (default: 1 = 100%%)",
     )
+    parser.add_argument(
+        "--final-output-file",
+        type=str,
+        default=None,
+        help="Aggregated parquet path (default: <output-directory>/latest.parquet)",
+    )
+    parser.add_argument(
+        "--skip-final-output",
+        action="store_true",
+        help="Skip aggregating the combined final parquet after the pipeline run",
+    )
 
     return parser.parse_args()
 
@@ -186,14 +206,15 @@ def main() -> None:
     config = OrchestratorConfig(
         input_file=args.input_file,
         output_dir=args.output_directory,
-        failure_dir=args.failure_directory,
-        identifier_type=args.type,
+        input_type=args.input_type,
         api_key=api_key,
         geonames_user=geonames_user,
         batch_size=args.batch_size,
         buffer_size=args.buffer_size,
         threshold_days=args.threshold_days,
         match_score_threshold=args.match_score_threshold,
+        final_output_file=args.final_output_file,
+        skip_final_output=args.skip_final_output,
     )
 
     orchestrator = PipelineOrchestrator(config)

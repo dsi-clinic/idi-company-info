@@ -1,0 +1,36 @@
+# Pulumi.prod.yaml — PROD stack config (SCAFFOLD).
+#
+# Replace every REPLACE_ME below with real prod values before deploying.
+# `permid_api_key` is NOT committed here — it is injected at deploy time by CI
+# (`pulumi config set --secret idi:permid_api_key …`), or set once manually:
+#     pulumi stack select prod
+#     pulumi config set --secret idi:permid_api_key <prod-key>
+#
+# Schedules are intentionally DISABLED (idi:schedule_enabled: "false") until the
+# prod values are filled in and validated.
+config:
+  aws:region: us-east-2
+  idi:app_name: company-info
+  idi:bucket_name: REPLACE_ME-prod-bucket
+  idi:output_dir: s3://REPLACE_ME-prod-bucket/company-info/output
+  idi:input_sources:
+    - source: shareholder_tracker_cik
+      input_file: s3://REPLACE_ME-prod-bucket/company-info/input/cik.parquet
+      cron: cron(0 2 * * ? *)
+      batch_size: "2450"
+    - source: commercial_debt_tracker
+      input_file: s3://REPLACE_ME-prod-bucket/processors/cdt/debt-instruments/latest.parquet
+      cron: cron(30 2 * * ? *)
+      batch_size: "2450"
+    - source: corporate_subsidiaries
+      input_file: s3://REPLACE_ME-prod-bucket/company-info/input/subsidiaries.parquet
+      cron: cron(0 3 * * ? *)
+      batch_size: "2450"
+  idi:cpu: "1024"
+  idi:memory: "4096"
+  idi:buffer_size: "500"
+  idi:threshold_days: ""
+  idi:match_score_threshold: "1"
+  idi:schedule_enabled: "false"
+  idi:geonames_user: REPLACE_ME-geonames-user
+  idi:shared_dlq_name: REPLACE_ME-prod-scheduler-dlq

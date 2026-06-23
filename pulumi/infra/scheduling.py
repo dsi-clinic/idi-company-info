@@ -1,4 +1,7 @@
-"""EventBridge Schedules (CIK + CUSIP) for triggering Fargate tasks on cron.
+"""EventBridge Schedules for triggering Fargate tasks on cron.
+
+One schedule is built per entry in the structured `idi:input_sources` config, so
+the set of pipelines that run is config-driven (see Pulumi.<stack>.yaml).
 
 The SQS dead-letter queue is owned by the sibling `idi-corporate-structure`
 project and shared across schedulers; looked up here by name.
@@ -78,7 +81,11 @@ scheduler_policy = aws.iam.RolePolicy(
 )
 
 # -----------------------------------------------------------------------------
-# Per-pipeline schedules
+# Per-input-source schedules
+#
+# The set of pipelines to run is driven by the structured `input_sources` config
+# (one entry per scheduled source), so adding/removing a source is a config-only
+# change. Shared scalars below apply to every source.
 # -----------------------------------------------------------------------------
 schedule_enabled = config.config.require("schedule_enabled") == "true"
 geonames_user = config.config.require("geonames_user")
@@ -86,36 +93,36 @@ buffer_size = config.config.require("buffer_size")
 threshold_days = config.config.require("threshold_days")
 match_score_threshold = config.config.require("match_score_threshold")
 output_dir = config.config.require("output_dir")
-failure_dir = config.config.require("failure_dir")
+
+# Each entry: {"source": str, "input_file": str, "cron": str, "batch_size": str}
+input_sources = config.config.require_object("input_sources")
 
 
 def _container_override_input(
-    pipeline_type: str,
+    source: str,
     input_file: str,
     batch_size: str,
 ) -> str:
     """Build the EventBridge Scheduler `input` JSON for an ECS containerOverride.
 
-    Output and failure directories are shared across pipeline types; the
-    container partitions writes into a per-type subdirectory at runtime. All
-    inputs resolve to plain strings at plan time, so no Pulumi Output wrapping
-    is needed.
+    The output directory is shared across sources; the orchestrator partitions
+    writes (results, permid cache, failures) into a per-source subdirectory at
+    runtime. All inputs resolve to plain strings at plan time, so no Pulumi
+    Output wrapping is needed.
     """
     command = [
+        "--input-type",
+        source,
         "--input-file",
         input_file,
         "--output-directory",
         output_dir,
-        "--failure-directory",
-        failure_dir,
-        "--type",
-        pipeline_type,
         "--geonames-user",
         geonames_user,
         "--batch-size",
-        batch_size,
+        str(batch_size),
         "--buffer-size",
-        buffer_size,
+        str(buffer_size),
         "--match-score-threshold",
         match_score_threshold,
     ]
@@ -125,29 +132,24 @@ def _container_override_input(
     return json.dumps({"containerOverrides": [{"name": ecs.CONTAINER_NAME, "command": command}]})
 
 
-def _build_schedule(
-    pipeline_type: str,
-    cron_key: str,
-    input_file_key: str,
-    batch_size_key: str,
-) -> aws.scheduler.Schedule:
-    schedule_expression = config.config.require(cron_key)
-    input_file = config.config.require(input_file_key)
-    batch_size = config.config.require(batch_size_key)
+def _build_schedule(entry: dict) -> aws.scheduler.Schedule:
+    """Build one EventBridge schedule from an `input_sources` entry."""
+    source = entry["source"]
+    input_file = entry["input_file"]
     return aws.scheduler.Schedule(
-        f"idi-schedule-{pipeline_type}",
-        name=f"{config.name_prefix}-schedule-{pipeline_type}",
-        description=f"Triggers the {config.app_name} {pipeline_type} orchestrator ECS task",
-        schedule_expression=schedule_expression,
+        f"idi-schedule-{source}",
+        name=f"{config.name_prefix}-schedule-{source}",
+        description=f"Triggers the {config.app_name} {source} orchestrator ECS task",
+        schedule_expression=entry["cron"],
         flexible_time_window=aws.scheduler.ScheduleFlexibleTimeWindowArgs(mode="OFF"),
         state="ENABLED" if schedule_enabled else "DISABLED",
         target=aws.scheduler.ScheduleTargetArgs(
             arn=ecs.cluster.arn,
             role_arn=scheduler_role.arn,
             input=_container_override_input(
-                pipeline_type,
+                source,
                 input_file,
-                batch_size,
+                entry["batch_size"],
             ),
             ecs_parameters=aws.scheduler.ScheduleTargetEcsParametersArgs(
                 task_definition_arn=ecs.task_definition.arn,
@@ -172,16 +174,7 @@ def _build_schedule(
     )
 
 
-schedule_cik = _build_schedule(
-    pipeline_type="cik",
-    cron_key="cron_cik",
-    input_file_key="input_file_cik",
-    batch_size_key="batch_size_cik",
-)
-
-schedule_cusip = _build_schedule(
-    pipeline_type="cusip",
-    cron_key="cron_cusip",
-    input_file_key="input_file_cusip",
-    batch_size_key="batch_size_cusip",
-)
+# Keyed by source slug so __main__ can export each schedule's name/arn.
+schedules: dict[str, aws.scheduler.Schedule] = {
+    entry["source"]: _build_schedule(entry) for entry in input_sources
+}

@@ -29,31 +29,21 @@ config:
     description: Fargate task memory in MiB (must be valid for chosen CPU)
     default: "4096"
 
-  idi:cron_cik:
-    description: EventBridge cron for the CIK pipeline
-    default: "cron(0 2 * * ? *)"
-
-  idi:cron_cusip:
-    description: EventBridge cron for the CUSIP pipeline
-    default: "cron(30 2 * * ? *)"
-
   idi:schedule_enabled:
     description: Whether the EventBridge schedules are enabled
     default: "false"
 
-  idi:input_file_cik:
-    description: S3 URI of the CIK pipeline input parquet
+  idi:output_dir:
+    description: >
+      S3 URI (or path) root for pipeline output. Results, the PermID cache, and
+      failures are written under a per-input-source subdirectory of this root.
 
-  idi:input_file_cusip:
-    description: S3 URI of the CUSIP pipeline input parquet
-
-  idi:batch_size_cik:
-    description: Orchestrator batch size for CIK
-    default: "2450"
-
-  idi:batch_size_cusip:
-    description: Orchestrator batch size for CUSIP
-    default: "2450"
+  idi:input_sources:
+    description: >
+      List of input sources to schedule. Each entry: {source, input_file, cron,
+      batch_size}. `source` must be a valid InputSource slug (e.g.
+      shareholder_tracker_cik, commercial_debt_tracker, corporate_subsidiaries);
+      `input_file` is an S3 URI to a parquet file.
 
   idi:buffer_size:
     description: Orchestrator write buffer size

@@ -9,6 +9,7 @@ from idi_ftm2j_shared.logs import get_logger
 from idi_ftm2j_shared.storage import load_json, save_json
 
 # Application imports
+from idi_company_info.fs import atomic_write
 from idi_company_info.types import CacheBuffer, MergeStrategy
 
 
@@ -69,7 +70,8 @@ class Buffer:
         existing = load_json(self.file_path, return_type="dict")
         self._merge(self._buffer, existing)  # merge buffer into file
 
-        save_json(self.file_path, existing)
+        # Atomic write so a concurrent aggregation read never sees a partial file.
+        atomic_write(self.file_path, lambda p: save_json(p, existing))
         self.logger.info("Saved %s data to %s", len(self._buffer), self.file_path)
 
         self._buffer = {}

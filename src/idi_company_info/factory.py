@@ -1,11 +1,9 @@
 """Builds configured CompanyPipeline instances from a top-level OrchestratorConfig."""
 
-# Standard library imports
-import pathlib
-
 # Application imports
 from idi_company_info.company_pipeline import CompanyPipeline
-from idi_company_info.registry import IDENTIFIER_REGISTRY
+from idi_company_info.fs import join_path
+from idi_company_info.registry import INPUT_REGISTRY
 from idi_company_info.types import (
     ApiCredentials,
     BatchConfig,
@@ -14,44 +12,35 @@ from idi_company_info.types import (
 )
 
 
-def _join(base: str | pathlib.Path, name: str) -> str:
-    """Join a filename onto a base directory, supporting both local paths and s3:// URLs."""
-    base_str = str(base)
-    if base_str.startswith("s3://"):
-        return f"{base_str.rstrip('/')}/{name}"
-    return str(pathlib.Path(base_str) / name)
-
-
-class IdentifierFactory:
+class PipelineFactory:
     """Builds a configured CompanyPipeline instance from an OrchestratorConfig.
 
     Single responsibility: translate orchestrator-level config into the
-    dataclasses expected by the CompanyPipeline base class, then instantiate the
-    correct subclass.
+    dataclasses the CompanyPipeline expects, compose the input source's Input
+    loader, and instantiate the pipeline.
     """
 
     @staticmethod
     def build(config: OrchestratorConfig) -> CompanyPipeline:
-        """Build and return the appropriate CompanyPipeline for the given config.
+        """Build and return a configured CompanyPipeline for the given config.
 
         Args:
             config: Orchestrator configuration.
 
         Returns:
-            A fully configured CompanyPipeline subclass instance.
+            A fully configured CompanyPipeline instance.
 
         Raises:
-            KeyError: If config.identifier_type is not in IDENTIFIER_REGISTRY.
+            KeyError: If config.input_type is not in INPUT_REGISTRY.
         """
-        spec = IDENTIFIER_REGISTRY[config.identifier_type]
+        input_spec = INPUT_REGISTRY[config.input_type]
+        input_source = input_spec.cls(config.input_file)
 
-        type_subdir = str(config.identifier_type)
-        output_subdir = _join(config.output_dir, type_subdir)
+        output_subdir = join_path(config.output_dir, str(config.input_type).lower())
         file_paths = FilePaths(
-            input_file=str(config.input_file),
-            result_file=_join(output_subdir, spec.result_filename),
-            permid_file=_join(output_subdir, spec.permid_filename),
-            failure_file=_join(config.failure_dir, spec.failure_filename),
+            result_file=join_path(output_subdir, "permid_data.json"),
+            permid_file=join_path(output_subdir, "permid_url.json"),
+            failure_file=join_path(output_subdir, "failure.json"),
         )
 
         batch_config = BatchConfig(
@@ -65,7 +54,8 @@ class IdentifierFactory:
             geonames_user=config.geonames_user,
         )
 
-        return spec.cls(
+        return CompanyPipeline(
+            input_source=input_source,
             file_paths=file_paths,
             batch_config=batch_config,
             api_credentials=api_credentials,

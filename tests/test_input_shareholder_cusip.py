@@ -1,109 +1,96 @@
 #!/usr/bin/env python3
-"""Unit tests for idi_company_info.processors.company_by_cusip_pipeline."""
+"""Unit tests for idi_company_info.input.ShareholderInputCusip."""
 
-import json
 from unittest.mock import MagicMock
 
 import pandas as pd
 
-from idi_company_info.company_by_cusip_pipeline import CompanyByCusipPipeline
-from idi_company_info.types import FilePaths
+from idi_company_info.input import ShareholderInputCusip
 
 
-def make_cusip_instance():
-    """Create an CompanyByCusipPipeline with mocked dependencies."""
-    instance = CompanyByCusipPipeline.__new__(CompanyByCusipPipeline)
+def make_instance() -> ShareholderInputCusip:
+    """Create a ShareholderInputCusip with a mocked logger and dummy input path."""
+    instance = ShareholderInputCusip("")
     instance.logger = MagicMock()
     return instance
 
 
+class TestIdentifierType:
+    """The CUSIP shareholder input reports the cusip identifier type."""
+
+    def test_identifier_type_is_cusip(self):
+        assert make_instance().identifier_type == "cusip"
+
+
 class TestIsBondSecurity:
-    """Tests for CompanyByCusipPipeline._is_bond_security (static method)."""
+    """Tests for ShareholderInputCusip._is_bond_security (static method)."""
 
     def test_single_ticker_is_not_bond(self):
-        """A simple ticker with no suffix is not a bond."""
-        assert CompanyByCusipPipeline._is_bond_security("AAPL") is False
+        assert ShareholderInputCusip._is_bond_security("AAPL") is False
 
     def test_ticker_with_exchange_suffix_is_not_bond(self):
-        """Ticker with a two-letter exchange code is not a bond."""
-        assert CompanyByCusipPipeline._is_bond_security("ACTI SS") is False
+        assert ShareholderInputCusip._is_bond_security("ACTI SS") is False
 
     def test_coupon_rate_is_bond(self):
-        """Ticker with a decimal coupon rate is a bond."""
-        assert CompanyByCusipPipeline._is_bond_security("WEC 4.375 06/01/29") is True
+        assert ShareholderInputCusip._is_bond_security("WEC 4.375 06/01/29") is True
 
     def test_integer_number_after_ticker_is_bond(self):
-        """Ticker followed by an integer is treated as a bond."""
-        assert CompanyByCusipPipeline._is_bond_security("XYZ 7") is True
+        assert ShareholderInputCusip._is_bond_security("XYZ 7") is True
 
     def test_date_pattern_is_bond(self):
-        """Ticker followed by a MM/DD/YY date is a bond."""
-        assert CompanyByCusipPipeline._is_bond_security("ABC 06/01/29") is True
+        assert ShareholderInputCusip._is_bond_security("ABC 06/01/29") is True
 
     def test_perp_suffix_is_bond(self):
-        """Ticker with PERP suffix is a bond."""
-        assert CompanyByCusipPipeline._is_bond_security("MET F PERP A") is True
+        assert ShareholderInputCusip._is_bond_security("MET F PERP A") is True
 
     def test_perp_case_insensitive(self):
-        """PERP detection is case-insensitive."""
-        assert CompanyByCusipPipeline._is_bond_security("MET perp") is True
+        assert ShareholderInputCusip._is_bond_security("MET perp") is True
 
     def test_empty_string_is_not_bond(self):
-        """Empty string returns False."""
-        assert CompanyByCusipPipeline._is_bond_security("") is False
+        assert ShareholderInputCusip._is_bond_security("") is False
 
     def test_none_is_not_bond(self):
-        """None returns False."""
-        assert CompanyByCusipPipeline._is_bond_security(None) is False
+        assert ShareholderInputCusip._is_bond_security(None) is False
 
 
 class TestParseTickerAndMic:
-    """Tests for CompanyByCusipPipeline._parse_ticker_and_mic (static method)."""
+    """Tests for ShareholderInputCusip._parse_ticker_and_mic (static method)."""
 
     def test_plain_us_ticker(self):
-        """A single-part ticker returns ticker:<symbol>."""
-        assert CompanyByCusipPipeline._parse_ticker_and_mic("AAPL") == "ticker:AAPL"
+        assert ShareholderInputCusip._parse_ticker_and_mic("AAPL") == "ticker:AAPL"
 
     def test_ticker_with_known_exchange(self):
-        """Ticker with a known exchange code returns ticker and mic."""
-        assert CompanyByCusipPipeline._parse_ticker_and_mic("ACTI SS") == "ticker:ACTI&&mic:XSTO"
+        assert ShareholderInputCusip._parse_ticker_and_mic("ACTI SS") == "ticker:ACTI&&mic:XSTO"
 
     def test_ticker_with_unknown_exchange(self):
-        """Ticker with an unknown exchange code returns only ticker."""
-        assert CompanyByCusipPipeline._parse_ticker_and_mic("FOO NY") == "ticker:FOO"
+        assert ShareholderInputCusip._parse_ticker_and_mic("FOO NY") == "ticker:FOO"
 
     def test_bond_returns_empty_string(self):
-        """A bond security string returns empty string."""
-        assert CompanyByCusipPipeline._parse_ticker_and_mic("WEC 4.375 06/01/29") == ""
+        assert ShareholderInputCusip._parse_ticker_and_mic("WEC 4.375 06/01/29") == ""
 
     def test_more_than_two_parts_returns_empty(self):
-        """More than two non-bond parts returns empty string."""
-        assert CompanyByCusipPipeline._parse_ticker_and_mic("A B C") == ""
+        assert ShareholderInputCusip._parse_ticker_and_mic("A B C") == ""
 
     def test_empty_string_returns_empty(self):
-        """Empty string returns empty string."""
-        assert CompanyByCusipPipeline._parse_ticker_and_mic("") == ""
+        assert ShareholderInputCusip._parse_ticker_and_mic("") == ""
 
     def test_none_returns_empty(self):
-        """None returns empty string."""
-        assert CompanyByCusipPipeline._parse_ticker_and_mic(None) == ""
+        assert ShareholderInputCusip._parse_ticker_and_mic(None) == ""
 
     def test_whitespace_is_stripped(self):
-        """Leading/trailing whitespace is handled."""
-        assert CompanyByCusipPipeline._parse_ticker_and_mic("  AAPL  ") == "ticker:AAPL"
+        assert ShareholderInputCusip._parse_ticker_and_mic("  AAPL  ") == "ticker:AAPL"
 
 
 class TestExtractFilterParquetTicker:
-    """Tests for CompanyByCusipPipeline._extract_filter_parquet_ticker.
+    """Tests for ShareholderInputCusip._extract_filter_parquet_ticker.
 
-    The method now returns {issuer_name: [cusip, ...]} (not tickers).
-    It also sets self._std_ticker_map as a side effect.
-    All input DataFrames must include issuer_name, security_cusip, and stock_ticker.
+    The method returns {issuer_name: [cusip, ...]} and sets self._std_ticker_map
+    as a side effect. All input DataFrames include issuer_name, security_cusip,
+    and stock_ticker.
     """
 
     def test_groups_cusips_by_issuer_name(self):
-        """CUSIPs are grouped by issuer_name, not by ticker."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp A", "Corp B"],
@@ -117,8 +104,7 @@ class TestExtractFilterParquetTicker:
         assert result["Corp B"] == ["594918104"]
 
     def test_result_values_are_cusip_strings_not_tickers(self):
-        """Values in the result dict are CUSIP strings, not formatted ticker strings."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A"],
@@ -130,8 +116,7 @@ class TestExtractFilterParquetTicker:
         assert result == {"Corp A": ["037833100"]}
 
     def test_builds_std_ticker_map_as_side_effect(self):
-        """_std_ticker_map is populated with CUSIP -> formatted Standard Identifier."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp B"],
@@ -144,8 +129,7 @@ class TestExtractFilterParquetTicker:
         assert instance._std_ticker_map["037833101"] == "ticker:ACTI&&mic:XSTO"
 
     def test_filters_out_null_tickers(self):
-        """Rows with null stock_ticker are dropped; their CUSIPs are excluded."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp B"],
@@ -158,8 +142,7 @@ class TestExtractFilterParquetTicker:
         assert "Corp B" in result
 
     def test_filters_out_empty_tickers(self):
-        """Rows with empty stock_ticker are dropped."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp B"],
@@ -172,8 +155,7 @@ class TestExtractFilterParquetTicker:
         assert "Corp B" in result
 
     def test_filters_out_null_cusips(self):
-        """Rows with null security_cusip are dropped."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp B"],
@@ -186,8 +168,7 @@ class TestExtractFilterParquetTicker:
         assert "Corp B" in result
 
     def test_filters_out_null_issuer_name(self):
-        """Rows with null issuer_name are dropped."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": [None, "Corp B"],
@@ -200,8 +181,7 @@ class TestExtractFilterParquetTicker:
         assert "Corp B" in result
 
     def test_filters_out_bond_securities(self):
-        """CUSIPs whose tickers resolve to bond securities are excluded from the result."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp A"],
@@ -210,13 +190,11 @@ class TestExtractFilterParquetTicker:
             }
         )
         result = instance._extract_filter_parquet_ticker(df)
-        # Bond CUSIP is excluded from the result (no valid ticker)
         assert "037833100" in result["Corp A"]
         assert "037833101" not in result["Corp A"]
 
     def test_deduplicates_issuer_cusip_ticker_triples(self):
-        """Duplicate (issuer_name, security_cusip, stock_ticker) triples are removed."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp A"],
@@ -228,8 +206,7 @@ class TestExtractFilterParquetTicker:
         assert result["Corp A"] == ["037833100"]
 
     def test_warns_when_cusip_maps_to_multiple_tickers(self):
-        """A warning is emitted if the same CUSIP appears with different tickers."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp B"],
@@ -241,15 +218,13 @@ class TestExtractFilterParquetTicker:
         instance.logger.warning.assert_called_once()
 
     def test_returns_empty_dict_for_empty_dataframe(self):
-        """An empty dataframe returns an empty dict."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame({"issuer_name": [], "security_cusip": [], "stock_ticker": []})
         result = instance._extract_filter_parquet_ticker(df)
         assert result == {}
 
     def test_multiple_cusips_per_issuer_all_included(self):
-        """All valid CUSIPs for an issuer are returned."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp A", "Corp A"],
@@ -262,11 +237,10 @@ class TestExtractFilterParquetTicker:
 
 
 class TestWarnAmbiguousCusips:
-    """Tests for CompanyByCusipPipeline._warn_ambiguous_cusips."""
+    """Tests for ShareholderInputCusip._warn_ambiguous_cusips."""
 
     def test_no_warning_for_unambiguous_cusips(self):
-        """No warning is emitted when each CUSIP maps to exactly one ticker."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp B"],
@@ -278,8 +252,7 @@ class TestWarnAmbiguousCusips:
         instance.logger.warning.assert_not_called()
 
     def test_warning_emitted_for_ambiguous_cusip(self):
-        """A warning is emitted when one CUSIP maps to multiple tickers."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp B"],
@@ -291,8 +264,7 @@ class TestWarnAmbiguousCusips:
         instance.logger.warning.assert_called_once()
 
     def test_ambiguous_cusip_deterministically_keeps_first(self):
-        """When a CUSIP maps to multiple tickers, _std_ticker_map keeps the first."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp B"],
@@ -305,11 +277,10 @@ class TestWarnAmbiguousCusips:
 
 
 class TestGroupByIssuer:
-    """Tests for CompanyByCusipPipeline._group_by_issuer."""
+    """Tests for ShareholderInputCusip._group_by_issuer."""
 
     def test_returns_cusips_per_issuer(self):
-        """Returns {issuer_name: [cusip, ...]} with no ticker values."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp A", "Corp B"],
@@ -322,8 +293,7 @@ class TestGroupByIssuer:
         assert result["Corp B"] == ["594918104"]
 
     def test_bond_cusips_are_excluded(self):
-        """CUSIPs whose tickers are bonds are not returned."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A", "Corp A"],
@@ -336,88 +306,21 @@ class TestGroupByIssuer:
         assert "037833101" not in result.get("Corp A", [])
 
     def test_empty_dataframe_returns_empty_dict(self):
-        """Empty DataFrame produces empty dict."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame({"issuer_name": [], "security_cusip": [], "stock_ticker": []})
         result = instance._group_by_issuer(df)
         assert result == {}
 
 
-_PERMID_URL = "https://permid.org/1-test"
-
-
-def _collision_permid_data() -> dict:
-    """A permid_file with two different issuers (ABBOTT, ABACUS) on one PermID."""
-    return {
-        "ABBOTT_cusip_002824100": {
-            "search": {
-                "Name": "ABBOTT",
-                "LocalID": "cusip_002824100",  # issuer 002824
-                "Standard Identifier": "ticker:ABT",
-            },
-            "result": [_PERMID_URL],
-        },
-        "ABACUS_cusip_00258Y104": {
-            "search": {
-                "Name": "ABACUS",
-                "LocalID": "cusip_00258Y104",  # issuer 00258Y
-                "Standard Identifier": "ticker:ABL",
-            },
-            "result": [_PERMID_URL],
-        },
-    }
-
-
-def make_cusip_instance_with_files(tmp_path, permid_data) -> CompanyByCusipPipeline:
-    """A CUSIP pipeline instance whose file_paths point at written temp caches."""
-    permid_file = tmp_path / "permid.json"
-    result_file = tmp_path / "result.json"
-    permid_file.write_text(json.dumps(permid_data))
-    result_file.write_text(json.dumps({}))
-
-    instance = make_cusip_instance()
-    instance.file_paths = FilePaths(
-        input_file="",
-        result_file=str(result_file),
-        permid_file=str(permid_file),
-    )
-    return instance
-
-
-class TestReportCusipCollisions:
-    """Tests for CompanyPipeline._report_cusip_collisions scoping to the current run."""
-
-    def test_no_warning_when_collision_not_resolved_this_run(self, tmp_path):
-        """A historical collision is not re-warned when this run resolved none of it."""
-        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
-        instance._report_cusip_collisions(resolved_keys=set())
-        instance.logger.warning.assert_not_called()
-
-    def test_warns_when_a_member_resolved_this_run(self, tmp_path):
-        """The collision is reported when this run resolved one of its CUSIPs."""
-        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
-        instance._report_cusip_collisions(resolved_keys={"ABBOTT_cusip_002824100"})
-        # One per-collision warning + one summary warning.
-        assert instance.logger.warning.call_count == 2
-
-    def test_unrelated_resolved_key_does_not_warn(self, tmp_path):
-        """A key resolved this run that reaches no colliding PermID warns nothing."""
-        instance = make_cusip_instance_with_files(tmp_path, _collision_permid_data())
-        instance._report_cusip_collisions(resolved_keys={"OTHER_cusip_999999999"})
-        instance.logger.warning.assert_not_called()
-
-
 class TestStdTickerMapProperty:
-    """Tests for the CompanyByCusipPipeline.std_ticker_map property."""
+    """Tests for the ShareholderInputCusip.std_ticker_map property."""
 
     def test_std_ticker_map_returns_empty_before_load(self):
-        """std_ticker_map returns {} when _std_ticker_map has not been set."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         assert instance.std_ticker_map == {}
 
     def test_std_ticker_map_returns_set_value(self):
-        """std_ticker_map returns the value set by _build_ticker_maps."""
-        instance = make_cusip_instance()
+        instance = make_instance()
         df = pd.DataFrame(
             {
                 "issuer_name": ["Corp A"],
