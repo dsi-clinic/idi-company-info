@@ -23,7 +23,7 @@ class TestIdentifierType:
 
 
 class TestExtractFilterParquetCik:
-    """Tests for ShareholderInputCik._extract_filter_parquet_cik."""
+    """Tests for ShareholderInputCik's CIK filter/group logic (Input._filter_group_cik)."""
 
     def test_returns_dict_grouped_by_investor_name(self):
         """The result groups ciks by investor_name."""
@@ -34,7 +34,9 @@ class TestExtractFilterParquetCik:
                 "investor_cik": ["0001111111", "0002222222", "0003333333"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(
+            df, "investor_name", "investor_cik", strip_cik_prefix=True
+        )
         assert set(result.keys()) == {"Firm A", "Firm B"}
         assert set(result["Firm A"]) == {"0001111111", "0002222222"}
         assert result["Firm B"] == ["0003333333"]
@@ -48,7 +50,9 @@ class TestExtractFilterParquetCik:
                 "investor_cik": [None, "0001234567"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(
+            df, "investor_name", "investor_cik", strip_cik_prefix=True
+        )
         assert "Firm A" not in result
         assert "Firm B" in result
 
@@ -61,7 +65,9 @@ class TestExtractFilterParquetCik:
                 "investor_cik": ["", "0001234567"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(
+            df, "investor_name", "investor_cik", strip_cik_prefix=True
+        )
         assert "Firm A" not in result
         assert "Firm B" in result
 
@@ -74,7 +80,9 @@ class TestExtractFilterParquetCik:
                 "investor_cik": ["CIK0001546531"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(
+            df, "investor_name", "investor_cik", strip_cik_prefix=True
+        )
         assert result["Firm A"] == ["0001546531"]
 
     def test_deduplicates_name_cik_pairs(self):
@@ -86,14 +94,18 @@ class TestExtractFilterParquetCik:
                 "investor_cik": ["0001111111", "0001111111"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(
+            df, "investor_name", "investor_cik", strip_cik_prefix=True
+        )
         assert result["Firm A"] == ["0001111111"]
 
     def test_returns_empty_dict_for_empty_dataframe(self):
         """An empty dataframe returns an empty dict."""
         instance = make_instance()
         df = pd.DataFrame({"investor_name": [], "investor_cik": []})
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(
+            df, "investor_name", "investor_cik", strip_cik_prefix=True
+        )
         assert result == {}
 
     def test_cik_values_are_strings(self):
@@ -105,5 +117,7 @@ class TestExtractFilterParquetCik:
                 "investor_cik": [1234567],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(
+            df, "investor_name", "investor_cik", strip_cik_prefix=True
+        )
         assert all(isinstance(v, str) for v in result["Firm A"])

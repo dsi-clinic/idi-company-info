@@ -61,6 +61,58 @@ class Input(ABC):
 
         return input_df
 
+    def _filter_group_cik(
+        self,
+        df: pd.DataFrame,
+        name_col: str,
+        cik_col: str,
+        strip_cik_prefix: bool = False,
+    ) -> dict[str, list[str]]:
+        """Filter, normalise, and group CIK rows into ``{name: [cik, ...]}``.
+
+        Shared by all CIK-based inputs. Drops rows with null/empty names or CIKs,
+        optionally strips a leading ``"CIK"`` prefix, zero-pads CIKs to 10 digits,
+        deduplicates after normalisation, then groups by name.
+
+        Args:
+            df: DataFrame containing ``name_col`` and ``cik_col``.
+            name_col: Name of the entity-name column (e.g. ``"company_name"``).
+            cik_col: Name of the CIK column (e.g. ``"cik"``).
+            strip_cik_prefix: If True, strip a leading ``"CIK"`` (e.g. ``"CIK0001..." -> "0001..."``).
+
+        Returns:
+            Mapping of entity name to list of normalised CIK strings.
+        """
+        subset = df[[name_col, cik_col]].copy()
+        self.logger.info("Found %s total rows", len(subset))
+
+        # Cast to string up front so the null filter operates on one form.
+        subset[name_col] = subset[name_col].astype(str)
+        subset[cik_col] = subset[cik_col].astype(str)
+
+        # Filter out null and empty values - notna() is required: for str dtype
+        # a true null stays NA after astype(str)
+        subset = subset[
+            subset[name_col].notna()
+            & ~subset[name_col].isin(["", "nan", "None"])
+            & subset[cik_col].notna()
+            & ~subset[cik_col].isin(["", "nan", "None"])
+        ]
+        self.logger.info("Found %s rows with valid CIKs", len(subset))
+
+        # Normalise CIKs
+        if strip_cik_prefix:
+            subset[cik_col] = subset[cik_col].str.replace("^CIK", "", regex=True)
+        subset[cik_col] = subset[cik_col].str.zfill(10)  # Pad with zero
+
+        # Deduplicate AFTER normalisation to catch formatting differences
+        subset = subset.drop_duplicates(subset=[name_col, cik_col])
+        self.logger.info(
+            "After normalization and deduplication: %s unique name/CIK pairs", len(subset)
+        )
+
+        return subset.groupby(name_col)[cik_col].apply(list).to_dict()
+
 
 class ShareholderInputCik(Input):
     """Input for shareholder parquet files keyed by CIK.
@@ -78,42 +130,6 @@ class ShareholderInputCik(Input):
         """
         return "cik"
 
-    def _extract_filter_parquet_cik(self, df: pd.DataFrame) -> dict[str, list[str]]:
-        """Filter and normalise CIK rows, returning ``{investor_name: [cik, ...]}``.
-
-        Drops rows with null or empty CIKs, strips the ``"CIK"`` prefix, deduplicates,
-        then groups by investor name.
-
-        Args:
-            df: DataFrame containing ``investor_name`` and ``investor_cik`` columns.
-
-        Returns:
-            Mapping of investor name to list of normalised CIK strings.
-        """
-        # Extract investor_name and investor_cik columns
-        subset = df[["investor_name", "investor_cik"]].copy()
-
-        # Filter out rows where investor_cik is null or empty
-        subset = subset[subset["investor_cik"].notna() & (subset["investor_cik"] != "")]
-        self.logger.info("Found %s rows with valid CIKs", len(subset))
-
-        # Convert investor_cik to string to ensure JSON serialization
-        subset["investor_cik"] = subset["investor_cik"].astype(str)
-
-        # Remove "CIK" prefix from CIK values (e.g., "CIK0001546531" -> "0001546531")
-        subset["investor_cik"] = subset["investor_cik"].str.replace("^CIK", "", regex=True)
-
-        # Remove duplicates AFTER normalization to catch formatting differences
-        subset = subset.drop_duplicates(subset=["investor_name", "investor_cik"])
-        self.logger.info(
-            "After normalization and deduplication: %s unique investor_name/CIK pairs", len(subset)
-        )
-
-        # Group by investor_name and aggregate CIKs into a list
-        result = subset.groupby("investor_name")["investor_cik"].apply(list).to_dict()
-
-        return result
-
     def load_data(self) -> dict[str, list[str]]:
         """Load the shareholder parquet and return ``{investor_name: [cik, ...]}``."""
         input_df = self.read_parquet(
@@ -121,8 +137,9 @@ class ShareholderInputCik(Input):
         )
         self.logger.info("Loaded %s rows", len(input_df))
 
-        result = self._extract_filter_parquet_cik(input_df)
-        return result
+        return self._filter_group_cik(
+            input_df, "investor_name", "investor_cik", strip_cik_prefix=True
+        )
 
 
 class ShareholderInputCusip(Input):
@@ -334,45 +351,10 @@ class CdtInput(Input):
         """
         return "cik"
 
-    def _extract_filter_parquet_cik(self, df: pd.DataFrame) -> dict[str, list[str]]:
-        """Filter and deduplicate CDT rows, returning ``{company_name: [cik, ...]}``.
-
-        Drops rows where ``company_name`` is null or the literal string ``"nan"``
-        (written by upstream pandas when the field was null at serialisation time),
-        and rows with empty CIKs.
-
-        Args:
-            df: DataFrame with ``company_name`` and ``cik`` columns.
-
-        Returns:
-            Mapping of company name to list of CIK strings.
-        """
-        # Extract company and cik columns
-        subset = df[["company_name", "cik"]].copy()
-        self.logger.info("Found %s total rows", len(subset))
-
-        # Filter out rows with null or empty values
-        subset = subset[
-            (subset["company_name"].notna())
-            & (subset["company_name"] != "nan")
-            & (subset["cik"].astype(str) != "")
-        ]
-        self.logger.info("Found %s rows with valid CIKs", len(subset))
-
-        # Remove duplicates
-        subset["cik"] = subset["cik"].astype(str)  # convert identifier row to str
-        subset["cik"] = subset["cik"].astype(str).str.zfill(10)  # Pad with zero
-        subset = subset.drop_duplicates(subset=["company_name", "cik"])
-        self.logger.info(
-            "After normalization and deduplication: %s unique name/CIK pairs", len(subset)
-        )
-
-        return subset.groupby("company_name")["cik"].apply(list).to_dict()
-
     def load_data(self) -> dict[str, list[str]]:
         """Load the CDT debt-instruments parquet and return ``{company_name: [cik, ...]}``."""
         input_df = self.read_parquet(self.input_file, required_columns=["cik", "company_name"])
-        return self._extract_filter_parquet_cik(input_df)
+        return self._filter_group_cik(input_df, "company_name", "cik")
 
 
 class SubsidiaryInput(Input):
@@ -391,35 +373,9 @@ class SubsidiaryInput(Input):
         """
         return "cik"
 
-    def _extract_filter_parquet_cik(self, input_df: pd.DataFrame) -> dict[str, list[str]]:
-        """Filter and deduplicate subsidiary rows, returning ``{parent_name: [cik, ...]}``.
-
-        Args:
-            input_df: DataFrame containing ``parent_name`` and ``parent_cik`` columns.
-
-        Returns:
-            Mapping of parent company name to list of CIK strings.
-        """
-        subset = input_df[["parent_name", "parent_cik"]].copy()
-        self.logger.info("Found %s total rows", len(subset))
-
-        # Filter out rows with null or empty values
-        subset = subset[(subset["parent_name"].notna()) & (subset["parent_cik"].astype(str) != "")]
-        self.logger.info("Found %s rows with valid CIKs", len(subset))
-
-        # Remove duplicates
-        subset["parent_cik"] = subset["parent_cik"].astype(str)  # convert identifier row to str
-        subset = subset.drop_duplicates(subset=["parent_name", "parent_cik"])
-        self.logger.info(
-            "After normalization and deduplication: %s unique name/CIK pairs", len(subset)
-        )
-
-        return subset.groupby("parent_name")["parent_cik"].apply(list).to_dict()
-
     def load_data(self) -> dict[str, list[str]]:
         """Load the subsidiary parquet and return ``{parent_name: [cik, ...]}``."""
         input_df = self.read_parquet(
             self.input_file, required_columns=["parent_cik", "parent_name"]
         )
-        result = self._extract_filter_parquet_cik(input_df)
-        return result
+        return self._filter_group_cik(input_df, "parent_name", "parent_cik")
