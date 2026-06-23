@@ -458,7 +458,7 @@ wheels = [
 
 [[package]]
 name = "idi-company-info"
-version = "0.1.1a8"
+version = "0.1.1a9"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
