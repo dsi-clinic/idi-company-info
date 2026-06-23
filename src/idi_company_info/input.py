@@ -102,6 +102,7 @@ class ShareholderInputCik(Input):
 
         # Remove "CIK" prefix from CIK values (e.g., "CIK0001546531" -> "0001546531")
         subset["investor_cik"] = subset["investor_cik"].str.replace("^CIK", "", regex=True)
+        subset["investor_cik"] = subset["investor_cik"].astype(str).str.zfill(10)  # Pad with zero
 
         # Remove duplicates AFTER normalization to catch formatting differences
         subset = subset.drop_duplicates(subset=["investor_name", "investor_cik"])
@@ -409,6 +410,7 @@ class SubsidiaryInput(Input):
 
         # Remove duplicates
         subset["parent_cik"] = subset["parent_cik"].astype(str)  # convert identifier row to str
+        subset["parent_cik"] = subset["parent_cik"].astype(str).str.zfill(10)  # Pad with zero
         subset = subset.drop_duplicates(subset=["parent_name", "parent_cik"])
         self.logger.info(
             "After normalization and deduplication: %s unique name/CIK pairs", len(subset)
