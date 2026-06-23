@@ -92,8 +92,7 @@ class Input(ABC):
 
         # Filter out rows with null or empty values
         subset = subset[
-            ~subset[name_col].isin(["", "nan", "None"])
-            & ~subset[cik_col].isin(["", "nan", "None"])
+            ~subset[name_col].isin(["", "nan", "None"]) & ~subset[cik_col].isin(["", "nan", "None"])
         ]
         self.logger.info("Found %s rows with valid CIKs", len(subset))
 
