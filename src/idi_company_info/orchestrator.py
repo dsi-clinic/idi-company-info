@@ -158,9 +158,10 @@ def get_args() -> argparse.Namespace:
         type=int,
         default=1650,
         help=(
-            "PermID enrichment-request budget per run; the company-info stage stops "
-            "starting new companies once this many entity-lookup + follow-up calls are "
-            "made (default: 1650; 3 daily sources * 1650 <= 5,000/day quota)"
+            "Total PermID-request budget per run against the shared daily quota (Record "
+            "Match + entity-lookup + follow-up calls); the company-info stage stops "
+            "starting new companies once this many requests are made "
+            "(default: 1650; 3 daily sources * 1650 <= 5,000/day quota)"
         ),
     )
     parser.add_argument(

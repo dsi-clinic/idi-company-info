@@ -318,3 +318,16 @@ class TestRequestBudget:
 
         results = json.loads((tmp_path / "result.json").read_text())
         assert set(results) == {_C1, _C2, _C3}
+
+    def test_record_match_calls_count_against_the_shared_budget(self, tmp_path):
+        retriever = _make_retrieve_retriever(tmp_path, max_requests=3)
+        # Simulate one Record Match call already spent in the PermID-retrieval stage.
+        stats = BatchStats(total_record_match_calls=1)
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        results = json.loads((tmp_path / "result.json").read_text())
+        # Budget 3, but 1 is already spent on Record Match, leaving room for one company
+        # (1 entity + 1 sector = 2). C1 is admitted (->3), then the budget stops C2 — one
+        # fewer than when the same budget started clean (see the test above).
+        assert set(results) == {_C1}

@@ -298,6 +298,17 @@ class CompanyPipeline:
             stats["total_follow_up_calls"],
         )
         self.logger.info(
+            "PermID requests used: %d total against the daily quota "
+            "(%d Record Match + %d entity + %d follow-up)",
+            stats["total_record_match_calls"]
+            + stats["total_company_info"]
+            + stats["total_company_info_failed"]
+            + stats["total_follow_up_calls"],
+            stats["total_record_match_calls"],
+            stats["total_company_info"] + stats["total_company_info_failed"],
+            stats["total_follow_up_calls"],
+        )
+        self.logger.info(
             "Processed:   Entities: %d | Records: %d | Duplicates removed: %d",
             stats["total_entities"],
             stats["total_records"],

@@ -116,12 +116,17 @@ class CompInfoRetrieval(Retrieval):
 
     @staticmethod
     def _permid_requests(batch_stats: BatchStats) -> int:
-        """Count PermID requests made this run: entity lookups (incl. failures) + follow-ups.
+        """Count all PermID requests made this run against the shared daily quota.
 
+        Record Match (PermID-retrieval stage), entity lookups (incl. failures), and sector/
+        quote follow-ups all draw on the same per-key quota, so ``max_requests`` budgets the
+        whole run, not just the enrichment stage. Record Match calls run before this stage,
+        so they are already reflected here and shrink the enrichment headroom accordingly.
         Geonames is a separate API with its own quota and is intentionally excluded.
         """
         return (
-            batch_stats.total_company_info
+            batch_stats.total_record_match_calls
+            + batch_stats.total_company_info
             + batch_stats.total_company_info_failed
             + batch_stats.total_follow_up_calls
         )

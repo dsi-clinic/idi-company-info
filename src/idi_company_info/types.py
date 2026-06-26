@@ -85,6 +85,10 @@ class BatchConfig:
     """Configuration for batch processing behaviour."""
 
     batch_size: int = 2450  # max NEW identifiers resolved to PermIDs per run (intake cap)
+    # Total PermID-request budget for the run against the shared daily quota: Record Match
+    # + entity-lookup + sector/quote follow-up calls all count. The company-info stage stops
+    # starting new companies once this many requests are made. Memoized sectors mean most
+    # companies cost ~2 live requests. 3 daily sources * 1650 = 4,950 <= 5,000/day quota.
     max_requests: int = 1650
     buffer_size: int = 500  # max size of buffer before data is written to disk
     threshold_days: int | None = None  # number of days to look for stale entities
@@ -119,6 +123,7 @@ class BatchStats:
     total_ids: int = 0
     total_permids: int = 0
     total_permid_failed: int = 0
+    total_record_match_calls: int = 0  # Record Match HTTP calls (1 per <=1000 records)
     total_company_info: int = 0
     total_company_info_failed: int = 0
     total_follow_up_calls: int = 0
