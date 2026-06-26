@@ -84,13 +84,13 @@ class FilePaths:
 class BatchConfig:
     """Configuration for batch processing behaviour."""
 
-    batch_size: int = 330  # companies per run; with enrichment ~5 PermID calls each
+    batch_size: int = 2450  # max NEW identifiers resolved to PermIDs per run (intake cap)
+    max_requests: int = 1650
     buffer_size: int = 500  # max size of buffer before data is written to disk
     threshold_days: int | None = None  # number of days to look for stale entities
-    # When True, resolve linked sector and quote (ticker/exchange) URLs via follow-up
-    # entity-lookup calls. Each company can then cost up to 5 API calls instead of 1
-    # (1 entity + 3 sectors + 1 quote; the quote carries ticker and exchange inline).
-    enrich_metadata: bool = True
+    enrich_metadata: bool = (
+        True  # when True, resolve linked sector and quote (ticker/exchange) URLs
+    )
 
 
 @dataclass
@@ -153,7 +153,8 @@ class OrchestratorConfig:
     input_type: InputSource
     api_key: str
     geonames_user: str
-    batch_size: int = 330
+    batch_size: int = 2450  # max NEW identifiers resolved to PermIDs per run (intake cap)
+    max_requests: int = 1650  # PermID enrichment-request budget per run (company-info stage)
     buffer_size: int = 500
     threshold_days: int | None = None
     enrich_metadata: bool = True  # resolve sector + ticker/exchange links (extra API calls)

@@ -48,6 +48,8 @@ class CompInfoRetrieval(Retrieval):
         """
         super().__init__(file_paths, batch_config, api_clients, failure_registry)
         self.identifier_type = identifier_type
+        # in-memory, per-run memo of resolved sector/industry-group URLs
+        self._sector_cache: dict[str, tuple[str | None, str | None]] = {}
 
     def retrieve(
         self,
@@ -70,9 +72,14 @@ class CompInfoRetrieval(Retrieval):
         # Map permid_url -> [(Name, LocalID), ...] for failure registration only.
         failure_pairs = self._build_failure_pairs(permid_data)
 
-        # Batch = unique permid URLs not already fetched, capped at batch_size.
-        batch = self._build_company_info_batch(permid_data, result_data)
-        self.logger.info("Generating company info for %d permid urls", len(batch))
+        # Unique permid URLs not already fetched; the run is bounded by max_requests below.
+        candidates = self._company_info_candidates(permid_data, result_data)
+        max_requests = self.batch_config.max_requests
+        self.logger.info(
+            "Generating company info for up to %d permid urls (budget: %d PermID requests)",
+            len(candidates),
+            max_requests,
+        )
 
         buffer = Buffer(
             file_path=self.file_paths.result_file,
@@ -80,16 +87,44 @@ class CompInfoRetrieval(Retrieval):
             buffer_size=self.batch_config.buffer_size,
         )
 
-        for idx, permid_url in enumerate(batch, 1):
-            self.logger.info("[%d/%d] Processing: %s", idx, len(batch), permid_url)
+        processed = 0
+        for idx, permid_url in enumerate(candidates, 1):
+            # stop before starting a new company once the request budget is spent
+            if self._permid_requests(batch_stats) >= max_requests:
+                break
+
+            self.logger.info("[%d/%d] Processing: %s", idx, len(candidates), permid_url)
             company = self._retrieve_entity_company_info(
                 permid_url, failure_pairs.get(permid_url, []), batch_stats
             )
+            processed += 1
             if company:
                 buffer.add(data=company)
                 batch_stats.total_entities += 1
 
+        self.logger.info(
+            "Company info done: %d/%d candidates processed, %d PermID requests used "
+            "(budget %d), %d candidates remaining for a future run",
+            processed,
+            len(candidates),
+            self._permid_requests(batch_stats),
+            max_requests,
+            len(candidates) - processed,
+        )
+
         batch_stats.total_records = len(buffer.load_all()) - num_existing_entities
+
+    @staticmethod
+    def _permid_requests(batch_stats: BatchStats) -> int:
+        """Count PermID requests made this run: entity lookups (incl. failures) + follow-ups.
+
+        Geonames is a separate API with its own quota and is intentionally excluded.
+        """
+        return (
+            batch_stats.total_company_info
+            + batch_stats.total_company_info_failed
+            + batch_stats.total_follow_up_calls
+        )
 
     @staticmethod
     def _build_failure_pairs(permid_data: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
@@ -105,24 +140,24 @@ class CompInfoRetrieval(Retrieval):
                 pairs.setdefault(permid_url, []).append(pair)
         return pairs
 
-    def _build_company_info_batch(
+    def _company_info_candidates(
         self, permid_data: dict[str, Any], result_data: dict[str, Any]
     ) -> list[str]:
-        """Select the unique permid URLs to fetch, capped at batch_size companies.
+        """Return the unique permid URLs eligible to fetch this run, in order.
 
-        The cap counts companies, not requests. Each company is one entity-lookup call
-        plus, when ``enrich_metadata`` is on, up to 4 follow-up calls (3 sectors + 1
-        quote) — so a full batch can cost up to ``batch_size * 5`` requests. URLs already
-        present in result_data are skipped (self-heal / backlog drain).
+        URLs already present in result_data are skipped (self-heal / backlog drain). This
+        no longer caps the list — the run is bounded by the ``max_requests`` PermID-request
+        budget enforced in :meth:`retrieve`, which counts the actual entity-lookup and
+        follow-up calls each company costs rather than assuming a fixed per-company count.
 
         Args:
             permid_data: The permid cache: {cache_key: {search, result: [permid_url, ...]}}.
             result_data: Existing result_file, keyed by permid_url.
 
         Returns:
-            Unique permid URLs to fetch this run.
+            Unique permid URLs not yet fetched, in first-seen order.
         """
-        unique_urls = list(
+        return list(
             dict.fromkeys(
                 permid_url
                 for permid_value in permid_data.values()
@@ -130,13 +165,6 @@ class CompInfoRetrieval(Retrieval):
                 if permid_url not in result_data
             )
         )
-
-        batch_permids = unique_urls[: self.batch_config.batch_size]
-        remaining = len(unique_urls) - len(batch_permids)
-        self.logger.info(
-            "Will process %d permid urls, remaining: %d", len(batch_permids), remaining
-        )
-        return batch_permids
 
     def _retrieve_entity_company_info(
         self,
@@ -303,6 +331,12 @@ class CompInfoRetrieval(Retrieval):
     ) -> tuple[str | None, str | None]:
         """Resolve a linked sector/industry permid URL to its human-readable label.
 
+        Memoized per run: the same sector URL resolves to the same (label, comment) for
+        every company, so a cache hit returns the stored value without an API call (and
+        without incrementing ``total_follow_up_calls``). Distinct sector types
+        (business / economic / industry-group) carry distinct URLs, so a single
+        URL-keyed cache is safe across all three.
+
         Args:
             url: The sector/industry permid URL, or None.
             batch_stats: Accumulator for run-level statistics.
@@ -310,6 +344,9 @@ class CompInfoRetrieval(Retrieval):
         Returns:
             The sector label and comment, or None, None if unresolved.
         """
+        if url and url in self._sector_cache:
+            return self._sector_cache[url]
+
         data = self._resolve_permid_link(url, batch_stats)
         if not data:
             return None, None
@@ -317,7 +354,10 @@ class CompInfoRetrieval(Retrieval):
         label = self._scalar_text(data.get("prefLabel") or data.get("rdfs:label"), url)
         comment = self._scalar_text(data.get("rdfs:comment"), url)
 
-        return (label, comment)
+        resolved = (label, comment)
+        if url:
+            self._sector_cache[url] = resolved
+        return resolved
 
     def _scalar_text(self, value: object, url: str | None) -> str | None:
         """Coerce a sector label/comment to a single string.

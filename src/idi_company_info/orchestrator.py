@@ -150,8 +150,18 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=330,
-        help="Number of entities to process per batch (default: 330)",
+        default=2450,
+        help="Max NEW identifiers resolved to PermIDs per run, i.e. intake cap (default: 2450)",
+    )
+    parser.add_argument(
+        "--max-requests",
+        type=int,
+        default=1650,
+        help=(
+            "PermID enrichment-request budget per run; the company-info stage stops "
+            "starting new companies once this many entity-lookup + follow-up calls are "
+            "made (default: 1650; 3 daily sources * 1650 <= 5,000/day quota)"
+        ),
     )
     parser.add_argument(
         "--buffer-size",
@@ -216,6 +226,7 @@ def main() -> None:
         api_key=api_key,
         geonames_user=geonames_user,
         batch_size=args.batch_size,
+        max_requests=args.max_requests,
         buffer_size=args.buffer_size,
         threshold_days=args.threshold_days,
         match_score_threshold=args.match_score_threshold,

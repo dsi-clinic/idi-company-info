@@ -199,12 +199,14 @@ class TestPipelineFactory:
             tmp_path / "out",
             InputSource.SHAREHOLDER_TRACKER_CIK,
             batch_size=42,
+            max_requests=99,
             buffer_size=7,
         )
 
         pipeline = PipelineFactory.build(config)
 
         assert pipeline.batch_config.batch_size == 42
+        assert pipeline.batch_config.max_requests == 99
         assert pipeline.batch_config.buffer_size == 7
 
     def test_each_source_has_distinct_output_filenames(self, tmp_path):

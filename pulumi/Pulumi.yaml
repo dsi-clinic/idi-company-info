@@ -41,7 +41,9 @@ config:
   idi:input_sources:
     description: >
       List of input sources to schedule. Each entry: {source, input_file, cron,
-      batch_size}. `source` must be a valid InputSource slug (e.g.
+      batch_size, max_requests}. `batch_size` caps NEW identifiers resolved to
+      PermIDs per run; `max_requests` is the per-run PermID enrichment-request
+      budget for the company-info stage. `source` must be a valid InputSource slug (e.g.
       shareholder_tracker_cik, commercial_debt_tracker, corporate_subsidiaries);
       `input_file` is an S3 URI to a parquet file.
 

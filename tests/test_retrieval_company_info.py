@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Unit tests for idi_company_info.retrieval_company_info metadata enrichment."""
 
+import json
 from unittest.mock import MagicMock
 
 from idi_company_info.retrieval_company_info import CompInfoRetrieval
-from idi_company_info.types import BatchConfig, BatchStats
+from idi_company_info.types import BatchConfig, BatchStats, FilePaths
 
 # Linked permid URLs referenced (bare keys) in the entity-lookup response.
 _BUSINESS_SECTOR_URL = "https://permid.org/1-business"
@@ -215,3 +216,105 @@ class TestScalarText:
         )
 
         assert entry["primary_industry_group_label"] == "A"
+
+
+class TestSectorMemoization:
+    """A sector URL shared across companies is resolved once, then served from cache."""
+
+    def test_shared_sector_resolved_once_across_companies(self):
+        retriever = _make_retriever(enrich_metadata=True)
+        stats = BatchStats()
+        entity_a = {
+            "@id": "https://permid.org/1-a",
+            "hasPrimaryBusinessSector": _BUSINESS_SECTOR_URL,
+        }
+        entity_b = {
+            "@id": "https://permid.org/1-b",
+            "hasPrimaryBusinessSector": _BUSINESS_SECTOR_URL,
+        }
+
+        a = retriever._parse_company_info("https://permid.org/1-a", entity_a, stats)
+        b = retriever._parse_company_info("https://permid.org/1-b", entity_b, stats)
+
+        # Both companies get the same resolved label...
+        assert a["primary_business_sector_label"] == "Technology"
+        assert b["primary_business_sector_label"] == "Technology"
+        # ...but the sector URL was only fetched once (the second was a cache hit).
+        assert stats.total_follow_up_calls == 1
+        sector_calls = [
+            call
+            for call in retriever.api_clients.entity_lookup.query_endpoint.call_args_list
+            if call.kwargs.get("permid_url") == _BUSINESS_SECTOR_URL
+        ]
+        assert len(sector_calls) == 1
+
+
+# Records for the retrieve()-loop budget test: 3 companies, each with its own sector URL
+# so every company costs 2 PermID requests (1 entity + 1 sector) with no cache sharing.
+_C1, _C2, _C3 = (f"https://permid.org/1-company{n}" for n in (1, 2, 3))
+_S1, _S2, _S3 = (f"https://permid.org/1-sector{n}" for n in (1, 2, 3))
+_BUDGET_RECORDS = {
+    _C1: {"@id": _C1, "vcard:organization-name": "C1", "hasPrimaryBusinessSector": _S1},
+    _C2: {"@id": _C2, "vcard:organization-name": "C2", "hasPrimaryBusinessSector": _S2},
+    _C3: {"@id": _C3, "vcard:organization-name": "C3", "hasPrimaryBusinessSector": _S3},
+    _S1: {"prefLabel": "Sector One"},
+    _S2: {"prefLabel": "Sector Two"},
+    _S3: {"prefLabel": "Sector Three"},
+}
+
+
+def _make_retrieve_retriever(tmp_path, max_requests: int) -> CompInfoRetrieval:
+    """Build a CompInfoRetrieval backed by real tmp files for driving retrieve()."""
+    api_clients = MagicMock()
+    api_clients.entity_lookup.query_endpoint.side_effect = lambda permid_url: (
+        {"status_code": 200, "data": _BUDGET_RECORDS[permid_url]}
+        if permid_url in _BUDGET_RECORDS
+        else {"status_code": 404}
+    )
+    file_paths = FilePaths(
+        result_file=str(tmp_path / "result.json"),
+        permid_file=str(tmp_path / "permid.json"),
+        failure_file="",
+    )
+    return CompInfoRetrieval(
+        file_paths=file_paths,
+        batch_config=BatchConfig(enrich_metadata=True, max_requests=max_requests, buffer_size=1),
+        api_clients=api_clients,
+        identifier_type="cik",
+    )
+
+
+def _budget_permid_data() -> dict:
+    """permid_data with three companies, one permid URL each."""
+    return {
+        f"key{i}": {"search": {"Name": f"C{i}", "LocalID": f"cik_{i}"}, "result": [company]}
+        for i, company in enumerate((_C1, _C2, _C3), 1)
+    }
+
+
+class TestRequestBudget:
+    """retrieve() stops at the max_requests budget without cutting a company off."""
+
+    def test_stops_at_budget_with_each_started_company_fully_resolved(self, tmp_path):
+        retriever = _make_retrieve_retriever(tmp_path, max_requests=3)
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        results = json.loads((tmp_path / "result.json").read_text())
+        # Each company costs 2 requests; a budget of 3 admits C1 (->2) and C2 (->4), then
+        # stops before C3. The check is only at the top of the loop, so both admitted
+        # companies finish their sector follow-up — no company is cut off mid-resolution.
+        assert set(results) == {_C1, _C2}
+        assert results[_C1]["primary_business_sector_label"] == "Sector One"
+        assert results[_C2]["primary_business_sector_label"] == "Sector Two"
+        assert _C3 not in results
+
+    def test_budget_above_total_cost_processes_all_candidates(self, tmp_path):
+        retriever = _make_retrieve_retriever(tmp_path, max_requests=100)
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        results = json.loads((tmp_path / "result.json").read_text())
+        assert set(results) == {_C1, _C2, _C3}

@@ -45,6 +45,7 @@ class PipelineFactory:
 
         batch_config = BatchConfig(
             batch_size=config.batch_size,
+            max_requests=config.max_requests,
             buffer_size=config.buffer_size,
             threshold_days=config.threshold_days,
             enrich_metadata=config.enrich_metadata,

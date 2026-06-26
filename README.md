@@ -79,7 +79,8 @@ uv run pipeline \
 | `--type` | Yes | — | `cik` or `cusip` |
 | `--permid-api-key` | Env/CLI | `$PERMID_API_KEY` | LSEG PermID access token |
 | `--geonames-user` | Env/CLI | `$GEONAMES_USER` | Geonames username |
-| `--batch-size` | No | `330` | Max entities per run (with enrichment ~5 PermID calls each; keeps 3 daily sources under the 5K/day quota) |
+| `--batch-size` | No | `2450` | Max NEW identifiers resolved to PermIDs per run (intake cap; Record Match batches 1000/call, so cheap on quota) |
+| `--max-requests` | No | `1650` | PermID enrichment-request budget per run. The company-info stage stops starting new companies once this many entity-lookup + follow-up calls are made; sectors/groups are memoized per run so most companies cost ~2 live requests. `3 daily sources × 1650 ≤ 5,000/day` quota. |
 | `--buffer-size` | No | `500` | Write-buffer flush size |
 | `--threshold-days` | No | `None` | Re-process records older than N days |
 | `--match-score-threshold` | No | `1` | Minimum Record Match score (0–1); `1` = 100% match required |
