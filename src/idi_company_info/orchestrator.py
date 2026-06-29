@@ -151,7 +151,18 @@ def get_args() -> argparse.Namespace:
         "--batch-size",
         type=int,
         default=2450,
-        help="Number of entities to process per batch (default: 2450)",
+        help="Max NEW identifiers resolved to PermIDs per run, i.e. intake cap (default: 2450)",
+    )
+    parser.add_argument(
+        "--max-requests",
+        type=int,
+        default=1650,
+        help=(
+            "Total PermID-request budget per run against the shared daily quota (Record "
+            "Match + entity-lookup + follow-up calls); the company-info stage stops "
+            "starting new companies once this many requests are made "
+            "(default: 1650; 3 daily sources * 1650 <= 5,000/day quota)"
+        ),
     )
     parser.add_argument(
         "--buffer-size",
@@ -182,6 +193,12 @@ def get_args() -> argparse.Namespace:
         action="store_true",
         help="Skip aggregating the combined final parquet after the pipeline run",
     )
+    parser.add_argument(
+        "--no-enrich-metadata",
+        dest="enrich_metadata",
+        action="store_false",
+        help="Skip sector and ticker/exchange follow-up lookups (1 API call per company)",
+    )
 
     return parser.parse_args()
 
@@ -210,11 +227,13 @@ def main() -> None:
         api_key=api_key,
         geonames_user=geonames_user,
         batch_size=args.batch_size,
+        max_requests=args.max_requests,
         buffer_size=args.buffer_size,
         threshold_days=args.threshold_days,
         match_score_threshold=args.match_score_threshold,
         final_output_file=args.final_output_file,
         skip_final_output=args.skip_final_output,
+        enrich_metadata=args.enrich_metadata,
     )
 
     orchestrator = PipelineOrchestrator(config)

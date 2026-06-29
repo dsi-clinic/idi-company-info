@@ -9,7 +9,7 @@ from idi_ftm2j_shared.failures import FailureRegistry
 from idi_ftm2j_shared.storage import load_json
 
 # Application imports
-from idi_company_info.buffer import Buffer
+from idi_company_info.buffer import Buffer, SectorCache
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval import Retrieval
 from idi_company_info.types import (
@@ -18,6 +18,7 @@ from idi_company_info.types import (
     FilePaths,
     MergeStrategy,
     PermidResponse,
+    QuoteInfo,
     ResultEntry,
 )
 
@@ -47,6 +48,11 @@ class CompInfoRetrieval(Retrieval):
         """
         super().__init__(file_paths, batch_config, api_clients, failure_registry)
         self.identifier_type = identifier_type
+        # Shared sector memo (in-memory + disk). Persistence is disabled when enrichment is
+        # off, since no sectors are resolved in that case.
+        self._sector_cache = SectorCache(
+            file_paths.sector_cache_file if batch_config.enrich_metadata else ""
+        )
 
     def retrieve(
         self,
@@ -66,12 +72,20 @@ class CompInfoRetrieval(Retrieval):
         """
         result_data = load_json(self.file_paths.result_file, return_type="dict")
 
+        # Seed the sector memo from the shared on-disk cache (bypasses re-resolving)
+        self._sector_cache.load()
+
         # Map permid_url -> [(Name, LocalID), ...] for failure registration only.
         failure_pairs = self._build_failure_pairs(permid_data)
 
-        # Batch = unique permid URLs not already fetched, capped at batch_size.
-        batch = self._build_company_info_batch(permid_data, result_data)
-        self.logger.info("Generating company info for %d permid urls", len(batch))
+        # Unique permid URLs not already fetched; the run is bounded by max_requests below.
+        candidates = self._company_info_candidates(permid_data, result_data)
+        max_requests = self.batch_config.max_requests
+        self.logger.info(
+            "Generating company info for up to %d permid urls (budget: %d PermID requests)",
+            len(candidates),
+            max_requests,
+        )
 
         buffer = Buffer(
             file_path=self.file_paths.result_file,
@@ -79,16 +93,63 @@ class CompInfoRetrieval(Retrieval):
             buffer_size=self.batch_config.buffer_size,
         )
 
-        for idx, permid_url in enumerate(batch, 1):
-            self.logger.info("[%d/%d] Processing: %s", idx, len(batch), permid_url)
+        processed = 0
+        for idx, permid_url in enumerate(candidates, 1):
+            # stop before starting a new company once the request budget is spent
+            if self._permid_requests(batch_stats) >= max_requests:
+                self.logger.info(
+                    "Reached max_requests budget (%d PermID requests); stopping before "
+                    "candidate %d of %d — %d left for a future run",
+                    max_requests,
+                    idx,
+                    len(candidates),
+                    len(candidates) - processed,
+                )
+                break
+
+            self.logger.info("[%d/%d] Processing: %s", idx, len(candidates), permid_url)
             company = self._retrieve_entity_company_info(
                 permid_url, failure_pairs.get(permid_url, []), batch_stats
             )
+            processed += 1
             if company:
                 buffer.add(data=company)
                 batch_stats.total_entities += 1
 
+        self.logger.info(
+            "Company info done: %d/%d candidates processed, %d PermID requests used "
+            "(budget %d), %d candidates remaining for a future run",
+            processed,
+            len(candidates),
+            self._permid_requests(batch_stats),
+            max_requests,
+            len(candidates) - processed,
+        )
+
+        # Persist any newly discovered sectors; best effortas the cache is a non-critical
+        try:
+            self._sector_cache.flush()
+        except Exception as error:  # noqa: BLE001
+            self.logger.warning("Could not persist sector cache (non-fatal): %s", error)
+
         batch_stats.total_records = len(buffer.load_all()) - num_existing_entities
+
+    @staticmethod
+    def _permid_requests(batch_stats: BatchStats) -> int:
+        """Count all PermID requests made this run against the shared daily quota.
+
+        Record Match (PermID-retrieval stage), entity lookups (incl. failures), and sector/
+        quote follow-ups all draw on the same per-key quota, so ``max_requests`` budgets the
+        whole run, not just the enrichment stage. Record Match calls run before this stage,
+        so they are already reflected here and shrink the enrichment headroom accordingly.
+        Geonames is a separate API with its own quota and is intentionally excluded.
+        """
+        return (
+            batch_stats.total_record_match_calls
+            + batch_stats.total_company_info
+            + batch_stats.total_company_info_failed
+            + batch_stats.total_follow_up_calls
+        )
 
     @staticmethod
     def _build_failure_pairs(permid_data: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
@@ -104,22 +165,24 @@ class CompInfoRetrieval(Retrieval):
                 pairs.setdefault(permid_url, []).append(pair)
         return pairs
 
-    def _build_company_info_batch(
+    def _company_info_candidates(
         self, permid_data: dict[str, Any], result_data: dict[str, Any]
     ) -> list[str]:
-        """Select the unique permid URLs to fetch, capped at batch_size API calls.
+        """Return the unique permid URLs eligible to fetch this run, in order.
 
-        Every entity-lookup call costs one request, so one company == one request. URLs
-        already present in result_data are skipped (self-heal / backlog drain).
+        URLs already present in result_data are skipped (self-heal / backlog drain). This
+        no longer caps the list — the run is bounded by the ``max_requests`` PermID-request
+        budget enforced in :meth:`retrieve`, which counts the actual entity-lookup and
+        follow-up calls each company costs rather than assuming a fixed per-company count.
 
         Args:
             permid_data: The permid cache: {cache_key: {search, result: [permid_url, ...]}}.
             result_data: Existing result_file, keyed by permid_url.
 
         Returns:
-            Unique permid URLs to fetch this run.
+            Unique permid URLs not yet fetched, in first-seen order.
         """
-        unique_urls = list(
+        return list(
             dict.fromkeys(
                 permid_url
                 for permid_value in permid_data.values()
@@ -127,13 +190,6 @@ class CompInfoRetrieval(Retrieval):
                 if permid_url not in result_data
             )
         )
-
-        batch_permids = unique_urls[: self.batch_config.batch_size]
-        remaining = len(unique_urls) - len(batch_permids)
-        self.logger.info(
-            "Will process %d permid urls, remaining: %d", len(batch_permids), remaining
-        )
-        return batch_permids
 
     def _retrieve_entity_company_info(
         self,
@@ -172,21 +228,46 @@ class CompInfoRetrieval(Retrieval):
             self._handle_failures(response, failure_pairs)
             return {}
 
-        company_data = self._parse_company_info(permid_url, data)
+        company_data = self._parse_company_info(permid_url, data, batch_stats)
         batch_stats.total_company_info += 1
         return {permid_url: company_data}
 
-    def _parse_company_info(self, permid_url: str, response: dict[str, Any]) -> ResultEntry:
+    def _parse_company_info(
+        self, permid_url: str, response: dict[str, Any], batch_stats: BatchStats
+    ) -> ResultEntry:
         """Map a raw entity-lookup response to a pure permid_url-keyed result entry.
+
+        Sectors arrive as linked permid.org URLs (resolved via follow-up entity-lookup
+        calls into a label + comment each); the primary quote is one linked URL whose
+        record carries the ticker and exchange identifiers inline. When
+        ``batch_config.enrich_metadata`` is off these ten enrichment fields stay None and
+        cost no extra calls. Worst case: 3 sector + 1 quote follow-ups.
+
+        Note: organization-level link keys are read bare (``hasPrimaryBusinessSector``,
+        ``hasOrganizationPrimaryQuote``) per the JSON-LD context — same convention as
+        ``hasActivityStatus``/``hasURL`` above.
 
         Args:
             permid_url: The PermID URL used in the request.
             response: The ``data`` payload from the entity-lookup response.
+            batch_stats: Accumulator for run-level statistics; follow-up calls are counted.
 
         Returns:
             A flat company-info entry (API fields + last_processed). The permid_url is
             the dict key — there is no ``search``/``result`` envelope.
         """
+        quote_info = self._resolve_quote(response.get("hasOrganizationPrimaryQuote"), batch_stats)
+
+        bus_label, bus_comment = self._resolve_sector_name(
+            response.get("hasPrimaryBusinessSector"), batch_stats
+        )
+        eco_label, eco_comment = self._resolve_sector_name(
+            response.get("hasPrimaryEconomicSector"), batch_stats
+        )
+        ind_label, ind_comment = self._resolve_sector_name(
+            response.get("hasPrimaryIndustryGroup"), batch_stats
+        )
+
         return {
             "investor_name": response.get("vcard:organization-name"),
             "permid_id": response.get("tr-common:hasPermId") or permid_url.split("/")[-1],
@@ -201,8 +282,128 @@ class CompInfoRetrieval(Retrieval):
             "domiciled_in": self._query_geonames_location(response.get("isDomiciledIn")),
             "url": response.get("hasURL"),
             "activity_status": response.get("hasActivityStatus"),
+            "primary_business_sector_label": bus_label,
+            "primary_economic_sector_label": eco_label,
+            "primary_industry_group_label": ind_label,
+            "primary_business_sector_comment": bus_comment,
+            "primary_economic_sector_comment": eco_comment,
+            "primary_industry_group_comment": ind_comment,
+            "ticker": quote_info.ticker,
+            "exchange": quote_info.exchange,
+            "exchange_code": quote_info.exchange_code,
+            "ric": quote_info.ric,
             "last_processed": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S"),
         }
+
+    def _resolve_permid_link(
+        self, url: str | None, batch_stats: BatchStats
+    ) -> dict[str, Any] | None:
+        """Resolve a linked permid.org URL via a follow-up entity-lookup call.
+
+        Generalizes the follow-up-query pattern used by ``_query_geonames_location`` for
+        the entity-lookup client. Each attempted call is counted against
+        ``batch_stats.total_follow_up_calls`` so the added daily-call cost is observable.
+        No-op (and no call) when enrichment is disabled or the URL is absent.
+
+        Args:
+            url: The linked permid.org URL to resolve, or None.
+            batch_stats: Accumulator for run-level statistics.
+
+        Returns:
+            The ``data`` payload of the linked record, or None on absent URL / non-200.
+        """
+        if not self.batch_config.enrich_metadata or not url:
+            return None
+
+        batch_stats.total_follow_up_calls += 1
+        response = self.api_clients.entity_lookup.query_endpoint(permid_url=url)
+        if response.get("status_code") != self._HTTP_OK:
+            self.logger.warning(
+                "Follow-up lookup failed for linked PermID %s: %s",
+                url,
+                response.get("error"),
+            )
+            return None
+        return response.get("data")
+
+    def _resolve_quote(self, url: str | None, batch_stats: BatchStats) -> QuoteInfo:
+        """Resolve the primary-quote permid URL to ``QuoteInfo``.
+
+        A ``tr-fin:Quote`` record carries the ticker and the exchange identifiers inline,
+        so a single follow-up call yields all of them — no further lookup is needed.
+
+        Args:
+            url: The primary-quote permid URL, or None.
+            batch_stats: Accumulator for run-level statistics.
+
+        Returns:
+            A ``QuoteInfo`` (ticker, exchange, exchange_code, ric); each field is None
+            when the quote is unresolved or the field is absent.
+        """
+        data = self._resolve_permid_link(url, batch_stats)
+        if not data:
+            return QuoteInfo()
+
+        ticker = data.get("tr-fin:hasExchangeTicker")
+        exchange = data.get("tr-fin:hasMic")
+        exchange_code = data.get("tr-fin:hasExchangeCode")
+        ric = data.get("tr-fin:hasRic")
+
+        return QuoteInfo(ticker=ticker, exchange=exchange, exchange_code=exchange_code, ric=ric)
+
+    def _resolve_sector_name(
+        self, url: str | None, batch_stats: BatchStats
+    ) -> tuple[str | None, str | None]:
+        """Resolve a linked sector/industry permid URL to its human-readable label.
+
+        Memoized via ``self._sector_cache`` (a shared :class:`SectorCache`): the same sector
+        URL resolves to the same (label, comment) for every company, so a cache hit returns
+        the stored value without an API call (and without incrementing
+        ``total_follow_up_calls``). The memo is seeded from disk at the start of the run and
+        flushed back, so hits span runs and sibling sources — not just the current run.
+        Distinct sector types (business / economic / industry-group) carry distinct URLs, so
+        a single URL-keyed cache is safe across all three.
+
+        Args:
+            url: The sector/industry permid URL, or None.
+            batch_stats: Accumulator for run-level statistics.
+
+        Returns:
+            The sector label and comment, or None, None if unresolved.
+        """
+        if url and url in self._sector_cache:
+            batch_stats.total_sector_cache_hits += 1
+            return self._sector_cache.get(url)
+
+        data = self._resolve_permid_link(url, batch_stats)
+        if not data:
+            return None, None
+
+        label = self._scalar_text(data.get("prefLabel") or data.get("rdfs:label"), url)
+        comment = self._scalar_text(data.get("rdfs:comment"), url)
+
+        resolved = (label, comment)
+        if url:
+            self._sector_cache.set(url, resolved)
+        return resolved
+
+    def _scalar_text(self, value: object, url: str | None) -> str | None:
+        """Coerce a sector label/comment to a single string.
+
+        PermID occasionally returns ``prefLabel`` as a list of variant spellings of the
+        same label (observed: ``["Freight&Logistics Services", "Freight & Logistics Services"]``)
+        rather than a scalar. A list reaching ``to_parquet`` raises
+        ``ArrowTypeError: Expected bytes, got a 'list'``, so the first non-empty value is returned.
+        """
+        if isinstance(value, list):
+            if len(value) > 1:
+                self.logger.warning(
+                    "Multi-value label for %s: %s",
+                    url or "sector",
+                    ", ".join(str(item) for item in value),
+                )
+            value = next((item for item in value if item), None)
+        return value or None
 
     def _query_geonames_location(self, url: str | None) -> str | None:
         """Query the Geonames API for a human-readable location name.

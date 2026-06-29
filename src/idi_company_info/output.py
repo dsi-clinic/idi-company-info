@@ -42,6 +42,16 @@ COMPANY_FIELDS: list[str] = [
     "domiciled_in",
     "url",
     "activity_status",
+    "primary_business_sector_label",
+    "primary_economic_sector_label",
+    "primary_industry_group_label",
+    "primary_business_sector_comment",
+    "primary_economic_sector_comment",
+    "primary_industry_group_comment",
+    "ticker",
+    "exchange",
+    "exchange_code",
+    "ric",
     "last_processed",
 ]
 

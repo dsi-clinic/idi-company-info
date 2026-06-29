@@ -197,6 +197,9 @@ class PermidRetrieval(Retrieval):
         parsed_response: dict[str, Any] = {}
         try:
             self.logger.info("Submitted %d record(s) to Record Match API", len(records))
+            # One HTTP call per <=1000-record batch; counts against the shared PermID
+            # daily quota alongside entity-lookup + follow-up calls
+            batch_stats.total_record_match_calls += 1
             response = self.api_clients.record_match.query_endpoint(csv_data)
             if response["status_code"] == self._HTTP_OK:
                 parsed_response = self._parse_response(response, records, batch_stats)

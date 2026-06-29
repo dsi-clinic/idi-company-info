@@ -94,7 +94,8 @@ threshold_days = config.config.require("threshold_days")
 match_score_threshold = config.config.require("match_score_threshold")
 output_dir = config.config.require("output_dir")
 
-# Each entry: {"source": str, "input_file": str, "cron": str, "batch_size": str}
+# Each entry: {"source": str, "input_file": str, "cron": str, "batch_size": str,
+# "max_requests": str}
 input_sources = config.config.require_object("input_sources")
 
 
@@ -102,6 +103,7 @@ def _container_override_input(
     source: str,
     input_file: str,
     batch_size: str,
+    max_requests: str,
 ) -> str:
     """Build the EventBridge Scheduler `input` JSON for an ECS containerOverride.
 
@@ -121,6 +123,8 @@ def _container_override_input(
         geonames_user,
         "--batch-size",
         str(batch_size),
+        "--max-requests",
+        str(max_requests),
         "--buffer-size",
         str(buffer_size),
         "--match-score-threshold",
@@ -150,6 +154,7 @@ def _build_schedule(entry: dict) -> aws.scheduler.Schedule:
                 source,
                 input_file,
                 entry["batch_size"],
+                entry.get("max_requests", "1650"),  # fall back to the orchestrator's own default
             ),
             ecs_parameters=aws.scheduler.ScheduleTargetEcsParametersArgs(
                 task_definition_arn=ecs.task_definition.arn,

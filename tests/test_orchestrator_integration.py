@@ -199,12 +199,14 @@ class TestPipelineFactory:
             tmp_path / "out",
             InputSource.SHAREHOLDER_TRACKER_CIK,
             batch_size=42,
+            max_requests=99,
             buffer_size=7,
         )
 
         pipeline = PipelineFactory.build(config)
 
         assert pipeline.batch_config.batch_size == 42
+        assert pipeline.batch_config.max_requests == 99
         assert pipeline.batch_config.buffer_size == 7
 
     def test_each_source_has_distinct_output_filenames(self, tmp_path):
@@ -481,7 +483,11 @@ class TestCusipPipelineIntegration:
         assert permid[f"{entity_name}_cusip_{cusip}"]["result"] == [_PERMID_URL]
 
     def test_result_file_is_pure_company_info(self, tmp_path):
-        """result_file entries are flat company info — no search/result envelope, no ticker."""
+        """result_file entries are flat company info — no search/result envelope.
+
+        The input ``stock_ticker`` must not leak in: ``ticker`` is a company-info field
+        sourced from the entity's primary quote (None here, as the mock has no quote link).
+        """
         entity_name = "Corp Beta"
         cusip = "037833100"
         parquet = tmp_path / "data.parquet"
@@ -513,7 +519,9 @@ class TestCusipPipelineIntegration:
         assert "permid_id" in record
         assert "last_processed" in record
         assert "identifiers" not in record
-        assert "ticker" not in record
+        # ticker is a company-info field, not the input stock_ticker that resolved the entity.
+        assert record.get("ticker") != "AAPL"
+        assert record["ticker"] is None
 
     def test_produces_empty_output_when_no_permid_match(self, tmp_path):
         parquet = tmp_path / "data.parquet"

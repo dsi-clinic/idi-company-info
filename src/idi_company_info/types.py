@@ -44,11 +44,31 @@ class CompanyResult(TypedDict):
     domiciled_in: str | None
     url: str | None
     activity_status: str | None
+    primary_business_sector_label: str | None
+    primary_economic_sector_label: str | None
+    primary_industry_group_label: str | None
+    primary_business_sector_comment: str | None
+    primary_economic_sector_comment: str | None
+    primary_industry_group_comment: str | None
+    ticker: str | None
+    exchange: str | None
+    exchange_code: str | None
+    ric: str | None
     last_processed: str
 
 
 # A result_file entry IS the company info, flat and keyed by permid_url
 ResultEntry = CompanyResult
+
+
+@dataclass(frozen=True)
+class QuoteInfo:
+    """Resolved primary-quote fields from a tr-fin:Quote record."""
+
+    ticker: str | None = None
+    exchange: str | None = None
+    exchange_code: str | None = None
+    ric: str | None = None
 
 
 @dataclass
@@ -58,15 +78,27 @@ class FilePaths:
     result_file: str
     permid_file: str
     failure_file: str = ""
+    # Shared across all sources (lives at the output root, not a per-source subdir): the
+    # sector/industry-group taxonomy is global, so a hit resolved by one source serves the
+    # others. Empty string disables disk persistence (in-memory cache only).
+    sector_cache_file: str = ""
 
 
 @dataclass
 class BatchConfig:
     """Configuration for batch processing behaviour."""
 
-    batch_size: int = 2450  # number of records to process in a single execution
+    batch_size: int = 2450  # max NEW identifiers resolved to PermIDs per run (intake cap)
+    # Total PermID-request budget for the run against the shared daily quota: Record Match
+    # + entity-lookup + sector/quote follow-up calls all count. The company-info stage stops
+    # starting new companies once this many requests are made. Memoized sectors mean most
+    # companies cost ~2 live requests. 3 daily sources * 1650 = 4,950 <= 5,000/day quota.
+    max_requests: int = 1650
     buffer_size: int = 500  # max size of buffer before data is written to disk
     threshold_days: int | None = None  # number of days to look for stale entities
+    enrich_metadata: bool = (
+        True  # when True, resolve linked sector and quote (ticker/exchange) URLs
+    )
 
 
 @dataclass
@@ -95,8 +127,11 @@ class BatchStats:
     total_ids: int = 0
     total_permids: int = 0
     total_permid_failed: int = 0
+    total_record_match_calls: int = 0  # Record Match HTTP calls (1 per <=1000 records)
     total_company_info: int = 0
     total_company_info_failed: int = 0
+    total_follow_up_calls: int = 0
+    total_sector_cache_hits: int = 0  # sector resolves served from the memo (no API call)
     duplicates_ids_removed: int = 0
 
 
@@ -128,9 +163,11 @@ class OrchestratorConfig:
     input_type: InputSource
     api_key: str
     geonames_user: str
-    batch_size: int = 2450
+    batch_size: int = 2450  # max NEW identifiers resolved to PermIDs per run (intake cap)
+    max_requests: int = 1650  # PermID enrichment-request budget per run (company-info stage)
     buffer_size: int = 500
     threshold_days: int | None = None
+    enrich_metadata: bool = True  # resolve sector + ticker/exchange links (extra API calls)
     match_score_threshold: int = 1
     final_output_file: str | None = None  # aggregated parquet; None = <output_dir>/latest.parquet
     skip_final_output: bool = False  # when True, do not aggregate after the pipeline run
