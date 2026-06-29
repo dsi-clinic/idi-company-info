@@ -164,12 +164,21 @@ class SectorCache:
         self.logger.info("Loaded %d cached sectors from %s", len(self._entries), self.file_path)
 
     def flush(self) -> None:
-        """Persist newly discovered sectors to the shared cache (merge, last-writer-wins).
+        """Persist newly discovered sectors to the shared cache. Best-effort, non-critical.
 
         Writes only when entries were added this run. Re-reads the file first and unions the
-        in-memory entries on top, so two sources running concurrently don't clobber each
-        other's discoveries — and a lost write is merely re-fetched next run (no correctness
-        impact). Tuples serialize as ``[label, comment]`` lists.
+        in-memory entries on top to reduce loss when sources overlap. Concurrency guarantees,
+        by design:
+
+        - ``atomic_write`` means a concurrent *reader* never sees a partial file (each write
+          is a whole-object replace).
+        - It is NOT fully serializable: two writers that both read-then-write can still drop
+          one's new entries (last-writer-wins). That is acceptable here — the cache is a
+          pure optimization, the values are deterministic, and any dropped entry is simply
+          re-fetched on a later run. No data the pipeline depends on lives only here.
+
+        Tuples serialize as ``[label, comment]`` lists. Callers should treat a raised
+        exception as non-fatal (this is just a cache write).
         """
         if not self._has_new_entries or not self.file_path:
             return

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from idi_company_info.retrieval_permid import PermidRetrieval
+from idi_company_info.types import BatchStats
 
 
 def make_retriever(
@@ -93,6 +94,35 @@ class TestParseRecordMatchResponse:
         """Empty response returns empty dict."""
         retriever = make_retriever()
         assert retriever._parse_record_match_response([]) == {}
+
+
+class TestRecordMatchCallCount:
+    """Each Record Match HTTP call is counted against the shared PermID daily quota."""
+
+    def test_call_is_counted_once_per_batch(self):
+        retriever = make_retriever()
+        retriever.api_clients.record_match.query_endpoint.return_value = {
+            "status_code": 200,
+            "data": {"outputContentResponse": []},
+        }
+        records = [{"Name": "Corp A", "Standard Identifier": "Cik:1", "LocalID": "cik_1"}]
+        stats = BatchStats()
+
+        retriever._retrieve_record_match(records, stats)
+
+        assert stats.total_record_match_calls == 1
+        assert retriever.api_clients.record_match.query_endpoint.call_count == 1
+
+    def test_failed_call_is_still_counted(self):
+        retriever = make_retriever()
+        retriever.api_clients.record_match.query_endpoint.return_value = {"status_code": 500}
+        records = [{"Name": "Corp A", "Standard Identifier": "Cik:1", "LocalID": "cik_1"}]
+        stats = BatchStats()
+
+        retriever._retrieve_record_match(records, stats)
+
+        # The request hit the API (and the quota) even though it failed.
+        assert stats.total_record_match_calls == 1
 
 
 class TestBuildRecords:

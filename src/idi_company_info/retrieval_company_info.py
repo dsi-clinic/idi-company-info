@@ -97,6 +97,14 @@ class CompInfoRetrieval(Retrieval):
         for idx, permid_url in enumerate(candidates, 1):
             # stop before starting a new company once the request budget is spent
             if self._permid_requests(batch_stats) >= max_requests:
+                self.logger.info(
+                    "Reached max_requests budget (%d PermID requests); stopping before "
+                    "candidate %d of %d — %d left for a future run",
+                    max_requests,
+                    idx,
+                    len(candidates),
+                    len(candidates) - processed,
+                )
                 break
 
             self.logger.info("[%d/%d] Processing: %s", idx, len(candidates), permid_url)
@@ -118,8 +126,11 @@ class CompInfoRetrieval(Retrieval):
             len(candidates) - processed,
         )
 
-        # Persist any newly discovered sectors for the next run / sibling sources.
-        self._sector_cache.flush()
+        # Persist any newly discovered sectors; best effortas the cache is a non-critical
+        try:
+            self._sector_cache.flush()
+        except Exception as error:  # noqa: BLE001
+            self.logger.warning("Could not persist sector cache (non-fatal): %s", error)
 
         batch_stats.total_records = len(buffer.load_all()) - num_existing_entities
 
@@ -345,11 +356,13 @@ class CompInfoRetrieval(Retrieval):
     ) -> tuple[str | None, str | None]:
         """Resolve a linked sector/industry permid URL to its human-readable label.
 
-        Memoized per run: the same sector URL resolves to the same (label, comment) for
-        every company, so a cache hit returns the stored value without an API call (and
-        without incrementing ``total_follow_up_calls``). Distinct sector types
-        (business / economic / industry-group) carry distinct URLs, so a single
-        URL-keyed cache is safe across all three.
+        Memoized via ``self._sector_cache`` (a shared :class:`SectorCache`): the same sector
+        URL resolves to the same (label, comment) for every company, so a cache hit returns
+        the stored value without an API call (and without incrementing
+        ``total_follow_up_calls``). The memo is seeded from disk at the start of the run and
+        flushed back, so hits span runs and sibling sources — not just the current run.
+        Distinct sector types (business / economic / industry-group) carry distinct URLs, so
+        a single URL-keyed cache is safe across all three.
 
         Args:
             url: The sector/industry permid URL, or None.

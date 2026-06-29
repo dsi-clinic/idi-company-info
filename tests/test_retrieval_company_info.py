@@ -2,6 +2,7 @@
 """Unit tests for idi_company_info.retrieval_company_info metadata enrichment."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from idi_company_info.retrieval_company_info import CompInfoRetrieval
@@ -54,8 +55,12 @@ def _make_retriever(enrich_metadata: bool = True) -> CompInfoRetrieval:
 
     api_clients.entity_lookup.query_endpoint.side_effect = fake_query
 
+    # Pin sector_cache_file to "" so the SectorCache is deterministically in-memory only —
+    # a bare MagicMock attribute would be truthy and make load()/flush() hit a Mock path.
+    file_paths = MagicMock()
+    file_paths.sector_cache_file = ""
     return CompInfoRetrieval(
-        file_paths=MagicMock(),
+        file_paths=file_paths,
         batch_config=BatchConfig(enrich_metadata=enrich_metadata),
         api_clients=api_clients,
         identifier_type="cik",
@@ -265,7 +270,10 @@ _BUDGET_RECORDS = {
 
 
 def _make_retrieve_retriever(
-    tmp_path, max_requests: int, sector_cache_file: str = ""
+    tmp_path: Path,
+    max_requests: int,
+    sector_cache_file: str = "",
+    enrich_metadata: bool = True,
 ) -> CompInfoRetrieval:
     """Build a CompInfoRetrieval backed by real tmp files for driving retrieve()."""
     api_clients = MagicMock()
@@ -282,7 +290,9 @@ def _make_retrieve_retriever(
     )
     return CompInfoRetrieval(
         file_paths=file_paths,
-        batch_config=BatchConfig(enrich_metadata=True, max_requests=max_requests, buffer_size=1),
+        batch_config=BatchConfig(
+            enrich_metadata=enrich_metadata, max_requests=max_requests, buffer_size=1
+        ),
         api_clients=api_clients,
         identifier_type="cik",
     )
@@ -377,3 +387,14 @@ class TestSectorCachePersistence:
             if call.kwargs.get("permid_url") == _S1
         ]
         assert sector_calls == []
+
+    def test_enrichment_disabled_writes_no_cache_file(self, tmp_path):
+        cache_file = str(tmp_path / "sector_cache.json")
+        retriever = _make_retrieve_retriever(
+            tmp_path, max_requests=100, sector_cache_file=cache_file, enrich_metadata=False
+        )
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats())
+
+        # With enrichment off, no sectors are resolved, so persistence is disabled entirely.
+        assert not (tmp_path / "sector_cache.json").exists()

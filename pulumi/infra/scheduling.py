@@ -154,7 +154,7 @@ def _build_schedule(entry: dict) -> aws.scheduler.Schedule:
                 source,
                 input_file,
                 entry["batch_size"],
-                entry["max_requests"],
+                entry.get("max_requests", "1650"),  # fall back to the orchestrator's own default
             ),
             ecs_parameters=aws.scheduler.ScheduleTargetEcsParametersArgs(
                 task_definition_arn=ecs.task_definition.arn,
