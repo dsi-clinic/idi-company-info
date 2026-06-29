@@ -27,7 +27,7 @@ class TestIdentifierType:
 
 
 class TestExtractFilterParquetCik:
-    """Tests for SubsidiaryInput._extract_filter_parquet_cik."""
+    """Tests for SubsidiaryInput's CIK filter/group logic (Input._filter_group_cik)."""
 
     def test_groups_ciks_by_parent_name(self):
         instance = make_instance()
@@ -37,7 +37,7 @@ class TestExtractFilterParquetCik:
                 "parent_cik": ["0001111111", "0002222222", "0003333333"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "parent_name", "parent_cik")
         assert set(result.keys()) == {"Parent A", "Parent B"}
         assert set(result["Parent A"]) == {"0001111111", "0002222222"}
         assert result["Parent B"] == ["0003333333"]
@@ -50,7 +50,7 @@ class TestExtractFilterParquetCik:
                 "parent_cik": ["0001111111", "0002222222"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "parent_name", "parent_cik")
         assert list(result.keys()) == ["Parent B"]
 
     def test_deduplicates_name_cik_pairs(self):
@@ -61,7 +61,7 @@ class TestExtractFilterParquetCik:
                 "parent_cik": ["0001111111", "0001111111"],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "parent_name", "parent_cik")
         assert result["Parent A"] == ["0001111111"]
 
     def test_cik_values_are_strings(self):
@@ -72,11 +72,11 @@ class TestExtractFilterParquetCik:
                 "parent_cik": [1234567],
             }
         )
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "parent_name", "parent_cik")
         assert all(isinstance(v, str) for v in result["Parent A"])
 
     def test_returns_empty_dict_for_empty_dataframe(self):
         instance = make_instance()
         df = pd.DataFrame({"parent_name": [], "parent_cik": []})
-        result = instance._extract_filter_parquet_cik(df)
+        result = instance._filter_group_cik(df, "parent_name", "parent_cik")
         assert result == {}
