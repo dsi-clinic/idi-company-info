@@ -298,6 +298,10 @@ class CompanyPipeline:
             stats["total_follow_up_calls"],
         )
         self.logger.info(
+            "Sector cache hits:    %d sector resolves served from cache (calls avoided)",
+            stats["total_sector_cache_hits"],
+        )
+        self.logger.info(
             "PermID requests used: %d total against the daily quota "
             "(%d Record Match + %d entity + %d follow-up)",
             stats["total_record_match_calls"]

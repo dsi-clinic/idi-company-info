@@ -241,6 +241,7 @@ class TestSectorMemoization:
         assert b["primary_business_sector_label"] == "Technology"
         # ...but the sector URL was only fetched once (the second was a cache hit).
         assert stats.total_follow_up_calls == 1
+        assert stats.total_sector_cache_hits == 1
         sector_calls = [
             call
             for call in retriever.api_clients.entity_lookup.query_endpoint.call_args_list
@@ -263,7 +264,9 @@ _BUDGET_RECORDS = {
 }
 
 
-def _make_retrieve_retriever(tmp_path, max_requests: int) -> CompInfoRetrieval:
+def _make_retrieve_retriever(
+    tmp_path, max_requests: int, sector_cache_file: str = ""
+) -> CompInfoRetrieval:
     """Build a CompInfoRetrieval backed by real tmp files for driving retrieve()."""
     api_clients = MagicMock()
     api_clients.entity_lookup.query_endpoint.side_effect = lambda permid_url: (
@@ -275,6 +278,7 @@ def _make_retrieve_retriever(tmp_path, max_requests: int) -> CompInfoRetrieval:
         result_file=str(tmp_path / "result.json"),
         permid_file=str(tmp_path / "permid.json"),
         failure_file="",
+        sector_cache_file=sector_cache_file,
     )
     return CompInfoRetrieval(
         file_paths=file_paths,
@@ -331,3 +335,45 @@ class TestRequestBudget:
         # (1 entity + 1 sector = 2). C1 is admitted (->3), then the budget stops C2 — one
         # fewer than when the same budget started clean (see the test above).
         assert set(results) == {_C1}
+
+
+class TestSectorCachePersistence:
+    """The sector memo is flushed to and re-seeded from the shared on-disk cache."""
+
+    def test_run_flushes_resolved_sectors_to_disk(self, tmp_path):
+        cache_file = str(tmp_path / "sector_cache.json")
+        retriever = _make_retrieve_retriever(
+            tmp_path, max_requests=100, sector_cache_file=cache_file
+        )
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats())
+
+        cached = json.loads((tmp_path / "sector_cache.json").read_text())
+        # JSON stores each value as a [label, comment] list; comment is null when absent.
+        assert cached[_S1] == ["Sector One", None]
+        assert cached[_S2] == ["Sector Two", None]
+        assert cached[_S3] == ["Sector Three", None]
+
+    def test_disk_cache_seeds_a_fresh_run_and_avoids_the_api(self, tmp_path):
+        cache_file = str(tmp_path / "sector_cache.json")
+        # First run resolves and flushes the sectors.
+        _make_retrieve_retriever(tmp_path, max_requests=100, sector_cache_file=cache_file).retrieve(
+            _budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats()
+        )
+
+        # A brand-new retriever (separate process / sibling source) seeds from that file.
+        fresh = _make_retrieve_retriever(tmp_path, max_requests=100, sector_cache_file=cache_file)
+        fresh._sector_cache.load()
+        stats = BatchStats()
+
+        label, comment = fresh._resolve_sector_name(_S1, stats)
+
+        assert (label, comment) == ("Sector One", None)
+        # Served from the on-disk cache: no follow-up call, no entity-lookup hit for _S1.
+        assert stats.total_follow_up_calls == 0
+        sector_calls = [
+            call
+            for call in fresh.api_clients.entity_lookup.query_endpoint.call_args_list
+            if call.kwargs.get("permid_url") == _S1
+        ]
+        assert sector_calls == []

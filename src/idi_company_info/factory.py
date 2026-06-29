@@ -41,6 +41,8 @@ class PipelineFactory:
             result_file=join_path(output_subdir, "permid_data.json"),
             permid_file=join_path(output_subdir, "permid_url.json"),
             failure_file=join_path(output_subdir, "failure.json"),
+            # Shared across sources: lives at the output root, not the per-source subdir.
+            sector_cache_file=join_path(config.output_dir, "sector_cache.json"),
         )
 
         batch_config = BatchConfig(

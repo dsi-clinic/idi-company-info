@@ -9,7 +9,7 @@ from idi_ftm2j_shared.failures import FailureRegistry
 from idi_ftm2j_shared.storage import load_json
 
 # Application imports
-from idi_company_info.buffer import Buffer
+from idi_company_info.buffer import Buffer, SectorCache
 from idi_company_info.failures import CompanyInfoFailureClassifier
 from idi_company_info.retrieval import Retrieval
 from idi_company_info.types import (
@@ -48,8 +48,11 @@ class CompInfoRetrieval(Retrieval):
         """
         super().__init__(file_paths, batch_config, api_clients, failure_registry)
         self.identifier_type = identifier_type
-        # in-memory, per-run memo of resolved sector/industry-group URLs
-        self._sector_cache: dict[str, tuple[str | None, str | None]] = {}
+        # Shared sector memo (in-memory + disk). Persistence is disabled when enrichment is
+        # off, since no sectors are resolved in that case.
+        self._sector_cache = SectorCache(
+            file_paths.sector_cache_file if batch_config.enrich_metadata else ""
+        )
 
     def retrieve(
         self,
@@ -68,6 +71,9 @@ class CompInfoRetrieval(Retrieval):
             batch_stats: Accumulator for run-level statistics.
         """
         result_data = load_json(self.file_paths.result_file, return_type="dict")
+
+        # Seed the sector memo from the shared on-disk cache (bypasses re-resolving)
+        self._sector_cache.load()
 
         # Map permid_url -> [(Name, LocalID), ...] for failure registration only.
         failure_pairs = self._build_failure_pairs(permid_data)
@@ -111,6 +117,9 @@ class CompInfoRetrieval(Retrieval):
             max_requests,
             len(candidates) - processed,
         )
+
+        # Persist any newly discovered sectors for the next run / sibling sources.
+        self._sector_cache.flush()
 
         batch_stats.total_records = len(buffer.load_all()) - num_existing_entities
 
@@ -350,7 +359,8 @@ class CompInfoRetrieval(Retrieval):
             The sector label and comment, or None, None if unresolved.
         """
         if url and url in self._sector_cache:
-            return self._sector_cache[url]
+            batch_stats.total_sector_cache_hits += 1
+            return self._sector_cache.get(url)
 
         data = self._resolve_permid_link(url, batch_stats)
         if not data:
@@ -361,7 +371,7 @@ class CompInfoRetrieval(Retrieval):
 
         resolved = (label, comment)
         if url:
-            self._sector_cache[url] = resolved
+            self._sector_cache.set(url, resolved)
         return resolved
 
     def _scalar_text(self, value: object, url: str | None) -> str | None:

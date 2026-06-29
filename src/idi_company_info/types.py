@@ -78,6 +78,10 @@ class FilePaths:
     result_file: str
     permid_file: str
     failure_file: str = ""
+    # Shared across all sources (lives at the output root, not a per-source subdir): the
+    # sector/industry-group taxonomy is global, so a hit resolved by one source serves the
+    # others. Empty string disables disk persistence (in-memory cache only).
+    sector_cache_file: str = ""
 
 
 @dataclass
@@ -127,6 +131,7 @@ class BatchStats:
     total_company_info: int = 0
     total_company_info_failed: int = 0
     total_follow_up_calls: int = 0
+    total_sector_cache_hits: int = 0  # sector resolves served from the memo (no API call)
     duplicates_ids_removed: int = 0
 
 
