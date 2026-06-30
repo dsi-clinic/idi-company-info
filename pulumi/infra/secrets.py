@@ -1,4 +1,10 @@
-"""AWS Secrets Manager resources for the PermID API key."""
+"""Genuine secrets as SSM Parameter Store SecureString parameters.
+
+The PermID API key is stored as an SSM `SecureString`. The ECS task definition
+injects it by ARN via `secrets:`, so the value never touches CI logs or state.
+Rotation is a `put-parameter --overwrite`, picked up at the next task launch —
+no deploy.
+"""
 
 import pulumi_aws as aws
 
@@ -6,28 +12,16 @@ import pulumi
 
 from . import config
 
-# -----------------------------------------------------------------------------
-# Config (required — Pulumi fails at deploy time if missing)
-# -----------------------------------------------------------------------------
-permid_api_key = config.config.require_secret("permid_api_key")
+_secrets_prefix = f"/idi/{config.stack_name}/{config.app_name}/secrets"
 
-# -----------------------------------------------------------------------------
-# Secret
-# -----------------------------------------------------------------------------
-permid_secret = aws.secretsmanager.Secret(
-    "idi-secret-permid-api-key",
-    name=f"{config.name_prefix}-permid-api-key",
-    description="PermID API Key for company information queries",
-    recovery_window_in_days=0,
+permid_api_key_param = aws.ssm.Parameter(
+    "idi-ssm-secret-permid-api-key",
+    name=f"{_secrets_prefix}/permid_api_key",
+    type="SecureString",
+    # Placeholder only — the real value is set out-of-band and never managed by
+    # Pulumi (hence ignore_changes), so it stays out of git and state.
+    value="PLACEHOLDER-set-via-aws-ssm-put-parameter",
+    description="PermID API key (real value set out-of-band).",
     tags=config.tags(),
-)
-
-permid_secret_version = aws.secretsmanager.SecretVersion(
-    "idi-secret-version-permid",
-    secret_id=permid_secret.id,
-    secret_string=permid_api_key,
-    opts=pulumi.ResourceOptions(
-        depends_on=[permid_secret],
-        ignore_changes=["secret_string"],
-    ),
+    opts=pulumi.ResourceOptions(ignore_changes=["value"]),
 )

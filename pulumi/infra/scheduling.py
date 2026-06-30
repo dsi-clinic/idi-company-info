@@ -92,10 +92,24 @@ geonames_user = config.config.require("geonames_user")
 buffer_size = config.config.require("buffer_size")
 threshold_days = config.config.require("threshold_days")
 match_score_threshold = config.config.require("match_score_threshold")
-output_dir = config.config.require("output_dir")
+
+
+def _resolve_path(value: str) -> str:
+    """Resolve a bucket-relative key against the shared bucket (from SSM).
+
+    The shared processor bucket name has a single source of truth — the shared
+    stack's SSM parameter, read via `config.bucket_name`. Committed config holds
+    bucket-relative keys (e.g. `company-info/output`); a value that already
+    carries a URI scheme (`s3://`, `https://`) is used as-is so cross-bucket or
+    external inputs still work.
+    """
+    return value if "://" in value else f"s3://{config.bucket_name}/{value}"
+
+
+output_dir = _resolve_path(config.config.require("output_dir"))
 
 # Each entry: {"source": str, "input_file": str, "cron": str, "batch_size": str,
-# "max_requests": str}
+# "max_requests": str}. `input_file` is a bucket-relative key (or full URI).
 input_sources = config.config.require_object("input_sources")
 
 
@@ -139,7 +153,7 @@ def _container_override_input(
 def _build_schedule(entry: dict) -> aws.scheduler.Schedule:
     """Build one EventBridge schedule from an `input_sources` entry."""
     source = entry["source"]
-    input_file = entry["input_file"]
+    input_file = _resolve_path(entry["input_file"])
     return aws.scheduler.Schedule(
         f"idi-schedule-{source}",
         name=f"{config.name_prefix}-schedule-{source}",

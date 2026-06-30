@@ -88,7 +88,9 @@ task_execution_logs_policy = aws.iam.RolePolicy(
     ),
 )
 
-# Read PermID API key from Secrets Manager
+# Inline: read the SecureString secret from SSM at task launch. The execution
+# role needs ssm:GetParameters on the param plus kms:Decrypt to unwrap the
+# SecureString (scoped via ViaService so KMS is usable only through SSM).
 task_execution_secrets_policy = aws.iam.RolePolicy(
     "idi-policy-ecs-execution-secrets",
     role=task_execution_role.id,
@@ -97,13 +99,25 @@ task_execution_secrets_policy = aws.iam.RolePolicy(
             "Version": "2012-10-17",
             "Statement": [
                 {
+                    "Sid": "ReadSecretParams",
                     "Effect": "Allow",
                     "Action": [
-                        "secretsmanager:GetSecretValue",
-                        "secretsmanager:DescribeSecret",
+                        "ssm:GetParameters",
+                        "ssm:GetParameter",
                     ],
-                    "Resource": [secrets.permid_secret.arn],
-                }
+                    "Resource": [
+                        secrets.permid_api_key_param.arn,
+                    ],
+                },
+                {
+                    "Sid": "DecryptViaSSM",
+                    "Effect": "Allow",
+                    "Action": ["kms:Decrypt"],
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {"kms:ViaService": f"ssm.{config.aws_region}.amazonaws.com"}
+                    },
+                },
             ],
         }
     ),
@@ -133,7 +147,7 @@ task_role = aws.iam.Role(
 
 # -----------------------------------------------------------------------------
 # S3 bucket (looked up by name — owned by a separate project/stack)
-# Required config: deploy must set `idi:bucket_name` per stack.
+# Name comes from SSM (/idi/<stack>/shared/processor_bucket_name) via config.
 # -----------------------------------------------------------------------------
 bucket = aws.s3.get_bucket_output(bucket=config.bucket_name)
 
