@@ -6,7 +6,7 @@ config:
   idi:output_dir: company-info/output
   idi:input_sources:
     - source: shareholder_tracker_cik
-      input_file: company-info/input/shareholder_tracker_release_20251218.parquet.parquet
+      input_file: company-info/input/shareholder_tracker_release_20251218.parquet
       cron: cron(0 2 * * ? *)
       batch_size: "2450"
       max_requests: "1650"
@@ -23,7 +23,7 @@ config:
   idi:cpu: "1024"
   idi:memory: "4096"
   idi:buffer_size: "500"
-  idi:threshold_days: ""
+  idi:threshold_days: "30"
   idi:match_score_threshold: "1"
   idi:schedule_enabled: "false"
   idi:geonames_user:
