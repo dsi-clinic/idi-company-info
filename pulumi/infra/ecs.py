@@ -36,6 +36,11 @@ CONTAINER_NAME = "company-info-orchestrator"
 
 cpu = config.config.get("cpu") or "1024"
 memory = config.config.get("memory") or "4096"
+# GeoNames username — a public credential (not a secret). Injected as a baseline
+# env var so the orchestrator has it for ANY invocation (manual `run-task`,
+# disabled-schedule test runs), not only when the EventBridge schedule supplies
+# `--geonames-user`. The CLI accepts the GEONAMES_USER env var as the equivalent.
+geonames_user = config.config.require("geonames_user")
 
 container_definitions = pulumi.Output.all(
     image=ecr.orchestrator_image,
@@ -54,6 +59,7 @@ container_definitions = pulumi.Output.all(
                     {"name": "AWS_REGION", "value": args["region"]},
                     {"name": "CLOUDWATCH_LOGS_ENABLED", "value": "false"},
                     {"name": "PYTHONUNBUFFERED", "value": "1"},
+                    {"name": "GEONAMES_USER", "value": geonames_user},
                 ],
                 "secrets": [
                     {
