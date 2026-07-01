@@ -11,12 +11,10 @@ config:
     description: Name of the application
     default: "company-info"
 
-  idi:bucket_name:
-    description: S3 bucket name for pipeline input, output, and failures (required — set per stack)
-
-  idi:permid_api_key:
-    description: PermID API key (stored as secret in AWS Secrets Manager)
-    secret: true
+  # The processor bucket and scheduler DLQ are NOT declared here — they are
+  # shared values read at runtime from SSM (/idi/<stack>/shared/*). The PermID
+  # API key is a genuine secret stored as an SSM SecureString (set out-of-band),
+  # so it is not a Pulumi config value either.
 
   idi:geonames_user:
     description: GeoNames username for geocoding (public, injected as env var)
@@ -45,7 +43,8 @@ config:
       PermIDs per run; `max_requests` is the per-run PermID enrichment-request
       budget for the company-info stage. `source` must be a valid InputSource slug (e.g.
       shareholder_tracker_cik, commercial_debt_tracker, corporate_subsidiaries);
-      `input_file` is an S3 URI to a parquet file.
+      `input_file` is a bucket-relative key (resolved against the shared bucket
+      from SSM) or a full URI (s3://, https://) used as-is.
 
   idi:buffer_size:
     description: Orchestrator write buffer size
@@ -66,6 +65,3 @@ config:
   idi:ecr_image_count:
     description: ECR image retention count
     default: "5"
-
-  idi:shared_dlq_name:
-    description: Name of the shared scheduler DLQ owned by idi-corporate-structure

@@ -41,7 +41,7 @@ container_definitions = pulumi.Output.all(
     image=ecr.orchestrator_image,
     log_group_name=logs.log_group.name,
     region=config.aws_region,
-    secret_arn=secrets.permid_secret.arn,
+    secret_arn=secrets.permid_api_key_param.arn,
 ).apply(
     lambda args: json.dumps(
         [
