@@ -107,6 +107,7 @@ task_execution_secrets_policy = aws.iam.RolePolicy(
                     ],
                     "Resource": [
                         secrets.permid_api_key_param.arn,
+                        secrets.geonames_user_param.arn,
                     ],
                 },
                 {

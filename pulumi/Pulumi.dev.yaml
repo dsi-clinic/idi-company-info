@@ -1,7 +1,8 @@
 # Committed variable config for the dev stack. The processor bucket and
 # scheduler DLQ are read from SSM (/idi/dev/shared/*), so they are NOT set here;
 # paths below are bucket-relative keys resolved against that shared bucket. The
-# PermID API key is an SSM SecureString set out-of-band, not a config value.
+# PermID API key and GeoNames username are SSM SecureStrings set out-of-band,
+# not config values.
 config:
   idi:output_dir: company-info/output
   idi:input_sources:
@@ -26,6 +27,4 @@ config:
   idi:threshold_days: "30"
   idi:match_score_threshold: "1"
   idi:schedule_enabled: "false"
-  idi:geonames_user:
-    secure: v1:JDS3kUrxy6ubN1Mt:Z+OzSuChdcwSwGm6ep01wd3KNRrja7XP
 encryptionsalt: v1:jdR6bBdu0L0=:v1:rko3nQ2aYJtrw1rx:KOqk30SRaH22sdr87/ZUy+E5LKwMJw==

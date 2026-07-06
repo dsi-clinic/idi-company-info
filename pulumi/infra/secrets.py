@@ -1,9 +1,9 @@
 """Genuine secrets as SSM Parameter Store SecureString parameters.
 
-The PermID API key is stored as an SSM `SecureString`. The ECS task definition
-injects it by ARN via `secrets:`, so the value never touches CI logs or state.
-Rotation is a `put-parameter --overwrite`, picked up at the next task launch —
-no deploy.
+The PermID API key and GeoNames username are stored as SSM `SecureString`
+parameters. The ECS task definition injects each by ARN via `secrets:`, so the
+values never touch CI logs or state. Rotation is a `put-parameter --overwrite`,
+picked up at the next task launch — no deploy.
 """
 
 import pulumi_aws as aws
@@ -22,6 +22,18 @@ permid_api_key_param = aws.ssm.Parameter(
     # Pulumi (hence ignore_changes), so it stays out of git and state.
     value="PLACEHOLDER-set-via-aws-ssm-put-parameter",
     description="PermID API key (real value set out-of-band).",
+    tags=config.tags(),
+    opts=pulumi.ResourceOptions(ignore_changes=["value"]),
+)
+
+geonames_user_param = aws.ssm.Parameter(
+    "idi-ssm-secret-geonames-user",
+    name=f"{_secrets_prefix}/geonames_user",
+    type="SecureString",
+    # Placeholder only — the real value is set out-of-band and never managed by
+    # Pulumi (hence ignore_changes), so it stays out of git and state.
+    value="PLACEHOLDER-set-via-aws-ssm-put-parameter",
+    description="GeoNames username (real value set out-of-band).",
     tags=config.tags(),
     opts=pulumi.ResourceOptions(ignore_changes=["value"]),
 )

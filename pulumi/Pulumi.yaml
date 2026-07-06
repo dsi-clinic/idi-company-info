@@ -13,11 +13,8 @@ config:
 
   # The processor bucket and scheduler DLQ are NOT declared here — they are
   # shared values read at runtime from SSM (/idi/<stack>/shared/*). The PermID
-  # API key is a genuine secret stored as an SSM SecureString (set out-of-band),
-  # so it is not a Pulumi config value either.
-
-  idi:geonames_user:
-    description: GeoNames username for geocoding (public, injected as env var)
+  # API key and GeoNames username are genuine secrets stored as SSM
+  # SecureStrings (set out-of-band), so they are not Pulumi config values either.
 
   idi:cpu:
     description: Fargate task CPU units (256, 512, 1024, 2048, 4096)

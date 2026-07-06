@@ -42,6 +42,8 @@ pulumi.export("aggregate_task_definition_arn", ecs.aggregate_task_definition.arn
 # Secrets (SSM SecureString — value set out-of-band)
 pulumi.export("permid_api_key_param_arn", secrets.permid_api_key_param.arn)
 pulumi.export("permid_api_key_param_name", secrets.permid_api_key_param.name)
+pulumi.export("geonames_user_param_arn", secrets.geonames_user_param.arn)
+pulumi.export("geonames_user_param_name", secrets.geonames_user_param.name)
 
 # Scheduling — one schedule per configured input source
 for _source, _schedule in scheduling.schedules.items():

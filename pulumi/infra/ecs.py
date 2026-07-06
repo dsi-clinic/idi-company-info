@@ -41,7 +41,8 @@ container_definitions = pulumi.Output.all(
     image=ecr.orchestrator_image,
     log_group_name=logs.log_group.name,
     region=config.aws_region,
-    secret_arn=secrets.permid_api_key_param.arn,
+    permid_secret_arn=secrets.permid_api_key_param.arn,
+    geonames_secret_arn=secrets.geonames_user_param.arn,
 ).apply(
     lambda args: json.dumps(
         [
@@ -58,8 +59,12 @@ container_definitions = pulumi.Output.all(
                 "secrets": [
                     {
                         "name": "PERMID_API_KEY",
-                        "valueFrom": args["secret_arn"],
-                    }
+                        "valueFrom": args["permid_secret_arn"],
+                    },
+                    {
+                        "name": "GEONAMES_USER",
+                        "valueFrom": args["geonames_secret_arn"],
+                    },
                 ],
                 "logConfiguration": {
                     "logDriver": "awslogs",

@@ -88,7 +88,6 @@ scheduler_policy = aws.iam.RolePolicy(
 # change. Shared scalars below apply to every source.
 # -----------------------------------------------------------------------------
 schedule_enabled = config.config.require("schedule_enabled") == "true"
-geonames_user = config.config.require("geonames_user")
 buffer_size = config.config.require("buffer_size")
 threshold_days = config.config.require("threshold_days")
 match_score_threshold = config.config.require("match_score_threshold")
@@ -125,6 +124,10 @@ def _container_override_input(
     writes (results, permid cache, failures) into a per-source subdirectory at
     runtime. All inputs resolve to plain strings at plan time, so no Pulumi
     Output wrapping is needed.
+
+    The GeoNames username (like the PermID API key) is a secret injected into
+    the task as the `GEONAMES_USER` env var from SSM (see ecs.py), so it is
+    deliberately not passed as a `--geonames-user` command override here.
     """
     command = [
         "--input-type",
@@ -133,8 +136,6 @@ def _container_override_input(
         input_file,
         "--output-directory",
         output_dir,
-        "--geonames-user",
-        geonames_user,
         "--batch-size",
         str(batch_size),
         "--max-requests",
