@@ -3,10 +3,13 @@
 # Replace every REQUIRED placeholder below with real prod values before
 # deploying. The processor bucket and scheduler DLQ are read from SSM
 # (/idi/prod/shared/*), so they are NOT set here; the path keys below are
-# bucket-relative and resolve against that shared bucket. The PermID API key is
-# an SSM SecureString set out-of-band (never a committed config value):
+# bucket-relative and resolve against that shared bucket. The PermID API key and
+# GeoNames username are SSM SecureStrings set out-of-band (never committed
+# config values):
 #     aws ssm put-parameter --name /idi/prod/company-info/secrets/permid_api_key \
 #       --type SecureString --value '<prod-key>' --overwrite
+#     aws ssm put-parameter --name /idi/prod/company-info/secrets/geonames_user \
+#       --type SecureString --value '<geonames-username>' --overwrite
 #
 # Schedules are intentionally DISABLED (idi:schedule_enabled: "false") until the
 # prod values are filled in and validated.
@@ -34,4 +37,3 @@ config:
   idi:threshold_days: ""
   idi:match_score_threshold: "1"
   idi:schedule_enabled: "false"
-  idi:geonames_user: "<REQUIRED: GeoNames username for geocoding>"
