@@ -17,7 +17,7 @@ config:
       batch_size: "2450"
       max_requests: "1650"
     - source: corporate_subsidiaries
-      input_file: processors/corporate-structure/output/subsidiaries.parquet
+      input_file: processors/corporate-structure/output/latest.parquet
       cron: cron(0 3 * * ? *)
       batch_size: "2450"
       max_requests: "1650"
