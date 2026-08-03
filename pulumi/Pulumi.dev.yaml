@@ -4,7 +4,7 @@
 # PermID API key and GeoNames username are SSM SecureStrings set out-of-band,
 # not config values.
 config:
-  idi:output_dir: company-info/output
+  idi:output_dir: processors/company-info/output
   idi:input_sources:
     - source: shareholder_tracker_cik
       input_file: company-info/input/shareholder_tracker_release_20251218.parquet
