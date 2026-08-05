@@ -371,3 +371,39 @@ class TestGeonamesApi:
 
         assert "error" in result
         assert "401 Unauthorized" in result["error"]
+
+
+class TestLsegQuotaRetryPolicy:
+    """Tests that LSEG clients do not retry 429 (see GitHub issue #34).
+
+    The shared ApiClient retries 429 with respect_retry_after_header=True and no
+    retry_after_max, so a quota 429 carrying a long Retry-After sleeps inside urllib3
+    for up to 6 hours per attempt with no log output. The LSEG clients exclude 429 so
+    quota exhaustion surfaces immediately instead.
+    """
+
+    _LSEG_CLIENTS = [LsegEntitySearch, LsegRecordMatch, LSEGEntityLookup]
+
+    @pytest.mark.parametrize("client_cls", _LSEG_CLIENTS)
+    def test_forcelist_excludes_429(self, client_cls):
+        """Test that 429 is absent from the retry forcelist on every LSEG client."""
+        assert 429 not in client_cls.RETRY_STATUS_FORCELIST
+
+    @pytest.mark.parametrize("client_cls", _LSEG_CLIENTS)
+    def test_forcelist_retains_server_errors(self, client_cls):
+        """Test that transient 5xx codes are still retried."""
+        assert client_cls.RETRY_STATUS_FORCELIST == [500, 502, 503, 504]
+
+    @pytest.mark.parametrize("client_cls", _LSEG_CLIENTS)
+    def test_mounted_adapter_does_not_retry_429(self, client_cls):
+        """Test that the retry strategy actually mounted on the session excludes 429."""
+        with patch("idi_ftm2j_shared.api.get_logger"):
+            client = client_cls(api_key="key")
+            retries = client.session.adapters["https://"].max_retries
+            assert 429 not in retries.status_forcelist
+            assert 500 in retries.status_forcelist
+
+    def test_geonames_retry_policy_is_unchanged(self):
+        """Test that GeonamesApi keeps the shared default (separate API, separate quota)."""
+        assert GeonamesApi.RETRY_STATUS_FORCELIST == ApiClient.RETRY_STATUS_FORCELIST
+        assert 429 in GeonamesApi.RETRY_STATUS_FORCELIST

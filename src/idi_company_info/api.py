@@ -4,7 +4,30 @@
 from idi_ftm2j_shared.api import ApiClient
 
 
-class LsegEntitySearch(ApiClient):
+class LsegApiClient(ApiClient):
+    """Base for the LSEG PermID clients, which all draw on one shared daily quota.
+
+    Narrows the inherited retry forcelist to 5xx only, deliberately excluding 429:
+
+    1. A 429 from PermID means the shared daily request quota is spent, not a
+       transient per-second throttle — call spacing is already handled by
+       ``rate_limit()``. Retrying cannot succeed until the quota resets.
+    2. The shared ``ApiClient`` builds its session with
+       ``respect_retry_after_header=True`` and leaves ``retry_after_max`` at
+       urllib3's default of 21600s. A quota 429 carrying a long ``Retry-After``
+       therefore puts urllib3 into a bare ``time.sleep()`` of up to 6 hours per
+       attempt, inside the adapter and below ``requests`` — so nothing is logged
+       and the task looks frozen rather than failing.
+
+    Excluding 429 makes quota exhaustion surface immediately as a classifiable
+    ``RATE_LIMIT`` failure that the retrieval stages can act on.
+    """
+
+    # 5xx only — see the class docstring for why 429 is deliberately absent.
+    RETRY_STATUS_FORCELIST: list[int] = [500, 502, 503, 504]
+
+
+class LsegEntitySearch(LsegApiClient):
     """API client for the LSEG Entity Search API."""
 
     ENTITY_SEARCH_URL = "https://api-eit.refinitiv.com/permid/search"
@@ -31,7 +54,7 @@ class LsegEntitySearch(ApiClient):
         )
 
 
-class LsegRecordMatch(ApiClient):
+class LsegRecordMatch(LsegApiClient):
     """API client for the LSEG Record Match API."""
 
     RECORD_MATCH_URL = "https://api-eit.refinitiv.com/permid/match"
@@ -61,7 +84,7 @@ class LsegRecordMatch(ApiClient):
         )
 
 
-class LSEGEntityLookup(ApiClient):
+class LSEGEntityLookup(LsegApiClient):
     """API client for the LSEG Entity Lookup API."""
 
     def query_endpoint(self, permid_url: str) -> dict:

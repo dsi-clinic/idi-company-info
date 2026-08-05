@@ -68,11 +68,16 @@ class CompanyInfoFailureClassifier(FailureClassifier):
         status_code = response.get("status_code")
         has_error = "error" in response
 
-        if has_error or status_code is None:
-            return FailureType.API_ERROR
-
+        # 429 is tested before the generic error branch. `raise_for_status` means a
+        # rate-limited response always carries an `error` key too, so checking has_error
+        # first would classify every quota rejection as API_ERROR and lose the distinction
+        # callers need to stop the run early. Both types are retryable, so the ordering
+        # does not change what lands in the do-not-retry registry.
         if status_code == _HTTP_RATE_LIMIT:
             return FailureType.RATE_LIMIT
+
+        if has_error or status_code is None:
+            return FailureType.API_ERROR
 
         if status_code == _HTTP_OK and empty_data:
             return FailureType.NO_PERMID if category == "permid" else FailureType.NO_COMPANY_INFO
