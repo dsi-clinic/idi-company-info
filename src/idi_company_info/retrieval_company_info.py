@@ -10,7 +10,11 @@ from idi_ftm2j_shared.storage import load_json
 
 # Application imports
 from idi_company_info.buffer import Buffer, SectorCache
-from idi_company_info.failures import CompanyInfoFailureClassifier
+from idi_company_info.failures import (
+    CompanyInfoFailureClassifier,
+    FailureType,
+    QuotaExhaustedError,
+)
 from idi_company_info.retrieval import Retrieval
 from idi_company_info.types import (
     BatchConfig,
@@ -108,9 +112,25 @@ class CompInfoRetrieval(Retrieval):
                 break
 
             self.logger.info("[%d/%d] Processing: %s", idx, len(candidates), permid_url)
-            company = self._retrieve_entity_company_info(
-                permid_url, failure_pairs.get(permid_url, []), batch_stats
-            )
+            try:
+                company = self._retrieve_entity_company_info(
+                    permid_url, failure_pairs.get(permid_url, []), batch_stats
+                )
+            except QuotaExhaustedError as error:
+                # Break rather than propagate: every remaining candidate would spend one
+                # doomed request, and the teardown below still has to run so the results
+                # gathered so far are flushed and aggregated instead of discarded. The
+                # in-flight company is abandoned and simply re-fetched on a later run.
+                self.logger.error(
+                    "PermID daily quota exhausted (%s); stopping the company-info stage at "
+                    "candidate %d of %d — %d left for a future run",
+                    error,
+                    idx,
+                    len(candidates),
+                    len(candidates) - processed,
+                )
+                break
+
             processed += 1
             if company:
                 buffer.add(data=company)
@@ -218,6 +238,9 @@ class CompInfoRetrieval(Retrieval):
                 response.get("error"),
             )
             batch_stats.total_company_info_failed += 1
+            # Counted above first: the request was made and drew on the daily quota, so it
+            # belongs in the run's stats even though the stage is about to stop.
+            self._raise_if_quota_exhausted(response, permid_url)
             self._handle_failures(response, failure_pairs)
             return {}
 
@@ -318,6 +341,10 @@ class CompInfoRetrieval(Retrieval):
         batch_stats.total_follow_up_calls += 1
         response = self.api_clients.entity_lookup.query_endpoint(permid_url=url)
         if response.get("status_code") != self._HTTP_OK:
+            # A quota rejection here must not be swallowed: returning None would write the
+            # company with null sector/ticker fields, which are indistinguishable from
+            # genuinely absent data once they reach the parquet.
+            self._raise_if_quota_exhausted(response, url)
             self.logger.warning(
                 "Follow-up lookup failed for linked PermID %s: %s",
                 url,
@@ -425,6 +452,26 @@ class CompInfoRetrieval(Retrieval):
                 or response.get("data", {}).get("countryName")
             )
         return None
+
+    def _raise_if_quota_exhausted(self, response: dict, url: str | None) -> None:
+        """Raise :class:`QuotaExhaustedError` when a response is a quota rejection.
+
+        A 429 from PermID means the shared daily request quota is spent rather than a
+        transient per-second throttle (call spacing is handled by ``ApiClient.rate_limit``),
+        so no amount of retrying or continuing helps until the quota resets.
+
+        Args:
+            response: The API response dict.
+            url: The URL that was queried, for the error message.
+
+        Raises:
+            QuotaExhaustedError: If the response classifies as ``FailureType.RATE_LIMIT``.
+        """
+        failure_type = CompanyInfoFailureClassifier.classify_from_response(
+            response, empty_data=False, category="company_info"
+        )
+        if failure_type is FailureType.RATE_LIMIT:
+            raise QuotaExhaustedError(f"HTTP 429 from PermID for {url or 'unknown url'}")
 
     def _handle_failures(self, response: dict, failure_pairs: list[tuple[str, str]]) -> None:
         """Classify a failed company-info lookup and register the affected input rows.

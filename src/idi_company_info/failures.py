@@ -18,6 +18,15 @@ class FailureType(StrEnum):
     RATE_LIMIT = "rate_limit"  # 429
 
 
+class QuotaExhaustedError(Exception):
+    """The shared daily PermID request quota is spent.
+
+    Raised by the retrieval stages on a 429 so the caller can stop the run early rather
+    than spend one doomed request per remaining candidate. Retryable in the sense that a
+    later run picks the work back up — nothing is added to the do-not-retry registry.
+    """
+
+
 _HTTP_RATE_LIMIT = 429
 _HTTP_OK = 200
 _HTTP_CLIENT_ERROR_MIN = 400

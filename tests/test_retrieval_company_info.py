@@ -5,6 +5,9 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
+from idi_company_info.failures import QuotaExhaustedError
 from idi_company_info.retrieval_company_info import CompInfoRetrieval
 from idi_company_info.types import BatchConfig, BatchStats, FilePaths
 
@@ -398,3 +401,149 @@ class TestSectorCachePersistence:
 
         # With enrichment off, no sectors are resolved, so persistence is disabled entirely.
         assert not (tmp_path / "sector_cache.json").exists()
+
+
+# ── Quota fail-fast (GitHub issue #34) ────────────────────────────────────────
+_QUOTA_429 = {"status_code": 429, "error": "429 Client Error: Too Many Requests"}
+
+
+def _make_429_retriever(
+    tmp_path: Path,
+    ok_companies: int = 1,
+    sector_429: bool = False,
+    sector_cache_file: str = "",
+    failure_registry: MagicMock | None = None,
+) -> CompInfoRetrieval:
+    """Build a retriever whose entity_lookup starts returning 429 partway through.
+
+    Args:
+        tmp_path: pytest tmp dir backing the real result/permid files.
+        ok_companies: How many of _C1.._C3 resolve normally before the quota runs out.
+        sector_429: When True, company lookups all succeed but sector follow-ups 429 —
+            exercising the follow-up path rather than the entity-lookup path.
+        sector_cache_file: Passed through to FilePaths.
+        failure_registry: Optional registry to assert against.
+    """
+    allowed = {_C1, _C2, _C3}
+    exhausted_companies = set([_C1, _C2, _C3][ok_companies:])
+
+    def fake_query(permid_url: str) -> dict:
+        if sector_429 and permid_url not in allowed:
+            return dict(_QUOTA_429)
+        if permid_url in exhausted_companies:
+            return dict(_QUOTA_429)
+        if permid_url in _BUDGET_RECORDS:
+            return {"status_code": 200, "data": _BUDGET_RECORDS[permid_url]}
+        return {"status_code": 404}
+
+    api_clients = MagicMock()
+    api_clients.entity_lookup.query_endpoint.side_effect = fake_query
+    file_paths = FilePaths(
+        result_file=str(tmp_path / "result.json"),
+        permid_file=str(tmp_path / "permid.json"),
+        failure_file="",
+        sector_cache_file=sector_cache_file,
+    )
+    return CompInfoRetrieval(
+        file_paths=file_paths,
+        batch_config=BatchConfig(enrich_metadata=True, max_requests=100, buffer_size=1),
+        api_clients=api_clients,
+        identifier_type="cik",
+        failure_registry=failure_registry,
+    )
+
+
+def _queried_urls(retriever: CompInfoRetrieval) -> list[str]:
+    """Every permid_url the entity-lookup client was asked for, in order."""
+    return [
+        call.kwargs["permid_url"]
+        for call in retriever.api_clients.entity_lookup.query_endpoint.call_args_list
+    ]
+
+
+class TestQuotaFailFast:
+    """A 429 stops the company-info stage instead of burning the remaining candidates.
+
+    Before this, the loop continued after each failed lookup, so a quota-exhausted run
+    spent one doomed request per remaining candidate.
+    """
+
+    def test_stops_after_entity_lookup_429(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, ok_companies=1)
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats())
+
+        # C1 resolved, C2 hit the 429 and stopped the stage — C3 was never attempted.
+        assert _C3 not in _queried_urls(retriever)
+
+    def test_persists_results_gathered_before_the_429(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, ok_companies=1)
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats())
+
+        # The write buffer is still flushed by the teardown, so C1's work is not lost.
+        results = json.loads((tmp_path / "result.json").read_text())
+        assert list(results) == [_C1]
+
+    def test_stops_on_follow_up_429_without_writing_null_enrichment(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, sector_429=True)
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats())
+
+        # The company is abandoned rather than written with null sector fields that would
+        # be indistinguishable from genuinely absent data. Nothing reached the buffer, so
+        # the result file is never even created.
+        assert not (tmp_path / "result.json").exists()
+        assert _C2 not in _queried_urls(retriever)
+
+    def test_does_not_blacklist_on_429(self, tmp_path):
+        registry = MagicMock()
+        registry.__contains__ = MagicMock(return_value=False)
+        retriever = _make_429_retriever(tmp_path, ok_companies=1, failure_registry=registry)
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats())
+
+        # A quota rejection is transient: the affected rows must stay eligible next run.
+        registry.add.assert_not_called()
+
+    def test_teardown_still_flushes_the_sector_cache(self, tmp_path):
+        cache_file = str(tmp_path / "sector_cache.json")
+        retriever = _make_429_retriever(tmp_path, ok_companies=1, sector_cache_file=cache_file)
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats())
+
+        # Breaking out of the loop must not skip the post-loop persistence.
+        cached = json.loads((tmp_path / "sector_cache.json").read_text())
+        assert cached[_S1] == ["Sector One", None]
+
+    def test_retrieve_returns_normally_so_the_run_can_aggregate(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, ok_companies=1)
+
+        # No exception escapes: the orchestrator still reaches its aggregation step and
+        # the task exits 0 rather than being retried into an exhausted quota.
+        assert (
+            retriever.retrieve(
+                _budget_permid_data(), num_existing_entities=0, batch_stats=BatchStats()
+            )
+            is None
+        )
+
+
+class TestRaiseIfQuotaExhausted:
+    """The guard raises only for quota rejections."""
+
+    def test_raises_on_429(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path)
+
+        with pytest.raises(QuotaExhaustedError, match="429"):
+            retriever._raise_if_quota_exhausted(dict(_QUOTA_429), _C1)
+
+    def test_does_not_raise_on_404(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path)
+
+        retriever._raise_if_quota_exhausted({"status_code": 404}, _C1)
+
+    def test_does_not_raise_on_transport_error(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path)
+
+        retriever._raise_if_quota_exhausted({"error": "Timeout querying ..."}, _C1)
