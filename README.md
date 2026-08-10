@@ -80,10 +80,56 @@ uv run pipeline \
 | `--permid-api-key` | Env/CLI | `$PERMID_API_KEY` | LSEG PermID access token |
 | `--geonames-user` | Env/CLI | `$GEONAMES_USER` | Geonames username |
 | `--batch-size` | No | `2450` | Max NEW identifiers resolved to PermIDs per run (intake cap; Record Match batches 1000/call, so cheap on quota) |
-| `--max-requests` | No | `1650` | Total PermID-request budget per run against the shared daily quota — Record Match, entity-lookup, and sector/quote follow-up calls all count. The company-info stage stops starting new companies once this many requests are made; sectors/groups are memoized per run so most companies cost ~2 live requests. `3 daily sources × 1650 ≤ 5,000/day` quota. |
+| `--max-requests` | No | `1650` | Total PermID-request budget per run against the shared daily quota — see [API Quota Budgeting](#api-quota-budgeting) |
 | `--buffer-size` | No | `500` | Write-buffer flush size |
 | `--threshold-days` | No | `None` | Re-process records older than N days |
 | `--match-score-threshold` | No | `1` | Minimum Record Match score (0–1); `1` = 100% match required |
+
+---
+
+## API Quota Budgeting
+
+The PermID daily request quota is **per API key, not per pipeline**. Every scheduled input source runs its own ECS task against the *same* key, so the quota is a shared resource that has to be divided up ahead of time — no source can discover at runtime how much of it a sibling has already spent.
+
+### The budget
+
+| | |
+|---|---|
+| PermID daily quota | **5,000 requests/day** per key |
+| Scheduled sources | 3 (`shareholder_tracker_cik`, `commercial_debt_tracker`, `corporate_subsidiaries`) |
+| `max_requests` per source | 1,650 |
+| Total worst case | `3 × 1,650 = 4,950 ≤ 5,000` |
+
+The ~50-request headroom absorbs ad-hoc local runs. Schedules are staggered (`02:00`, `02:30`, `03:00` UTC) so a source that aborts early does not overlap the next one, but staggering is *not* what keeps the total in bounds — the per-source cap is.
+
+**Adding or re-enabling a source means re-deriving the cap**: `max_requests × number of enabled sources ≤ 5,000`. Both values live in `idi:input_sources` in `pulumi/Pulumi.<stack>.yaml`, one entry per source, so the arithmetic is visible in one place. There is no cross-source enforcement at runtime; if the caps sum above the quota, the last source of the night is the one that starves.
+
+### What counts against it
+
+Every HTTP call to a PermID endpoint counts, whether it succeeds or fails, because the request is spent either way:
+
+| Call | Endpoint | Cost |
+|---|---|---|
+| Record Match | `permid/match` | 1 per ≤1,000 identifiers (stage 1 batches, so this is cheap) |
+| Entity Lookup | `permid.org/<id>` | 1 per candidate PermID, including candidates whose lookup fails |
+| Sector / quote follow-ups | `permid.org/<id>` | ≤4 per company (3 sectors + 1 quote), skipped entirely with `--no-enrich-metadata` |
+
+Sector labels are memoized in a `sector_cache.json` shared across all sources at the output root, so after the first run most companies cost ~2 live requests rather than ~6. **Geonames is a separate API with its own quota** — credits, capped daily and hourly ([credits](https://www.geonames.org/export/credits.html)) — and is deliberately excluded from these counters.
+
+`max_requests` budgets the **whole run**, not just stage 2: `BatchStats.record_permid_call()` is called at each request site, and the company-info stage checks the running total before starting each new company. Record Match runs first, so its calls are already reflected in the total and shrink the enrichment headroom accordingly. `--batch-size` is an intake cap on *new identifiers*, not a request cap; it is set high because Record Match batches.
+
+### When the quota runs out anyway
+
+The quota can still be exhausted mid-run — a manual run, a retried task, or another consumer of the key. A PermID `429` is **not** retried (see `QuotaSafeApiClient` in `api.py`), so it surfaces immediately as a `RATE_LIMIT` failure, aborts the company-info stage, and lets the run tear down normally: buffered results are flushed, the sector cache is persisted, partial results are aggregated into `latest.parquet`, and the task exits `0` so the EventBridge retry policy does not fire a second run into a spent quota. Nothing is added to the do-not-retry registry — the remaining candidates are simply picked up by the next run.
+
+### What to look for in the logs
+
+| Line | Meaning |
+|---|---|
+| `PermID requests used: N total against the daily quota (...)` | End-of-run total with its per-stage breakdown |
+| `Reached max_requests budget (N PermID requests); stopping before candidate ...` | The run hit **our** cap and stopped cleanly — expected on a large backlog |
+| `PermID daily quota exhausted (...); stopping the company-info stage at ...` | The run hit **LSEG's** quota; check whether the caps still sum under 5,000 |
+| `Sector cache hits: N sector resolves served from cache` | Requests avoided by the shared memo |
 
 ---
 
