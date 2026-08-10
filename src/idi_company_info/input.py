@@ -182,13 +182,20 @@ class ShareholderInputCusip(Input):
         return self._group_by_issuer(subset)
 
     def _filter_and_deduplicate(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Keep rows with all three fields present, cast types, and deduplicate.
+        """Keep rows with all three fields present, then collapse to one row per CUSIP.
+
+        ``issuer_name`` is free text from filings, so a single security arrives under many
+        spellings (mean 6.4 per CUSIP, max 139 on the shareholder input). Since the pipeline's
+        work unit is the ``(name, identifier)`` pair and the PermID cache is keyed on it, every
+        variant costs a separate work unit — and the wrong-issuer variants in the long tail
+        become permanent ``LOW_MATCH_SCORE`` entries. Collapsing here fixes both without
+        touching the cache key format.
 
         Args:
             df: Raw input DataFrame.
 
         Returns:
-            Filtered and deduplicated DataFrame with columns
+            One row per ``security_cusip``, carrying the canonical ``issuer_name``, with columns
             ``["issuer_name", "security_cusip", "stock_ticker"]``.
         """
         subset = df[["issuer_name", "security_cusip", "stock_ticker"]].copy()
@@ -203,23 +210,106 @@ class ShareholderInputCusip(Input):
         self.logger.info("Found %s rows with issuer_name, cusip and ticker", len(subset))
 
         subset["stock_ticker"] = subset["stock_ticker"].astype(str)
-        subset = subset.drop_duplicates(subset=["issuer_name", "security_cusip", "stock_ticker"])
+
+        # Warn before collapsing: afterwards each CUSIP holds a single row, so a per-CUSIP
+        # ticker count could never exceed 1 and the warning could never fire.
+        self._warn_ambiguous_cusips(subset)
+
+        variants = len(subset.drop_duplicates(subset=["issuer_name", "security_cusip"]))
+        subset["issuer_name"] = subset["security_cusip"].map(self._canonical_names(subset))
+
+        # Prefer a row whose ticker parses, so a CUSIP is never dropped downstream because the
+        # collapse happened to land on a bond-form ticker. Name selection above is independent
+        # of this — the parse result is only a row-ordering key, never a filter.
+        subset["_unparseable"] = (
+            subset["stock_ticker"].map(ShareholderInputCusip._parse_ticker_and_mic).eq("")
+        )
+        subset = subset.sort_values("_unparseable", kind="stable")
+
+        subset = subset.drop_duplicates(subset=["security_cusip"]).drop(columns="_unparseable")
         self.logger.info(
-            "After deduplication: %s unique issuer_name/cusip/ticker pairs", len(subset)
+            "Collapsed %s issuer_name/cusip variants to %s canonical pairs, one per CUSIP",
+            variants,
+            len(subset),
         )
         return subset
+
+    def _canonical_names(self, subset: pd.DataFrame) -> pd.Series:
+        """Choose one canonical ``issuer_name`` per CUSIP, by modal raw row count.
+
+        Counting happens on the pre-deduplication frame on purpose: after deduplication every
+        variant collapses to a single row, all counts tie at 1, and the mode is meaningless.
+
+        Ties are broken lexicographically rather than by first occurrence, so the result does
+        not depend on the order rows happen to arrive in — ~6% of CUSIPs on the shareholder
+        input have no strict modal winner, so this decides a real share of the output.
+
+        Args:
+            subset: Filtered but NOT yet deduplicated frame, with ``issuer_name`` and
+                ``security_cusip`` columns.
+
+        Returns:
+            Canonical ``issuer_name`` indexed by ``security_cusip``; empty if ``subset`` is.
+        """
+        if subset.empty:
+            return pd.Series(dtype="object")
+
+        scored = subset[["security_cusip", "issuer_name"]].copy()
+        scored["normalized"] = scored["issuer_name"].map(
+            ShareholderInputCusip._normalize_name_for_grouping
+        )
+
+        # Winning variant group per CUSIP: most rows first, then smallest normalized string.
+        # drop_duplicates keeps the first row per CUSIP, so the sort decides the winner.
+        groups = (
+            scored.groupby(["security_cusip", "normalized"], sort=False)
+            .size()
+            .reset_index(name="rows")
+            .sort_values(["rows", "normalized"], ascending=[False, True])
+            .drop_duplicates(subset=["security_cusip"])
+        )
+
+        # Emit a spelling that actually appears in the filings rather than the normalized form:
+        # the most common raw name inside the winning group, smallest string breaking ties.
+        winners = scored.merge(
+            groups[["security_cusip", "normalized"]], on=["security_cusip", "normalized"]
+        )
+        chosen = (
+            winners.groupby(["security_cusip", "issuer_name"], sort=False)
+            .size()
+            .reset_index(name="rows")
+            .sort_values(["rows", "issuer_name"], ascending=[False, True])
+            .drop_duplicates(subset=["security_cusip"])
+        )
+        return chosen.set_index("security_cusip")["issuer_name"]
+
+    @staticmethod
+    def _normalize_name_for_grouping(name: str) -> str:
+        """Normalise an ``issuer_name`` for variant grouping only.
+
+        Upper-cases, collapses internal whitespace runs, and strips trailing periods and
+        commas, so ``"Softbank  Corp."`` and ``"SOFTBANK CORP"`` count as one variant instead
+        of splitting a majority. The return value is a grouping key — never the name the
+        pipeline submits, which stays a real spelling from the filings.
+
+        Args:
+            name: Raw issuer name from the filing.
+
+        Returns:
+            Upper-cased, whitespace-collapsed name without trailing punctuation.
+        """
+        collapsed = re.sub(r"\s+", " ", str(name).strip().upper())
+        return re.sub(r"[.,]+$", "", collapsed)
 
     def _build_ticker_maps(self, subset: pd.DataFrame) -> None:
         """Populate ``_std_ticker_map`` from the filtered subset.
 
-        Warns if any CUSIP maps to more than one ticker (data quality issue).
-        Keeps only the first occurrence per CUSIP.
+        Keeps only the first occurrence per CUSIP. The multiple-ticker warning is raised
+        upstream in :meth:`_filter_and_deduplicate`, which still sees every variant row.
 
         Args:
             subset: Deduplicated DataFrame from :meth:`_filter_and_deduplicate`.
         """
-        self._warn_ambiguous_cusips(subset)
-
         formatted = subset.copy()
         formatted["stock_ticker"] = formatted["stock_ticker"].apply(
             ShareholderInputCusip._parse_ticker_and_mic
@@ -235,7 +325,8 @@ class ShareholderInputCusip(Input):
         """Log a warning if any CUSIP appears with more than one ticker.
 
         Args:
-            subset: Deduplicated DataFrame from :meth:`_filter_and_deduplicate`.
+            subset: Filtered, pre-collapse frame — every variant row still present. Called on
+                the collapsed frame this could never fire, since each CUSIP holds one row.
         """
         counts = subset.groupby("security_cusip")["stock_ticker"].nunique()
         ambiguous = counts[counts > 1].index.tolist()
