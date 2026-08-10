@@ -18,6 +18,7 @@ _INDUSTRY_GROUP_URL = "https://permid.org/1-industry"
 _QUOTE_URL = "https://permid.org/1-quote"
 
 _PERMID_URL = "https://permid.org/1-4295904307"
+_GEONAME_URL = "http://sws.geonames.org/6252001/"
 
 # Entity response carrying the four linked URLs (bare org-level keys per JSON-LD context).
 _ENTITY_DATA = {
@@ -606,3 +607,38 @@ class TestPermidRequestAccounting:
         assert stats.total_entity_lookup_calls == 2
         assert stats.total_company_info == 1
         assert stats.total_company_info_failed == 1
+
+
+class TestGeonamesLocation:
+    """A Geonames rejection degrades to a null location instead of stalling or aborting.
+
+    ``GeonamesApi`` no longer retries a 429 (its Retry-After sleep happens inside urllib3,
+    below our logging), so a credit cap now surfaces here as a response the caller has to
+    handle. Geonames has its own quota, so it must not stop the PermID run.
+    """
+
+    def test_resolves_the_location_name(self):
+        retriever = _make_retriever()
+        retriever.api_clients.geonames_api.query_endpoint.return_value = {
+            "status_code": 200,
+            "data": {"name": "United States"},
+        }
+
+        assert retriever._query_geonames_location(_GEONAME_URL) == "United States"
+
+    def test_makes_no_call_without_a_url(self):
+        retriever = _make_retriever()
+
+        assert retriever._query_geonames_location(None) is None
+        retriever.api_clients.geonames_api.query_endpoint.assert_not_called()
+
+    def test_429_leaves_the_field_null_and_does_not_abort(self, caplog):
+        retriever = _make_retriever()
+        retriever.api_clients.geonames_api.query_endpoint.return_value = dict(_QUOTA_429)
+
+        with caplog.at_level("WARNING"):
+            # No QuotaExhaustedError: a separate API's quota must not stop the PermID run.
+            assert retriever._query_geonames_location(_GEONAME_URL) is None
+
+        assert _GEONAME_URL in caplog.text
+        assert "429" in caplog.text

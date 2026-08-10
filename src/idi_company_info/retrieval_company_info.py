@@ -437,6 +437,12 @@ class CompInfoRetrieval(Retrieval):
     def _query_geonames_location(self, url: str | None) -> str | None:
         """Query the Geonames API for a human-readable location name.
 
+        Geonames is a separate API with its own credit quota, so a rejection here does not
+        abort the run the way a PermID quota rejection does — the location field is left
+        null and the company is still written. It is logged rather than swallowed, since
+        ``GeonamesApi`` no longer retries a 429 (see :class:`api.QuotaSafeApiClient`) and a
+        credit cap now shows up as a run of these warnings instead of a silent stall.
+
         Args:
             url: The Geonames resource URL to resolve, or None.
 
@@ -453,6 +459,13 @@ class CompInfoRetrieval(Retrieval):
                 or response.get("data", {}).get("asciiName")
                 or response.get("data", {}).get("countryName")
             )
+
+        self.logger.warning(
+            "Geonames lookup failed for %s (status %s): %s — leaving the location null",
+            url,
+            response.get("status_code"),
+            response.get("error"),
+        )
         return None
 
     def _raise_if_quota_exhausted(self, response: dict, url: str | None) -> None:
