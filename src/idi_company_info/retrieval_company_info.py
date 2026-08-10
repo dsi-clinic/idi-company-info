@@ -10,7 +10,11 @@ from idi_ftm2j_shared.storage import load_json
 
 # Application imports
 from idi_company_info.buffer import Buffer, SectorCache
-from idi_company_info.failures import CompanyInfoFailureClassifier
+from idi_company_info.failures import (
+    CompanyInfoFailureClassifier,
+    FailureType,
+    QuotaExhaustedError,
+)
 from idi_company_info.retrieval import Retrieval
 from idi_company_info.types import (
     BatchConfig,
@@ -108,9 +112,29 @@ class CompInfoRetrieval(Retrieval):
                 break
 
             self.logger.info("[%d/%d] Processing: %s", idx, len(candidates), permid_url)
-            company = self._retrieve_entity_company_info(
-                permid_url, failure_pairs.get(permid_url, []), batch_stats
-            )
+            try:
+                company = self._retrieve_entity_company_info(
+                    permid_url, failure_pairs.get(permid_url, []), batch_stats
+                )
+            except QuotaExhaustedError as error:
+                # Flagged before the break so the run-level summary can say the stage was
+                # interrupted rather than finished — the counters alone cannot distinguish
+                # the two, since this path still exits normally.
+                batch_stats.quota_exhausted = True
+                # Break rather than propagate: every remaining candidate would spend one
+                # doomed request, and the teardown below still has to run so the results
+                # gathered so far are flushed and aggregated instead of discarded. The
+                # in-flight company is abandoned and simply re-fetched on a later run.
+                self.logger.error(
+                    "PermID daily quota exhausted (%s); stopping the company-info stage at "
+                    "candidate %d of %d — %d left for a future run",
+                    error,
+                    idx,
+                    len(candidates),
+                    len(candidates) - processed,
+                )
+                break
+
             processed += 1
             if company:
                 buffer.add(data=company)
@@ -143,13 +167,13 @@ class CompInfoRetrieval(Retrieval):
         whole run, not just the enrichment stage. Record Match calls run before this stage,
         so they are already reflected here and shrink the enrichment headroom accordingly.
         Geonames is a separate API with its own quota and is intentionally excluded.
+
+        Reads the counter maintained by ``BatchStats.record_permid_call`` at each request
+        site rather than summing the outcome counters: a lookup abandoned mid-flight (an
+        enrichment follow-up hitting the daily quota, say) still spent its request, so an
+        outcome-derived total would under-report exactly when the budget matters most.
         """
-        return (
-            batch_stats.total_record_match_calls
-            + batch_stats.total_company_info
-            + batch_stats.total_company_info_failed
-            + batch_stats.total_follow_up_calls
-        )
+        return batch_stats.total_permid_lookups
 
     @staticmethod
     def _build_failure_pairs(permid_data: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
@@ -208,6 +232,7 @@ class CompInfoRetrieval(Retrieval):
         Returns:
             {permid_url: result_entry} on success, or {} on failure.
         """
+        batch_stats.record_permid_call("entity_lookup")
         response = self.api_clients.entity_lookup.query_endpoint(permid_url=permid_url)
 
         # Handle the response from the entity-lookup API
@@ -218,6 +243,10 @@ class CompInfoRetrieval(Retrieval):
                 response.get("error"),
             )
             batch_stats.total_company_info_failed += 1
+            # Counted before the raise: the candidate did fail, so it belongs in the
+            # success-rate denominator even though the stage is about to stop. The quota
+            # cost is already recorded at the request site above.
+            self._raise_if_quota_exhausted(response, permid_url)
             self._handle_failures(response, failure_pairs)
             return {}
 
@@ -315,9 +344,13 @@ class CompInfoRetrieval(Retrieval):
         if not self.batch_config.enrich_metadata or not url:
             return None
 
-        batch_stats.total_follow_up_calls += 1
+        batch_stats.record_permid_call("follow_up")
         response = self.api_clients.entity_lookup.query_endpoint(permid_url=url)
         if response.get("status_code") != self._HTTP_OK:
+            # A quota rejection here must not be swallowed: returning None would write the
+            # company with null sector/ticker fields, which are indistinguishable from
+            # genuinely absent data once they reach the parquet.
+            self._raise_if_quota_exhausted(response, url)
             self.logger.warning(
                 "Follow-up lookup failed for linked PermID %s: %s",
                 url,
@@ -408,6 +441,12 @@ class CompInfoRetrieval(Retrieval):
     def _query_geonames_location(self, url: str | None) -> str | None:
         """Query the Geonames API for a human-readable location name.
 
+        Geonames is a separate API with its own credit quota, so a rejection here does not
+        abort the run the way a PermID quota rejection does — the location field is left
+        null and the company is still written. It is logged rather than swallowed, since
+        ``GeonamesApi`` no longer retries a 429 (see :class:`api.QuotaSafeApiClient`) and a
+        credit cap now shows up as a run of these warnings instead of a silent stall.
+
         Args:
             url: The Geonames resource URL to resolve, or None.
 
@@ -424,7 +463,34 @@ class CompInfoRetrieval(Retrieval):
                 or response.get("data", {}).get("asciiName")
                 or response.get("data", {}).get("countryName")
             )
+
+        self.logger.warning(
+            "Geonames lookup failed for %s (status %s): %s — leaving the location null",
+            url,
+            response.get("status_code"),
+            response.get("error"),
+        )
         return None
+
+    def _raise_if_quota_exhausted(self, response: dict, url: str | None) -> None:
+        """Raise :class:`QuotaExhaustedError` when a response is a quota rejection.
+
+        A 429 from PermID means the shared daily request quota is spent rather than a
+        transient per-second throttle (call spacing is handled by ``ApiClient.rate_limit``),
+        so no amount of retrying or continuing helps until the quota resets.
+
+        Args:
+            response: The API response dict.
+            url: The URL that was queried, for the error message.
+
+        Raises:
+            QuotaExhaustedError: If the response classifies as ``FailureType.RATE_LIMIT``.
+        """
+        failure_type = CompanyInfoFailureClassifier.classify_from_response(
+            response, empty_data=False, category="company_info"
+        )
+        if failure_type is FailureType.RATE_LIMIT:
+            raise QuotaExhaustedError(f"HTTP 429 from PermID for {url or 'unknown url'}")
 
     def _handle_failures(self, response: dict, failure_pairs: list[tuple[str, str]]) -> None:
         """Classify a failed company-info lookup and register the affected input rows.

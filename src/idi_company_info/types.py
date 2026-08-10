@@ -4,7 +4,7 @@
 import pathlib
 from dataclasses import dataclass
 from enum import Enum, StrEnum
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 # Buffer records — the buffer is generic over both on-disk shapes below
 type CacheEntry = dict[str, Any]
@@ -118,6 +118,9 @@ class APIRateLimits:
     geonames: float = 0
 
 
+PermidCallKind = Literal["record_match", "entity_lookup", "follow_up"]
+
+
 @dataclass
 class BatchStats:
     """Counters accumulated during a single pipeline run for reporting."""
@@ -127,12 +130,39 @@ class BatchStats:
     total_ids: int = 0
     total_permids: int = 0
     total_permid_failed: int = 0
+    total_permid_lookups: int = 0  # every HTTP call against the shared PermID daily quota
     total_record_match_calls: int = 0  # Record Match HTTP calls (1 per <=1000 records)
-    total_company_info: int = 0
+    total_entity_lookup_calls: int = 0  # Entity Lookup calls for a candidate's own record
+    total_company_info: int = 0  # complete company-info records built (not a call count)
     total_company_info_failed: int = 0
     total_follow_up_calls: int = 0
     total_sector_cache_hits: int = 0  # sector resolves served from the memo (no API call)
     duplicates_ids_removed: int = 0
+    # True when a stage stopped early because the shared PermID daily quota was rejected
+    # (429), as opposed to finishing its candidates or stopping at our own max_requests cap.
+    # The run still succeeds and exits 0 — partial results are flushed and aggregated — so
+    # without this flag an interrupted run is indistinguishable from a complete one in the
+    # counters alone. Set once per run and never cleared.
+    quota_exhausted: bool = False
+
+    def record_permid_call(self, kind: PermidCallKind) -> None:
+        """Count one HTTP call against the shared PermID daily quota.
+
+        Both the running total and its per-stage component are incremented here so the two
+        cannot drift apart. Call this at the request site, before the call is made and
+        regardless of how it turns out — the quota is spent either way. Geonames is a
+        separate API with its own quota and is deliberately not counted.
+
+        Args:
+            kind: Which PermID endpoint the call goes to.
+        """
+        self.total_permid_lookups += 1
+        if kind == "record_match":
+            self.total_record_match_calls += 1
+        elif kind == "entity_lookup":
+            self.total_entity_lookup_calls += 1
+        else:
+            self.total_follow_up_calls += 1
 
 
 class InputSource(StrEnum):

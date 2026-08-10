@@ -304,12 +304,9 @@ class CompanyPipeline:
         self.logger.info(
             "PermID requests used: %d total against the daily quota "
             "(%d Record Match + %d entity + %d follow-up)",
-            stats["total_record_match_calls"]
-            + stats["total_company_info"]
-            + stats["total_company_info_failed"]
-            + stats["total_follow_up_calls"],
+            stats["total_permid_lookups"],
             stats["total_record_match_calls"],
-            stats["total_company_info"] + stats["total_company_info_failed"],
+            stats["total_entity_lookup_calls"],
             stats["total_follow_up_calls"],
         )
         self.logger.info(
@@ -318,6 +315,15 @@ class CompanyPipeline:
             stats["total_records"],
             stats["duplicates_ids_removed"],
         )
+        # Logged as a distinct outcome line: the run exits 0 either way, so this is the only
+        # thing separating "worked through the candidates" from "was cut off by the quota".
+        if stats["quota_exhausted"]:
+            self.logger.warning(
+                "Run outcome:          INTERRUPTED — PermID daily quota exhausted; results "
+                "above are partial and the remaining candidates carry over to the next run"
+            )
+        else:
+            self.logger.info("Run outcome:          COMPLETE — no quota rejection")
         self.logger.info("=" * 50)
 
     def _report_cusip_collisions(self, resolved_keys: set[str]) -> None:

@@ -18,6 +18,15 @@ class FailureType(StrEnum):
     RATE_LIMIT = "rate_limit"  # 429
 
 
+class QuotaExhaustedError(Exception):
+    """The shared daily PermID request quota is spent.
+
+    Raised by the retrieval stages on a 429 so the caller can stop the run early rather
+    than spend one doomed request per remaining candidate. Retryable in the sense that a
+    later run picks the work back up — nothing is added to the do-not-retry registry.
+    """
+
+
 _HTTP_RATE_LIMIT = 429
 _HTTP_OK = 200
 _HTTP_CLIENT_ERROR_MIN = 400
@@ -68,11 +77,16 @@ class CompanyInfoFailureClassifier(FailureClassifier):
         status_code = response.get("status_code")
         has_error = "error" in response
 
-        if has_error or status_code is None:
-            return FailureType.API_ERROR
-
+        # 429 is tested before the generic error branch. `raise_for_status` means a
+        # rate-limited response always carries an `error` key too, so checking has_error
+        # first would classify every quota rejection as API_ERROR and lose the distinction
+        # callers need to stop the run early. Both types are retryable, so the ordering
+        # does not change what lands in the do-not-retry registry.
         if status_code == _HTTP_RATE_LIMIT:
             return FailureType.RATE_LIMIT
+
+        if has_error or status_code is None:
+            return FailureType.API_ERROR
 
         if status_code == _HTTP_OK and empty_data:
             return FailureType.NO_PERMID if category == "permid" else FailureType.NO_COMPANY_INFO
