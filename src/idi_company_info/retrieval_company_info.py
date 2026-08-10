@@ -163,13 +163,13 @@ class CompInfoRetrieval(Retrieval):
         whole run, not just the enrichment stage. Record Match calls run before this stage,
         so they are already reflected here and shrink the enrichment headroom accordingly.
         Geonames is a separate API with its own quota and is intentionally excluded.
+
+        Reads the counter maintained by ``BatchStats.record_permid_call`` at each request
+        site rather than summing the outcome counters: a lookup abandoned mid-flight (an
+        enrichment follow-up hitting the daily quota, say) still spent its request, so an
+        outcome-derived total would under-report exactly when the budget matters most.
         """
-        return (
-            batch_stats.total_record_match_calls
-            + batch_stats.total_company_info
-            + batch_stats.total_company_info_failed
-            + batch_stats.total_follow_up_calls
-        )
+        return batch_stats.total_permid_lookups
 
     @staticmethod
     def _build_failure_pairs(permid_data: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
@@ -228,6 +228,7 @@ class CompInfoRetrieval(Retrieval):
         Returns:
             {permid_url: result_entry} on success, or {} on failure.
         """
+        batch_stats.record_permid_call("entity_lookup")
         response = self.api_clients.entity_lookup.query_endpoint(permid_url=permid_url)
 
         # Handle the response from the entity-lookup API
@@ -238,8 +239,9 @@ class CompInfoRetrieval(Retrieval):
                 response.get("error"),
             )
             batch_stats.total_company_info_failed += 1
-            # Counted above first: the request was made and drew on the daily quota, so it
-            # belongs in the run's stats even though the stage is about to stop.
+            # Counted before the raise: the candidate did fail, so it belongs in the
+            # success-rate denominator even though the stage is about to stop. The quota
+            # cost is already recorded at the request site above.
             self._raise_if_quota_exhausted(response, permid_url)
             self._handle_failures(response, failure_pairs)
             return {}
@@ -338,7 +340,7 @@ class CompInfoRetrieval(Retrieval):
         if not self.batch_config.enrich_metadata or not url:
             return None
 
-        batch_stats.total_follow_up_calls += 1
+        batch_stats.record_permid_call("follow_up")
         response = self.api_clients.entity_lookup.query_endpoint(permid_url=url)
         if response.get("status_code") != self._HTTP_OK:
             # A quota rejection here must not be swallowed: returning None would write the

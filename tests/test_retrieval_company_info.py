@@ -339,7 +339,8 @@ class TestRequestBudget:
     def test_record_match_calls_count_against_the_shared_budget(self, tmp_path):
         retriever = _make_retrieve_retriever(tmp_path, max_requests=3)
         # Simulate one Record Match call already spent in the PermID-retrieval stage.
-        stats = BatchStats(total_record_match_calls=1)
+        stats = BatchStats()
+        stats.record_permid_call("record_match")
 
         retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
 
@@ -547,3 +548,61 @@ class TestRaiseIfQuotaExhausted:
         retriever = _make_429_retriever(tmp_path)
 
         retriever._raise_if_quota_exhausted({"error": "Timeout querying ..."}, _C1)
+
+
+class TestPermidRequestAccounting:
+    """``total_permid_lookups`` counts requests; ``total_company_info`` counts records.
+
+    The two used to be conflated: the run's request total was derived by summing the
+    outcome counters, which only works while every request lands in exactly one of them.
+    """
+
+    def test_counts_every_call_and_its_per_stage_component(self, tmp_path):
+        retriever = _make_retrieve_retriever(tmp_path, max_requests=100)
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        # Three companies at 1 entity lookup + 1 sector follow-up each.
+        assert stats.total_entity_lookup_calls == 3
+        assert stats.total_follow_up_calls == 3
+        assert stats.total_permid_lookups == 6
+        assert stats.total_company_info == 3
+
+    def test_total_matches_the_sum_of_its_components(self, tmp_path):
+        retriever = _make_retrieve_retriever(tmp_path, max_requests=100)
+        stats = BatchStats()
+        stats.record_permid_call("record_match")
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        assert stats.total_permid_lookups == (
+            stats.total_record_match_calls
+            + stats.total_entity_lookup_calls
+            + stats.total_follow_up_calls
+        )
+
+    def test_abandoned_company_still_counts_the_requests_it_spent(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, sector_429=True)
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        # C1's entity lookup succeeded but its sector follow-up hit the quota, so no record
+        # was built. Both requests were still spent and must show up in the run's total —
+        # the outcome counters alone would report zero.
+        assert stats.total_company_info == 0
+        assert stats.total_permid_lookups == 2
+        assert retriever._permid_requests(stats) == 2
+
+    def test_failed_lookup_counts_once_as_a_request_and_once_as_a_failure(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, ok_companies=1)
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        # C1: entity + follow-up. C2: entity only, which 429s and stops the stage.
+        assert stats.total_permid_lookups == 3
+        assert stats.total_entity_lookup_calls == 2
+        assert stats.total_company_info == 1
+        assert stats.total_company_info_failed == 1
