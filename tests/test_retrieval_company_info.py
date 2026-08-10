@@ -642,3 +642,45 @@ class TestGeonamesLocation:
 
         assert _GEONAME_URL in caplog.text
         assert "429" in caplog.text
+
+
+class TestQuotaExhaustedFlag:
+    """``BatchStats.quota_exhausted`` distinguishes an interrupted run from a complete one.
+
+    Both exit normally with partial results flushed, so the counters alone cannot tell them
+    apart — nor can they separate hitting LSEG's quota from hitting our own max_requests cap.
+    """
+
+    def test_set_when_an_entity_lookup_429s(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, ok_companies=1)
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        assert stats.quota_exhausted is True
+
+    def test_set_when_a_follow_up_429s(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, sector_429=True)
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        assert stats.quota_exhausted is True
+
+    def test_unset_on_a_clean_run(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, ok_companies=3)
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        assert stats.quota_exhausted is False
+
+    def test_unset_when_the_run_stops_at_our_own_budget(self, tmp_path):
+        retriever = _make_429_retriever(tmp_path, ok_companies=3)
+        retriever.batch_config.max_requests = 1
+        stats = BatchStats()
+
+        retriever.retrieve(_budget_permid_data(), num_existing_entities=0, batch_stats=stats)
+
+        # Stopping at max_requests is a planned, complete outcome — not a quota rejection.
+        assert stats.quota_exhausted is False

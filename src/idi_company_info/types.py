@@ -138,6 +138,12 @@ class BatchStats:
     total_follow_up_calls: int = 0
     total_sector_cache_hits: int = 0  # sector resolves served from the memo (no API call)
     duplicates_ids_removed: int = 0
+    # True when a stage stopped early because the shared PermID daily quota was rejected
+    # (429), as opposed to finishing its candidates or stopping at our own max_requests cap.
+    # The run still succeeds and exits 0 — partial results are flushed and aggregated — so
+    # without this flag an interrupted run is indistinguishable from a complete one in the
+    # counters alone. Set once per run and never cleared.
+    quota_exhausted: bool = False
 
     def record_permid_call(self, kind: PermidCallKind) -> None:
         """Count one HTTP call against the shared PermID daily quota.

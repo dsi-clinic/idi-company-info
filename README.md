@@ -130,6 +130,7 @@ The quota can still be exhausted mid-run — a manual run, a retried task, or an
 | `Reached max_requests budget (N PermID requests); stopping before candidate ...` | The run hit **our** cap and stopped cleanly — expected on a large backlog |
 | `PermID daily quota exhausted (...); stopping the company-info stage at ...` | The run hit **LSEG's** quota; check whether the caps still sum under 5,000 |
 | `Sector cache hits: N sector resolves served from cache` | Requests avoided by the shared memo |
+| `Run outcome: COMPLETE` / `INTERRUPTED — PermID daily quota exhausted` | The run-level verdict, from `BatchStats.quota_exhausted`. Both exit `0`, so this is the line that tells them apart |
 
 ---
 

@@ -117,6 +117,10 @@ class CompInfoRetrieval(Retrieval):
                     permid_url, failure_pairs.get(permid_url, []), batch_stats
                 )
             except QuotaExhaustedError as error:
+                # Flagged before the break so the run-level summary can say the stage was
+                # interrupted rather than finished — the counters alone cannot distinguish
+                # the two, since this path still exits normally.
+                batch_stats.quota_exhausted = True
                 # Break rather than propagate: every remaining candidate would spend one
                 # doomed request, and the teardown below still has to run so the results
                 # gathered so far are flushed and aggregated instead of discarded. The

@@ -9,7 +9,7 @@ import json
 from unittest.mock import MagicMock
 
 from idi_company_info.company_pipeline import CompanyPipeline
-from idi_company_info.types import FilePaths
+from idi_company_info.types import BatchStats, FilePaths
 
 _PERMID_URL = "https://permid.org/1-test"
 
@@ -77,3 +77,30 @@ class TestReportCusipCollisions:
         instance = make_pipeline_with_files(tmp_path, _collision_permid_data())
         instance._report_cusip_collisions(resolved_keys={"OTHER_cusip_999999999"})
         instance.logger.warning.assert_not_called()
+
+
+class TestPrintStatsQuotaOutcome:
+    """print_stats reports whether the run completed or was cut off by the quota."""
+
+    @staticmethod
+    def _pipeline() -> CompanyPipeline:
+        instance = CompanyPipeline.__new__(CompanyPipeline)
+        instance.logger = MagicMock()
+        return instance
+
+    def test_complete_run_logs_no_warning(self):
+        instance = self._pipeline()
+
+        instance.print_stats(BatchStats())
+
+        instance.logger.warning.assert_not_called()
+        assert any("COMPLETE" in call.args[0] for call in instance.logger.info.call_args_list)
+
+    def test_interrupted_run_warns(self):
+        instance = self._pipeline()
+
+        instance.print_stats(BatchStats(quota_exhausted=True))
+
+        # A warning, not info: the counters above it describe a partial run.
+        assert instance.logger.warning.call_count == 1
+        assert "INTERRUPTED" in instance.logger.warning.call_args.args[0]
