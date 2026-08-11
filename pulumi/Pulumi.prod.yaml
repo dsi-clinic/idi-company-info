@@ -1,33 +1,37 @@
 # Pulumi.prod.yaml — PROD stack config (SCAFFOLD).
 #
-# Replace every REQUIRED placeholder below with real prod values before
-# deploying. The processor bucket and scheduler DLQ are read from SSM
-# (/idi/prod/shared/*), so they are NOT set here; the path keys below are
-# bucket-relative and resolve against that shared bucket. The PermID API key and
-# GeoNames username are SSM SecureStrings set out-of-band (never committed
-# config values):
+# The processor bucket and scheduler DLQ are read from SSM (/idi/prod/shared/*),
+# so they are NOT set here; the path keys below are bucket-relative and resolve
+# against that shared bucket. The PermID API key and GeoNames username are SSM
+# SecureStrings set out-of-band (never committed config values):
 #     aws ssm put-parameter --name /idi/prod/company-info/secrets/permid_api_key \
 #       --type SecureString --value '<prod-key>' --overwrite
 #     aws ssm put-parameter --name /idi/prod/company-info/secrets/geonames_user \
 #       --type SecureString --value '<geonames-username>' --overwrite
 #
 # Schedules are intentionally DISABLED (idi:schedule_enabled: "false") until the
-# prod values are filled in and validated.
+# prod inputs exist and have been validated.
+#
+# Prefix split matches dev: inputs are read from, and the aggregated parquet is
+# published to, the `database/` prefix; operational state (per-source
+# permid_url/permid_data/failure JSON, shared sector cache) stays under
+# `processors/company-info/`.
 config:
-  idi:output_dir: company-info/output
+  idi:output_dir: processors/company-info/output
+  idi:final_output_file: database/company-info/latest.parquet
   idi:input_sources:
     - source: shareholder_tracker_cik
-      input_file: "<REQUIRED: bucket-relative key, e.g. company-info/input/cik.parquet>"
+      input_file: database/shareholders/latest.parquet
       cron: cron(0 2 * * ? *)
       batch_size: "2450"
       max_requests: "1650"
     - source: commercial_debt_tracker
-      input_file: "<REQUIRED: bucket-relative key, e.g. processors/cdt/debt-instruments/latest.parquet>"
+      input_file: database/cdt/debt-instruments/latest.parquet
       cron: cron(30 2 * * ? *)
       batch_size: "2450"
       max_requests: "1650"
     - source: corporate_subsidiaries
-      input_file: "<REQUIRED: bucket-relative key, e.g. processors/corporate-structure/output/subsidiaries.parquet>"
+      input_file: database/corporate-structure/latest.parquet
       cron: cron(0 3 * * ? *)
       batch_size: "2450"
       max_requests: "1650"

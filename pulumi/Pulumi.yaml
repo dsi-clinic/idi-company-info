@@ -32,6 +32,18 @@ config:
     description: >
       S3 URI (or path) root for pipeline output. Results, the PermID cache, and
       failures are written under a per-input-source subdirectory of this root.
+      This holds operational state only — the published parquet is addressed
+      separately via `final_output_file`.
+
+  idi:final_output_file:
+    description: >
+      Destination for the aggregated parquet — a bucket-relative key (resolved
+      against the shared bucket from SSM) or a full URI used as-is. Points into
+      the `database/` prefix so the published artefact is separate from the
+      operational caches under `output_dir`. The aggregator's write lock is a
+      sidecar object alongside it (`<file>.lock`). Empty falls back to
+      `{output_dir}/latest.parquet`.
+    default: ""
 
   idi:input_sources:
     description: >

@@ -43,7 +43,7 @@ them. The branch→stack mapping lives in `.github/workflows/deploy.yml`
 
 | Kind | Where | Examples |
 |---|---|---|
-| Non-secret pipeline args | **Committed** in `Pulumi.<stack>.yaml` | `input_sources`, `output_dir`, `cpu`, `memory`, `buffer_size`, `threshold_days`, `match_score_threshold`, `schedule_enabled`, `aws:region`, `app_name` |
+| Non-secret pipeline args | **Committed** in `Pulumi.<stack>.yaml` | `input_sources`, `output_dir`, `final_output_file`, `cpu`, `memory`, `buffer_size`, `threshold_days`, `match_score_threshold`, `schedule_enabled`, `aws:region`, `app_name` |
 | Shared values | Read at runtime from SSM (`/idi/<stack>/shared/*`), published by the shared stack | `processor_bucket_name`, `dlq_name` |
 | The two secrets | **SSM SecureString** parameters set out-of-band via `aws ssm put-parameter` (Pulumi creates a placeholder and never manages the value) | `permid_api_key`, `geonames_user` |
 | Deploy plumbing | GitHub repo secrets only | `PULUMI_ACCESS_TOKEN`, `PULUMI_CONFIG_PASSPHRASE`, `PULUMI_STATE_BUCKET`, `AWS_ROLE_ARN_*` |
@@ -79,17 +79,40 @@ scheduled.) Each entry is `{source, input_file, cron, batch_size, max_requests}`
 (`batch_size` = new identifiers resolved per run; `max_requests` = per-run PermID
 enrichment-request budget); `input_file` is a
 single parquet file (for `commercial_debt_tracker`,
-`…/processors/cdt/debt-instruments/latest.parquet`). `idi:schedule_enabled`
-is currently `"false"` in both stacks — set it to `"true"` per stack to arm the crons.
+`…/database/cdt/debt-instruments/latest.parquet`). `idi:schedule_enabled` is `"true"`
+in dev (crons armed) and `"false"` in prod; it is set per stack.
+
+#### Prefix split: `database/` vs `processors/`
+
+Two path roots, deliberately separate:
+
+- **`database/…`** — the published layer. Every `input_file` reads from another
+  processor's published table (`database/shareholders/latest.parquet`,
+  `database/cdt/debt-instruments/latest.parquet`,
+  `database/corporate-structure/latest.parquet`), and this processor publishes its
+  own aggregate to `idi:final_output_file` (`database/company-info/latest.parquet`).
+  The aggregator's write lock is a sidecar object next to it
+  (`database/company-info/latest.parquet.lock`), created and deleted per run.
+- **`processors/company-info/output/…`** — operational state only, under
+  `idi:output_dir`: per-source `permid_url.json`, `permid_data.json`,
+  `failure.json`, plus the `sector_cache.json` shared across sources. This is the
+  resumability and quota-saving state; it is read at startup and rewritten
+  throughout every run, and nothing outside this processor should consume it.
+
+`final_output_file` is what keeps these apart — leave it empty and the aggregate
+falls back to `{output_dir}/latest.parquet`, i.e. back inside the operational
+prefix.
 
 ### Bringing up prod (first deploy)
 
-`Pulumi.prod.yaml` ships as a scaffold with `REPLACE_ME` placeholders. Before the
-first `main` deploy:
+`Pulumi.prod.yaml` carries the same path layout as dev. Before the first `main`
+deploy:
 
-1. Fill every `REQUIRED` placeholder — the per-source `input_file` keys (and
-   `output_dir` if it differs). The processor bucket and DLQ come from SSM
-   (`/idi/prod/shared/*`), so they are not set here.
+1. Confirm each `database/…` input key actually exists in the prod bucket and
+   carries the columns its loader requires (see the input-source table in the
+   [root README](../README.md)) — a missing key or renamed column fails the run at
+   load time. The processor bucket and DLQ come from SSM (`/idi/prod/shared/*`), so
+   they are not set here.
 2. Validate: `pulumi stack select prod && pulumi preview` — expect three (disabled)
    schedules and no missing-config errors.
 3. Deploy once (`pulumi up`) to create the placeholder SSM parameters, then set
@@ -120,12 +143,20 @@ aws ecs run-task \
   --task-definition "$(pulumi stack output aggregate_task_definition_arn)" \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$(pulumi stack output primary_subnet_id)],securityGroups=[$(pulumi stack output ecs_sg_id)],assignPublicIp=ENABLED}" \
-  --overrides '{"containerOverrides":[{"name":"company-info-aggregate","command":["--output-directory","s3://<bucket>/company-info/output"]}]}' \
+  --overrides '{"containerOverrides":[{"name":"company-info-aggregate","command":["--output-directory","s3://<bucket>/processors/company-info/output","--final-output-file","s3://<bucket>/database/company-info/latest.parquet"]}]}' \
   --region us-east-2
 ```
 
-`command` accepts the aggregate CLI flags (`--output-directory` is required; `--final-output-file`
-and `--lock-timeout` are optional). Logs stream to CloudWatch under the `aggregate/...` prefix.
+`command` accepts the aggregate CLI flags (`--output-directory` is required;
+`--final-output-file` and `--lock-timeout` are optional). Logs stream to CloudWatch under
+the `aggregate/...` prefix.
+
+> **Pass `--final-output-file`.** It is optional to the CLI but not in practice: omit it and
+> the aggregate defaults to `{output-directory}/latest.parquet`, writing a stale copy inside
+> the operational prefix instead of refreshing the published
+> `database/company-info/latest.parquet`. The scheduled runs always pass it (from
+> `idi:final_output_file`); a hand-run `run-task` has to pass it too. Both values should
+> match the deployed stack config — check with `pulumi config get final_output_file`.
 
 > The IAM identity invoking `run-task` needs `ecs:RunTask` on the aggregate task-definition
 > arn and `iam:PassRole` on both the task execution and task roles.
@@ -186,6 +217,10 @@ endpoints or NAT gateway.
 
 - **S3 bucket** — input/output data; **not created here.** The processor bucket is
   owned by the shared stack; its name is read from SSM (`/idi/<stack>/shared/processor_bucket_name`).
+  Both the `database/` and `processors/` prefixes live in this one bucket, and the task
+  role's policy is prefix-agnostic (`ListBucket` on the bucket, object actions on
+  `<arn>/*`), so moving paths between prefixes needs no IAM change. Splitting `database/`
+  into its own bucket would — a second SSM lookup and a second policy statement.
 - **SSM SecureString parameters** — `/idi/<stack>/company-info/secrets/permid_api_key`
   and `/idi/<stack>/company-info/secrets/geonames_user`. Created here with placeholder
   values (`ignore_changes`); real values set out-of-band and injected into the ECS
