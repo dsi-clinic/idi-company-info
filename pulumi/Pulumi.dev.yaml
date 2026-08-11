@@ -3,11 +3,17 @@
 # paths below are bucket-relative keys resolved against that shared bucket. The
 # PermID API key and GeoNames username are SSM SecureStrings set out-of-band,
 # not config values.
+#
+# Prefix split: inputs are read from, and the aggregated parquet is published to,
+# the `database/` prefix (each processor's published table). Operational state —
+# per-source permid_url/permid_data/failure JSON and the shared sector cache —
+# stays under `processors/company-info/`.
 config:
   idi:output_dir: processors/company-info/output
+  idi:final_output_file: database/company-info/latest.parquet
   idi:input_sources:
     - source: shareholder_tracker_cik
-      input_file: company-info/input/shareholder_tracker_release_20251218.parquet
+      input_file: database/shareholders/latest.parquet
       cron: cron(0 2 * * ? *)
       batch_size: "2450"
       max_requests: "1650"
@@ -17,7 +23,7 @@ config:
       batch_size: "2450"
       max_requests: "1650"
     - source: corporate_subsidiaries
-      input_file: processors/corporate-structure/output/latest.parquet
+      input_file: database/corporate-structure/latest.parquet
       cron: cron(0 3 * * ? *)
       batch_size: "2450"
       max_requests: "1650"
@@ -26,5 +32,5 @@ config:
   idi:buffer_size: "500"
   idi:threshold_days: "30"
   idi:match_score_threshold: "1"
-  idi:schedule_enabled: "false"
+  idi:schedule_enabled: "true"
 encryptionsalt: v1:jdR6bBdu0L0=:v1:rko3nQ2aYJtrw1rx:KOqk30SRaH22sdr87/ZUy+E5LKwMJw==

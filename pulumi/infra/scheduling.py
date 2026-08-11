@@ -107,6 +107,14 @@ def _resolve_path(value: str) -> str:
 
 output_dir = _resolve_path(config.config.require("output_dir"))
 
+# The aggregated parquet is the pipeline's published artefact, so it is addressed
+# separately from `output_dir`: the JSON caches (per-source results, permid links,
+# failures, shared sector cache) stay under `output_dir`, while the parquet lands
+# wherever `final_output_file` points — the `database/` prefix in practice. Empty
+# or unset keeps the aggregator's own default of `{output_dir}/latest.parquet`.
+_final_output_key = config.config.get("final_output_file") or ""
+final_output_file = _resolve_path(_final_output_key) if _final_output_key else ""
+
 # Each entry: {"source": str, "input_file": str, "cron": str, "batch_size": str,
 # "max_requests": str}. `input_file` is a bucket-relative key (or full URI).
 input_sources = config.config.require_object("input_sources")
@@ -122,8 +130,9 @@ def _container_override_input(
 
     The output directory is shared across sources; the orchestrator partitions
     writes (results, permid cache, failures) into a per-source subdirectory at
-    runtime. All inputs resolve to plain strings at plan time, so no Pulumi
-    Output wrapping is needed.
+    runtime. Every source aggregates into the same `final_output_file`, serialised
+    by a lock the aggregator takes on that path. All inputs resolve to plain
+    strings at plan time, so no Pulumi Output wrapping is needed.
 
     The GeoNames username (like the PermID API key) is a secret injected into
     the task as the `GEONAMES_USER` env var from SSM (see ecs.py), so it is
@@ -145,6 +154,8 @@ def _container_override_input(
         "--match-score-threshold",
         match_score_threshold,
     ]
+    if final_output_file:
+        command += ["--final-output-file", final_output_file]
     if threshold_days:
         command += ["--threshold-days", threshold_days]
 
