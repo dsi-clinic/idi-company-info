@@ -1,6 +1,6 @@
 # Post-merge pipeline. Thin caller of the shared composition pipeline-docker.yml
 # (version -> docker -> deploy-pulumi -> sync-ecr, plus sync-dev), pinned to an
-# exact release of dsi-clinic/idi-ftm2j-shared. Bump the @vX.Y.Z pin to upgrade.
+# exact release of dsi-rse/idi-ftm2j-shared. Bump the @vX.Y.Z pin to upgrade.
 name: Deploy
 
 on:
@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   pipeline:
-    uses: dsi-clinic/idi-ftm2j-shared/.github/workflows/pipeline-docker.yml@v0.1.12
+    uses: dsi-rse/idi-ftm2j-shared/.github/workflows/pipeline-docker.yml@v0.1.12
     secrets: inherit
     with:
       app-name: company-info

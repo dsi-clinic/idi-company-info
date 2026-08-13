@@ -226,7 +226,7 @@ docker compose -f compose.yml run --rm orchestrator-cik
 |---|---|---|
 | `PERMID_API_KEY` | — | Required |
 | `GEONAMES_USER` | — | Required |
-| `ORCHESTRATOR_IMAGE` | `ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest` | Image to pull (EC2 / registry runs) |
+| `ORCHESTRATOR_IMAGE` | `ghcr.io/dsi-rse/idi-company-info-orchestrator:latest` | Image to pull (EC2 / registry runs) |
 | `INPUT_FILE_CIK` | `./data/input/investors_cik.parquet` | CIK input (`investor_name`, `investor_cik`) |
 | `INPUT_FILE_CUSIP` | `./data/input/securities_cusip.parquet` | CUSIP input (`issuer_name`, `security_cusip`, `stock_ticker`) |
 | `OUTPUT_DIR` | `./data/output` | Root output directory |
@@ -239,7 +239,7 @@ docker compose -f compose.yml run --rm orchestrator-cik
 
 ## Development cycle
 
-Documentation governing all processors: https://github.com/dsi-clinic/idi-ftm2j-shared/tree/main#development--contributing
+Documentation governing all processors: https://github.com/dsi-rse/idi-ftm2j-shared/tree/main#development--contributing
 
 ### CI/CD specifics
 
