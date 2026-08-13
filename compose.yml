@@ -4,7 +4,7 @@ services:
   # CIK pipeline
   # ---------------------------------------------------------------------------
   orchestrator-cik:
-    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-rse/idi-company-info-orchestrator:latest}
     container_name: idi-company-info-orchestrator-cik
 
     profiles:
@@ -55,7 +55,7 @@ services:
   # Commercial Debt Tracker pipeline (input is a single parquet FILE)
   # ---------------------------------------------------------------------------
   orchestrator-cdt:
-    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-rse/idi-company-info-orchestrator:latest}
     container_name: idi-company-info-orchestrator-cdt
 
     profiles:
@@ -106,7 +106,7 @@ services:
   # Corporate Subsidiaries pipeline
   # ---------------------------------------------------------------------------
   orchestrator-subsidiaries:
-    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-clinic/idi-company-info-orchestrator:latest}
+    image: ${ORCHESTRATOR_IMAGE:-ghcr.io/dsi-rse/idi-company-info-orchestrator:latest}
     container_name: idi-company-info-orchestrator-subsidiaries
 
     profiles:
