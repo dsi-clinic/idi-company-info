@@ -93,8 +93,9 @@ class BatchConfig:
     # + entity-lookup + sector/quote follow-up calls all count. The company-info stage stops
     # starting new companies once this many requests are made. Memoized sectors mean most
     # companies cost ~2 live requests. This default sizes one ad-hoc run; every scheduled
-    # source passes its own lower cap so that cap * enabled sources <= 5,000/day (dev runs
-    # 4 sources at 1,240). See API Quota Budgeting in the README.
+    # source passes its own cap, sized per source so the caps sum under the 5,000/day quota
+    # (dev gives the backfilling CUSIP source 4,500 and the three steady-state sources 100
+    # each). See API Quota Budgeting in the README.
     max_requests: int = 1650
     buffer_size: int = 500  # max size of buffer before data is written to disk
     threshold_days: int | None = None  # number of days to look for stale entities
