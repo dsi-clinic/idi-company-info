@@ -12,21 +12,33 @@ config:
   idi:output_dir: processors/company-info/output
   idi:final_output_file: database/company-info/latest.parquet
   idi:input_sources:
+    # max_requests is 1240 across all four sources, not 1650: the PermID daily quota is
+    # per API key and shared, so the cap has to be re-derived whenever a source is added.
+    # 4 x 1240 = 4,960 <= 5,000, keeping ~40 requests of headroom for ad-hoc local runs.
+    # See "API Quota Budgeting" in the README before changing either number.
     - source: shareholder_tracker_cik
       input_file: database/shareholders/latest.parquet
       cron: cron(0 2 * * ? *)
       batch_size: "2450"
-      max_requests: "1650"
+      max_requests: "1240"
+    - source: shareholder_tracker_cusip
+      # Same published table as shareholder_tracker_cik — that parquet carries both the
+      # investor_name/investor_cik columns the CIK loader needs and the
+      # issuer_name/security_cusip/stock_ticker columns this one needs.
+      input_file: database/shareholders/latest.parquet
+      cron: cron(30 3 * * ? *)
+      batch_size: "2450"
+      max_requests: "1240"
     - source: commercial_debt_tracker
       input_file: database/cdt/debt-instruments/latest.parquet
       cron: cron(30 2 * * ? *)
       batch_size: "2450"
-      max_requests: "1650"
+      max_requests: "1240"
     - source: corporate_subsidiaries
       input_file: database/corporate-structure/latest.parquet
       cron: cron(0 3 * * ? *)
       batch_size: "2450"
-      max_requests: "1650"
+      max_requests: "1240"
   idi:cpu: "1024"
   idi:memory: "4096"
   idi:buffer_size: "500"

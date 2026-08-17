@@ -96,11 +96,13 @@ The PermID daily request quota is **per API key, not per pipeline**. Every sched
 | | |
 |---|---|
 | PermID daily quota | **5,000 requests/day** per key |
-| Scheduled sources | 3 (`shareholder_tracker_cik`, `commercial_debt_tracker`, `corporate_subsidiaries`) |
-| `max_requests` per source | 1,650 |
-| Total worst case | `3 × 1,650 = 4,950 ≤ 5,000` |
+| Scheduled sources (dev) | 4 (`shareholder_tracker_cik`, `shareholder_tracker_cusip`, `commercial_debt_tracker`, `corporate_subsidiaries`) |
+| `max_requests` per source | 1,240 |
+| Total worst case | `4 × 1,240 = 4,960 ≤ 5,000` |
 
-The ~50-request headroom absorbs ad-hoc local runs. Schedules are staggered (`02:00`, `02:30`, `03:00` UTC) so a source that aborts early does not overlap the next one, but staggering is *not* what keeps the total in bounds — the per-source cap is.
+The ~40-request headroom absorbs ad-hoc local runs. Schedules are staggered (`02:00`, `02:30`, `03:00`, `03:30` UTC) so a source that aborts early does not overlap the next one, but staggering is *not* what keeps the total in bounds — the per-source cap is.
+
+The prod stack is still scaffolded at 3 sources × 1,650 with `schedule_enabled: "false"`; adding `shareholder_tracker_cusip` there means re-deriving its cap the same way. The CLI default remains 1,650 (see `--max-requests`) because it sizes a single ad-hoc run, not a fleet — scheduled runs always get an explicit value from `idi:input_sources`.
 
 **Adding or re-enabling a source means re-deriving the cap**: `max_requests × number of enabled sources ≤ 5,000`. Both values live in `idi:input_sources` in `pulumi/Pulumi.<stack>.yaml`, one entry per source, so the arithmetic is visible in one place. There is no cross-source enforcement at runtime; if the caps sum above the quota, the last source of the night is the one that starves.
 
