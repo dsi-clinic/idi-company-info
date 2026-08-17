@@ -161,7 +161,9 @@ def get_args() -> argparse.Namespace:
             "Total PermID-request budget per run against the shared daily quota (Record "
             "Match + entity-lookup + follow-up calls); the company-info stage stops "
             "starting new companies once this many requests are made "
-            "(default: 1650; 3 daily sources * 1650 <= 5,000/day quota)"
+            "(default: 1650, which sizes a single ad-hoc run; scheduled runs are capped "
+            "lower so that max_requests * enabled sources stays under the 5,000/day "
+            "quota — see API Quota Budgeting in the README)"
         ),
     )
     parser.add_argument(

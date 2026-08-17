@@ -12,21 +12,40 @@ config:
   idi:output_dir: processors/company-info/output
   idi:final_output_file: database/company-info/latest.parquet
   idi:input_sources:
+    # max_requests is deliberately LOPSIDED, not split evenly: the quota is per API key and
+    # shared, and the only source with a real backlog is shareholder_tracker_cusip (13,209
+    # securities to resolve from cold). The other three are in steady state, so they need
+    # enough to cover a handful of new rows and retryable failures, nothing more.
+    #   4,500 + 3 x 100 = 4,800 <= 5,000, leaving 200 for ad-hoc local runs.
+    # This split is TEMPORARY and should be rebalanced once the CUSIP backfill drains — see
+    # "API Quota Budgeting" in the README before changing any of these numbers.
     - source: shareholder_tracker_cik
       input_file: database/shareholders/latest.parquet
       cron: cron(0 2 * * ? *)
       batch_size: "2450"
-      max_requests: "1650"
+      # Steady state: no new rows per day, just ~3 retryable failures retried each run.
+      max_requests: "100"
+    - source: shareholder_tracker_cusip
+      # Same published table as shareholder_tracker_cik — that parquet carries both the
+      # investor_name/investor_cik columns the CIK loader needs and the
+      # issuer_name/security_cusip/stock_ticker columns this one needs.
+      input_file: database/shareholders/latest.parquet
+      cron: cron(30 3 * * ? *)
+      batch_size: "2450"
+      # The backfill: 13,209 CUSIPs at ~2 live requests each once the sector cache is warm.
+      max_requests: "4500"
     - source: commercial_debt_tracker
       input_file: database/cdt/debt-instruments/latest.parquet
       cron: cron(30 2 * * ? *)
       batch_size: "2450"
-      max_requests: "1650"
+      # Not currently producing new rows.
+      max_requests: "100"
     - source: corporate_subsidiaries
       input_file: database/corporate-structure/latest.parquet
       cron: cron(0 3 * * ? *)
       batch_size: "2450"
-      max_requests: "1650"
+      # Only a few new filings per day.
+      max_requests: "100"
   idi:cpu: "1024"
   idi:memory: "4096"
   idi:buffer_size: "500"
