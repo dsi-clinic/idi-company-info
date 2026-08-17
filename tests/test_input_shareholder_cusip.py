@@ -236,6 +236,196 @@ class TestExtractFilterParquetTicker:
         assert set(result["Corp A"]) == {"037833100", "037833101", "037833102"}
 
 
+def pairs(result: dict) -> list[tuple]:
+    """Flatten ``{name: [cusip, ...]}`` into a list of (name, cusip) work-unit tuples."""
+    return [(name, cusip) for name, cusips in result.items() for cusip in cusips]
+
+
+class TestNormalizeNameForGrouping:
+    """Tests for ShareholderInputCusip._normalize_name_for_grouping (static method)."""
+
+    def test_uppercases(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping("Apple Inc") == "APPLE INC"
+
+    def test_collapses_internal_whitespace(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping("SOFTBANK   CORP") == (
+            "SOFTBANK CORP"
+        )
+
+    def test_strips_surrounding_whitespace(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping("  ACME  ") == "ACME"
+
+    def test_strips_trailing_period(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping("SOFTBANK CORP.") == (
+            "SOFTBANK CORP"
+        )
+
+    def test_strips_trailing_comma(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping("ACME INC,") == "ACME INC"
+
+    def test_strips_repeated_trailing_punctuation(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping("ACME INC.,") == "ACME INC"
+
+    def test_keeps_internal_punctuation(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping("AMAZON.COM INC") == (
+            "AMAZON.COM INC"
+        )
+
+    def test_empty_string(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping("") == ""
+
+    def test_non_string_input_is_coerced(self):
+        assert ShareholderInputCusip._normalize_name_for_grouping(12345) == "12345"
+
+
+class TestCanonicalNameCollapse:
+    """Tests for the one-canonical-name-per-CUSIP collapse in _filter_and_deduplicate.
+
+    Frequency is what selects the name, so these DataFrames deliberately repeat rows —
+    counting happens before deduplication.
+    """
+
+    def test_modal_name_wins_over_minority_variant(self):
+        instance = make_instance()
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["APPLE INC", "APPLE INC", "APPLE INC", "APPLE COMPUTER"],
+                "security_cusip": ["037833100"] * 4,
+                "stock_ticker": ["AAPL"] * 4,
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        assert result == {"APPLE INC": ["037833100"]}
+
+    def test_one_pair_per_cusip_across_many_variants(self):
+        instance = make_instance()
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["SPDR S&P 500 ETF TR"] * 3 + ["CSX CORP", "ASTERA LABS INC"],
+                "security_cusip": ["78462F103"] * 5,
+                "stock_ticker": ["SPY"] * 5,
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        assert pairs(result) == [("SPDR S&P 500 ETF TR", "78462F103")]
+
+    def test_pair_count_equals_std_ticker_map_size(self):
+        instance = make_instance()
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp A2", "Corp B", "Corp C"],
+                "security_cusip": ["037833100", "037833100", "594918104", "037833101"],
+                "stock_ticker": ["AAPL", "AAPL", "GOOG", "WEC 4.375 06/01/29"],
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        assert len(pairs(result)) == len(instance.std_ticker_map)
+
+    def test_tie_break_is_independent_of_row_order(self):
+        rows = {
+            "issuer_name": ["ZETA CORP", "ALPHA CORP"],
+            "security_cusip": ["037833100", "037833100"],
+            "stock_ticker": ["AAPL", "AAPL"],
+        }
+        forward = make_instance()._extract_filter_parquet_ticker(pd.DataFrame(rows))
+        reversed_df = pd.DataFrame(rows).iloc[::-1].reset_index(drop=True)
+        backward = make_instance()._extract_filter_parquet_ticker(reversed_df)
+        assert forward == backward == {"ALPHA CORP": ["037833100"]}
+
+    def test_modal_name_differs_from_first_occurrence(self):
+        instance = make_instance()
+        # Mirrors CUSIP 02079K305: 'ALPHABET CLASS A' appears first, 'ALPHABET INC' dominates.
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["ALPHABET CLASS A", "ALPHABET INC", "ALPHABET INC"],
+                "security_cusip": ["02079K305"] * 3,
+                "stock_ticker": ["GOOGL"] * 3,
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        assert result == {"ALPHABET INC": ["02079K305"]}
+
+    def test_normalization_merges_variants_and_emits_common_raw_spelling(self):
+        instance = make_instance()
+        # 'SOFTBANK CORP.' x2 + 'softbank  corp' x1 is one group of 3, beating OTHER NAME's 2.
+        # The emitted name is the most common raw spelling in the winning group, so the
+        # trailing period survives even though it was stripped for counting.
+        df = pd.DataFrame(
+            {
+                "issuer_name": [
+                    "SOFTBANK CORP.",
+                    "SOFTBANK CORP.",
+                    "softbank  corp",
+                    "OTHER NAME",
+                    "OTHER NAME",
+                ],
+                "security_cusip": ["83405K102"] * 5,
+                "stock_ticker": ["9434"] * 5,
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        assert result == {"SOFTBANK CORP.": ["83405K102"]}
+
+    def test_cusip_kept_when_modal_name_row_has_bond_ticker(self):
+        instance = make_instance()
+        # The modal name travels with a bond-form ticker; the minority name has the parseable
+        # one. The CUSIP must survive, and std_ticker_map must still hold its ticker.
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["MODAL NAME", "MODAL NAME", "MINORITY NAME"],
+                "security_cusip": ["037833100"] * 3,
+                "stock_ticker": ["WEC 4.375 06/01/29", "WEC 4.375 06/01/29", "WEC"],
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        assert pairs(result) == [("MODAL NAME", "037833100")]
+        assert instance.std_ticker_map == {"037833100": "ticker:WEC"}
+
+    def test_cusip_dropped_when_no_variant_has_a_parseable_ticker(self):
+        instance = make_instance()
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["MODAL NAME", "MINORITY NAME"],
+                "security_cusip": ["037833100"] * 2,
+                "stock_ticker": ["WEC 4.375 06/01/29", "ABC 06/01/29"],
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        assert result == {}
+        assert len(pairs(result)) == len(instance.std_ticker_map)
+
+    def test_distinct_cusips_keep_their_own_canonical_names(self):
+        instance = make_instance()
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp A", "Corp A-alt", "Corp B", "Corp B", "Corp B2"],
+                "security_cusip": ["037833100"] * 3 + ["594918104"] * 3,
+                "stock_ticker": ["AAPL"] * 3 + ["GOOG"] * 3,
+            }
+        )
+        result = instance._extract_filter_parquet_ticker(df)
+        assert result == {"Corp A": ["037833100"], "Corp B": ["594918104"]}
+
+    def test_collapse_is_logged(self):
+        instance = make_instance()
+        df = pd.DataFrame(
+            {
+                "issuer_name": ["Corp A", "Corp A-alt"],
+                "security_cusip": ["037833100"] * 2,
+                "stock_ticker": ["AAPL"] * 2,
+            }
+        )
+        instance._extract_filter_parquet_ticker(df)
+        logged = [call.args[0] for call in instance.logger.info.call_args_list]
+        assert any("canonical pairs" in message for message in logged)
+
+    def test_empty_dataframe_returns_empty_dict(self):
+        instance = make_instance()
+        df = pd.DataFrame({"issuer_name": [], "security_cusip": [], "stock_ticker": []})
+        assert instance._extract_filter_parquet_ticker(df) == {}
+        assert instance.std_ticker_map == {}
+
+
 class TestWarnAmbiguousCusips:
     """Tests for ShareholderInputCusip._warn_ambiguous_cusips."""
 
