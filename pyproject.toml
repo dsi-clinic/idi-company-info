@@ -39,7 +39,7 @@ pulumi = [
     "pulumi>=3.220.0",
     "pulumi-aws>=7.19.0",
     "pyyaml>=6.0",
-    "pip>=24.0",
+    "pip>=26.2",  # PYSEC-2026-3721 fixed in 26.2
 ]
 
 [tool.pytest.ini_options]
