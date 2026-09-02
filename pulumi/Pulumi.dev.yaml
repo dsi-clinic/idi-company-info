@@ -24,7 +24,7 @@ config:
       cron: cron(0 2 * * ? *)
       batch_size: "2450"
       # Steady state: no new rows per day, just ~3 retryable failures retried each run.
-      max_requests: "100"
+      max_requests: "1200"
     - source: shareholder_tracker_cusip
       # Same published table as shareholder_tracker_cik — that parquet carries both the
       # investor_name/investor_cik columns the CIK loader needs and the
@@ -33,19 +33,19 @@ config:
       cron: cron(30 3 * * ? *)
       batch_size: "2450"
       # The backfill: 13,209 CUSIPs at ~2 live requests each once the sector cache is warm.
-      max_requests: "4500"
+      max_requests: "1200"
     - source: commercial_debt_tracker
       input_file: database/cdt/debt-instruments/latest.parquet
       cron: cron(30 2 * * ? *)
       batch_size: "2450"
       # Not currently producing new rows.
-      max_requests: "100"
+      max_requests: "1200"
     - source: corporate_subsidiaries
       input_file: database/corporate-structure/latest.parquet
       cron: cron(0 3 * * ? *)
       batch_size: "2450"
       # Only a few new filings per day.
-      max_requests: "100"
+      max_requests: "1200"
   idi:cpu: "1024"
   idi:memory: "4096"
   idi:buffer_size: "500"
