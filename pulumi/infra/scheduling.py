@@ -98,7 +98,7 @@ def _resolve_path(value: str) -> str:
 
     The shared processor bucket name has a single source of truth — the shared
     stack's SSM parameter, read via `config.bucket_name`. Committed config holds
-    bucket-relative keys (e.g. `company-info/output`); a value that already
+    bucket-relative keys (e.g. `processors/company-info`); a value that already
     carries a URI scheme (`s3://`, `https://`) is used as-is so cross-bucket or
     external inputs still work.
     """
