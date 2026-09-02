@@ -93,7 +93,7 @@ Two path roots, deliberately separate:
   own aggregate to `idi:final_output_file` (`database/company-info/latest.parquet`).
   The aggregator's write lock is a sidecar object next to it
   (`database/company-info/latest.parquet.lock`), created and deleted per run.
-- **`processors/company-info/output/…`** — operational state only, under
+- **`processors/company-info/…`** — operational state only, under
   `idi:output_dir`: per-source `permid_url.json`, `permid_data.json`,
   `failure.json`, plus the `sector_cache.json` shared across sources. This is the
   resumability and quota-saving state; it is read at startup and rewritten
@@ -143,7 +143,7 @@ aws ecs run-task \
   --task-definition "$(pulumi stack output aggregate_task_definition_arn)" \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$(pulumi stack output primary_subnet_id)],securityGroups=[$(pulumi stack output ecs_sg_id)],assignPublicIp=ENABLED}" \
-  --overrides '{"containerOverrides":[{"name":"company-info-aggregate","command":["--output-directory","s3://<bucket>/processors/company-info/output","--final-output-file","s3://<bucket>/database/company-info/latest.parquet"]}]}' \
+  --overrides '{"containerOverrides":[{"name":"company-info-aggregate","command":["--output-directory","s3://<bucket>/processors/company-info","--final-output-file","s3://<bucket>/database/company-info/latest.parquet"]}]}' \
   --region us-east-2
 ```
 

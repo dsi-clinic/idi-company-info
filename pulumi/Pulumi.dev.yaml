@@ -9,7 +9,7 @@
 # per-source permid_url/permid_data/failure JSON and the shared sector cache —
 # stays under `processors/company-info/`.
 config:
-  idi:output_dir: processors/company-info/output
+  idi:output_dir: processors/company-info
   idi:final_output_file: database/company-info/latest.parquet
   idi:input_sources:
     # max_requests is deliberately LOPSIDED, not split evenly: the quota is per API key and

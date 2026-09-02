@@ -17,7 +17,7 @@
 # permid_url/permid_data/failure JSON, shared sector cache) stays under
 # `processors/company-info/`.
 config:
-  idi:output_dir: processors/company-info/output
+  idi:output_dir: processors/company-info
   idi:final_output_file: database/company-info/latest.parquet
   idi:input_sources:
     - source: shareholder_tracker_cik
