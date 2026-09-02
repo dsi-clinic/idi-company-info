@@ -96,25 +96,14 @@ The PermID daily request quota is **per API key, not per pipeline**. Every sched
 | | |
 |---|---|
 | PermID daily quota | **5,000 requests/day** per key |
-| Scheduled sources (dev) | 4 |
-| Total worst case | `4,500 + 3 × 100 = 4,800 ≤ 5,000` |
+| Scheduled sources (dev) | 4 × `max_requests: 1200` |
+| Total worst case | `4 × 1,200 = 4,800 ≤ 5,000` |
 
-The caps are **deliberately lopsided rather than split evenly**, because only one source has a backlog:
+The caps are split evenly across the four dev sources, with 200 requests of headroom for ad-hoc local runs. Schedules are staggered (`02:00`, `02:30`, `03:00`, `03:30` UTC) so a source that aborts early does not overlap the next one, but staggering is *not* what keeps the total in bounds — the per-source caps are.
 
-| Source | `max_requests` | Why |
-|---|---|---|
-| `shareholder_tracker_cusip` | 4,500 | Backfilling 13,209 securities from cold at ~2 live requests each |
-| `shareholder_tracker_cik` | 100 | Steady state — no new rows per day; retries ~3 retryable failures per run |
-| `commercial_debt_tracker` | 100 | Not currently producing new rows |
-| `corporate_subsidiaries` | 100 | Only a few new filings per day |
-
-**This split is temporary.** It is sized for the CUSIP backfill and should be rebalanced once that drains — watch for `Reached max_requests budget` disappearing from the CUSIP source's logs, which is the signal it has caught up. A steady-state source that starts producing volume again will crawl at 100/day and will say so with that same log line.
-
-The 200-request headroom absorbs ad-hoc local runs. Schedules are staggered (`02:00`, `02:30`, `03:00`, `03:30` UTC) so a source that aborts early does not overlap the next one, but staggering is *not* what keeps the total in bounds — the per-source caps are.
+**Adding or re-enabling a source means re-deriving the caps**: the `max_requests` values across all enabled sources must sum to `≤ 5,000`. They live in `idi:input_sources` in `pulumi/Pulumi.<stack>.yaml`, one entry per source, so the arithmetic is visible in one place. There is no cross-source enforcement at runtime; if the caps sum above the quota, the last source of the night is the one that starves. A source that hits its cap logs `Reached max_requests budget`; if one source is consistently hitting it while others have slack, shift budget toward it rather than raising the total.
 
 The prod stack is still scaffolded at 3 sources × 1,650 with `schedule_enabled: "false"`; adding `shareholder_tracker_cusip` there means re-deriving its caps the same way. The CLI default remains 1,650 (see `--max-requests`) because it sizes a single ad-hoc run, not a fleet — scheduled runs always get an explicit value from `idi:input_sources`.
-
-**Adding or re-enabling a source means re-deriving the cap**: `max_requests × number of enabled sources ≤ 5,000`. Both values live in `idi:input_sources` in `pulumi/Pulumi.<stack>.yaml`, one entry per source, so the arithmetic is visible in one place. There is no cross-source enforcement at runtime; if the caps sum above the quota, the last source of the night is the one that starves.
 
 ### What counts against it
 
